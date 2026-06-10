@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write   # allow GitHub OIDC token issuance for NuGet Trusted Publishing
     steps:
       - uses: actions/checkout@v4
 
@@ -97,15 +98,20 @@ jobs:
             dotnet pack UnturnedMods.sln --configuration Release --no-build --output "$OUT"
           fi
 
+      # Trusted Publishing: exchange a GitHub OIDC token for a short-lived (1h)
+      # nuget.org API key. No long-lived NUGET_API_KEY secret to manage. Requires
+      # a trusted-publishing policy on nuget.org for owner=Well2333,
+      # repo=unturned-mods, workflow=publish.yml. Run immediately before push
+      # since the temp key expires in 1 hour.
+      - name: NuGet login (OIDC -> temp API key)
+        uses: NuGet/login@v1
+        id: nuget_login
+        with:
+          user: Well404   # nuget.org username (profile name), not an email
+
       - name: Push to NuGet
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "::error::NUGET_API_KEY secret is not set. Add it in repo Settings > Secrets and variables > Actions."
-            exit 1
-          fi
           dotnet nuget push "${{ runner.temp }}/packages/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" \
             --source "$NUGET_SOURCE" \
             --skip-duplicate

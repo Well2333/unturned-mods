@@ -27,7 +27,8 @@
   协调发布全仓库）。
 - `--skip-duplicate`：只有 nuget.org 上尚不存在的版本才会真正发布。**发布前必须在
   对应插件 `.csproj` 中递增 `<Version>`**。
-- 需要仓库 Secret **`NUGET_API_KEY`**（见下，尚未配置时发布会失败并给出提示）。
+- **认证用 Trusted Publishing（OIDC，无长期密钥）**，不再需要 `NUGET_API_KEY`
+  Secret（见下）。
 
 ### 版本与发布脚本
 
@@ -45,12 +46,25 @@
    `<PluginId>/v<newVersion>`）。
 4. publish workflow 自动只 pack & push 该插件（版本不匹配会报错）。
 
-### 配置 NUGET_API_KEY（一次性，密钥不要写进仓库/对话）
+### 认证：Trusted Publishing（OIDC，免长期密钥）
 
-```bash
-gh secret set NUGET_API_KEY --repo Well2333/unturned-mods
-# 然后按提示粘贴 nuget.org 的 API Key
-```
+`publish.yml` 通过 NuGet **Trusted Publishing** 认证：用 GitHub Actions 的 OIDC
+令牌向 nuget.org 换取**有效期 1 小时、一次性**的临时 API Key，**无需配置
+`NUGET_API_KEY` 长期密钥**。要点：
+
+- workflow 中 job 需 `permissions: id-token: write`；用 `NuGet/login@v1`
+  （`user: Well404` 为 nuget.org 用户名 / profile name，非邮箱）换取临时 key，
+  紧接着 `dotnet nuget push --api-key <临时key>`（login 必须紧邻 push，1 小时即过期）。
+- **一次性前置（网页操作）**：登录 nuget.org → 用户名菜单 → **Trusted Publishing**
+  → 新建策略：Repository Owner=`Well2333`、Repository=`unturned-mods`、
+  Workflow File=`publish.yml`（**只填文件名**）、Environment 留空。策略按**账号
+  所有者**维度生效，覆盖名下所有包 ID（含全新包 ID 的首发）。
+- 仓库为 **public**，故策略首发即永久生效（私有库才有 7 天待激活窗口）。
+- 该特性 nuget.org 灰度发布；账号用户名菜单里看不到 **Trusted Publishing** 即尚未
+  开放，届时回退到 API Key 方式（`gh secret set NUGET_API_KEY ...` + workflow 改回
+  用 `secrets.NUGET_API_KEY`）。
+- 改 nuget.org 用户名 / 仓库 owner / workflow 文件名时，须同步更新 nuget.org 策略
+  与 `publish.yml` 里的 `user:`。
 
 ## 包元数据（集中在 `Directory.Build.props`）
 
