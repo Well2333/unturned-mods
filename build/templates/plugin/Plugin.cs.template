@@ -1,0 +1,43 @@
+using System;
+using Cysharp.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
+using OpenMod.Unturned.Plugins;
+using __PLUGIN_ID__;
+
+[assembly: PluginMetadata("__PLUGIN_ID__", DisplayName = "__PLUGIN_DISPLAY_NAME__")]
+
+namespace __PLUGIN_ID__
+{
+    public class __PLUGIN_CLASS__ : OpenModUnturnedPlugin
+    {
+        private readonly IConfiguration m_Configuration;
+        private readonly IStringLocalizer m_StringLocalizer;
+        private readonly ILogger<__PLUGIN_CLASS__> m_Logger;
+
+        public __PLUGIN_CLASS__(
+            IConfiguration configuration,
+            IStringLocalizer stringLocalizer,
+            ILogger<__PLUGIN_CLASS__> logger,
+            IServiceProvider serviceProvider) : base(serviceProvider)
+        {
+            m_Configuration = configuration;
+            m_StringLocalizer = stringLocalizer;
+            m_Logger = logger;
+        }
+
+        protected override async UniTask OnLoadAsync()
+        {
+            // Switch to the main thread before calling any Unturned / UnityEngine API.
+            await UniTask.SwitchToMainThread();
+            m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_start"]);
+        }
+
+        protected override async UniTask OnUnloadAsync()
+        {
+            await UniTask.SwitchToMainThread();
+            m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
+        }
+    }
+}

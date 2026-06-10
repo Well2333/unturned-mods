@@ -1,0 +1,33 @@
+# ---- .NET build output ----
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.suo
+*.userprefs
+
+# ---- NuGet packages produced by GeneratePackageOnBuild ----
+*.nupkg
+*.snupkg
+
+# ---- IDE ----
+.vs/
+.idea/
+.vscode/
+*.DotSettings.user
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Local test server / deployment artifacts ----
+# A local Unturned + OpenMod server used for manual testing should live here
+# and never be committed.
+/.localserver/
+/artifacts/
+
+# ---- Misc ----
+*.log

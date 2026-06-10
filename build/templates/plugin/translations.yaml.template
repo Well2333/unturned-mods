@@ -1,0 +1,5 @@
+# Translations for __PLUGIN_DISPLAY_NAME__.
+# Keys are referenced via IStringLocalizer, e.g. m_StringLocalizer["plugin_events:plugin_start"].
+plugin_events:
+  plugin_start: "__PLUGIN_DISPLAY_NAME__ has been loaded."
+  plugin_stop: "__PLUGIN_DISPLAY_NAME__ has been unloaded."

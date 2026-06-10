@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Cross-plugin shared library.
+    Put reusable helpers, base classes, extension methods and common abstractions
+    here so individual plugins stay thin. RootNamespace/AssemblyName default to
+    "UnturnedMods.Shared" (they must stay equal — see development standards).
+
+    NOTE: when a plugin references this project, the compiled
+    UnturnedMods.Shared.dll must be deployed alongside the plugin into
+    openmod/plugins. The scaffold/build scripts handle this.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenMod.Unturned" />
+  </ItemGroup>
+
+</Project>

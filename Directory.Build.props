@@ -1,0 +1,38 @@
+<Project>
+
+  <!--
+    Shared MSBuild properties applied to EVERY project in this repository.
+    This guarantees a consistent build/runtime environment across all plugins,
+    which is exactly what we want for a multi-plugin OpenMod repo.
+
+    Plugin-specific settings (GeneratePackageOnBuild, package tags, embedded
+    resources) live in each plugin's own .csproj — see build/templates/plugin.
+  -->
+
+  <PropertyGroup>
+    <!-- OpenMod Unturned plugins target netstandard2.1. Do NOT change per-project. -->
+    <TargetFramework>netstandard2.1</TargetFramework>
+
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- Treat nullable violations as errors; matches the official OpenMod template. -->
+    <WarningsAsErrors>nullable</WarningsAsErrors>
+    <NoWarn>$(NoWarn);NU1701;NU1702;CS0436</NoWarn>
+
+    <!-- Deterministic, reproducible builds. -->
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Central Package Management: versions are defined in Directory.Packages.props. -->
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+
+    <!-- Shared package metadata (override per plugin where needed). -->
+    <Authors>well404</Authors>
+    <Company>well404</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+</Project>

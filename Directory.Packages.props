@@ -1,0 +1,30 @@
+<Project>
+
+  <!--
+    Central Package Management (CPM).
+    Every NuGet dependency version used anywhere in the repo is declared HERE,
+    once. Plugin .csproj files reference packages WITHOUT a Version attribute:
+
+        <PackageReference Include="OpenMod.Unturned" />
+
+    This keeps the runtime environment identical across all plugins. To bump a
+    dependency, change it here and record the change in memory/ (see the
+    commit & memory workflow guideline).
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- OpenMod.Unturned transitively pulls in OpenMod.API / OpenMod.Core /
+         OpenMod.UnityEngine, so plugins only need this one reference. -->
+    <PackageVersion Include="OpenMod.Unturned" Version="3.8.10" />
+
+    <!-- Build-time workaround shipped with the official OpenMod template.
+         Reference with <PrivateAssets>All</PrivateAssets> in plugin csprojs. -->
+    <PackageVersion Include="Legacy2CPSWorkaround" Version="1.0.0" />
+  </ItemGroup>
+
+</Project>
