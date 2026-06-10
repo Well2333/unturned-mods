@@ -1,0 +1,24 @@
+# Translations for Shop.
+# Keys are referenced via IStringLocalizer. Placeholders use SmartFormat.
+plugin_events:
+  plugin_start: "Shop has been loaded."
+  plugin_stop: "Shop has been unloaded."
+
+errors:
+  invalid_amount: "Please enter a valid, positive amount."
+  item_not_found: "No shop item with id: {id}"
+
+shop:
+  empty: "The shop is currently empty."
+  header: "===== Shop ====="
+  buy_label: "Buy:"
+  sell_label: "Sell:"
+
+buy:
+  not_buyable: "{name} cannot be bought."
+  success: "Bought {amount}x {name} for {symbol}{total}."
+
+sell:
+  not_sellable: "{name} cannot be sold."
+  not_enough_items: "You don't have enough {name} to sell."
+  success: "Sold {amount}x {name} for {symbol}{total}."

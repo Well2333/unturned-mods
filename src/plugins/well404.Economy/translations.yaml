@@ -1,0 +1,27 @@
+# Translations for Economy.
+# Keys are referenced via IStringLocalizer, e.g. m_StringLocalizer["plugin_events:plugin_start"].
+# Placeholders use SmartFormat, e.g. {symbol}, {balance}, {player}.
+plugin_events:
+  plugin_start: "Economy has been loaded."
+  plugin_stop: "Economy has been unloaded."
+
+errors:
+  not_a_player: "This command can only be used by a player."
+  player_not_found: "Player not found: {player}"
+  invalid_amount: "Please enter a valid, positive amount."
+
+balance:
+  self: "Your balance: {symbol}{balance} {currency}"
+  other: "{player}'s balance: {symbol}{balance} {currency}"
+
+pay:
+  disabled: "Transfers are currently disabled."
+  self: "You cannot pay yourself."
+  min: "The minimum transfer amount is {symbol}{min}."
+  sent: "You paid {symbol}{amount} to {player} (tax: {symbol}{tax})."
+  received: "You received {symbol}{amount} from {player}."
+
+eco:
+  give: "Gave {symbol}{amount} to {player}. New balance: {symbol}{balance}."
+  take: "Took {symbol}{amount} from {player}. New balance: {symbol}{balance}."
+  set: "Set {player}'s balance to {symbol}{balance}."

@@ -28,6 +28,20 @@
 
     <!-- SourceLink (referenced globally from Directory.Build.props). -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+
+    <!-- OpenMod's cross-plugin economy abstraction. well404.Economy implements
+         IEconomyProvider as a global service so other plugins (daily check-in,
+         etc.) and well404.Shop can inject it without a hard project reference. -->
+    <PackageVersion Include="OpenMod.Extensions.Economy.Abstractions" Version="3.8.10" />
+
+    <!-- LiteDB: pure-managed, single-file serverless database (the "SQLite-like"
+         backend for the economy ledger). No native dependencies. -->
+    <PackageVersion Include="LiteDB" Version="5.0.21" />
+
+    <!-- Test stack (used only by projects under tests/; not shipped). -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
 </Project>

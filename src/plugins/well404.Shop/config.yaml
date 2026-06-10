@@ -1,0 +1,38 @@
+# Configuration for Shop.
+# Embedded as a resource; users can override it in the plugin's data directory.
+# Requires well404.Economy (provides the currency).
+
+discounts:
+  # Off by default. When enabled, the best (lowest) multiplier the player is
+  # granted via permissions applies to BUY prices. Example: 0.9 = 10% off.
+  enabled: false
+  tiers: {}
+  # Example:
+  # tiers:
+  #   well404.shop.vip: 0.9
+  #   well404.shop.mvp: 0.8
+
+# Each entry is referenced by its `id` in /buy and /sell.
+#   type: item   -> a single Unturned item (itemId, amount per unit)
+#   type: bundle -> a custom combo pack (contents). Bundles can be sold too
+#                   (all contents are taken back).
+# buyPrice 0 = not buyable; sellPrice 0 = not sellable.
+items:
+  - id: "medkit"
+    name: "Medkit"
+    type: "item"
+    itemId: 15
+    amount: 1
+    buyPrice: 100
+    sellPrice: 40
+
+  - id: "starter"
+    name: "Starter Pack"
+    type: "bundle"
+    buyPrice: 500
+    sellPrice: 0
+    contents:
+      - itemId: 15
+        amount: 2
+      - itemId: 81
+        amount: 1

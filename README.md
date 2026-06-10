@@ -23,9 +23,16 @@ monorepo）。各插件彼此独立、可单独构建与部署，但共享统一
 
 详见 [`memory/guidelines/architecture.md`](memory/guidelines/architecture.md)。
 
+## 插件
+
+| 插件 | 说明 |
+| --- | --- |
+| `well404.Economy` | 经济系统：以全局 `IEconomyProvider` 暴露货币；后端可选 serverless LiteDB 账本或原生经验值；支持 `/pay` 转账、`/balance`、`/eco` 管理、以及击杀（玩家/僵尸/动物）奖励。其他插件（签到等）可注入 `IEconomyProvider` 发币。 |
+| `well404.Shop` | 商店：`config.yaml` 配置商品价格，支持单物品与自定义组合包；`/buy` `/sell` `/shop`；按权限组的购买折扣（如 VIP 9 折，默认关闭）。依赖任一 `IEconomyProvider` 实现。 |
+
 ## 快速开始
 
-> 需要 .NET SDK（建议 8.0 LTS）。当前环境仅装了 .NET 运行时，构建前请先安装 SDK。
+> 需要 .NET SDK（建议 8.0 LTS）；当前环境已装 SDK 8.0.127。
 
 ```bash
 # 新建一个插件

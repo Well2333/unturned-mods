@@ -28,6 +28,10 @@ jobs:
       - name: Build
         run: dotnet build UnturnedMods.sln --configuration Release --no-restore
 
-      # Add test projects later; this is a no-op until any *.Tests project exists.
       - name: Test
         run: dotnet test UnturnedMods.sln --configuration Release --no-build --verbosity normal
+
+      # Validate that every packable plugin still packs cleanly (catches packaging
+      # errors before a release). Packages are discarded.
+      - name: Pack (validation)
+        run: dotnet pack UnturnedMods.sln --configuration Release --no-build --output ${{ runner.temp }}/packages

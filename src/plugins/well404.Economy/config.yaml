@@ -1,0 +1,31 @@
+# Configuration for Economy.
+# Embedded as a resource; users can override it in the plugin's data directory.
+
+currency:
+  name: "Credit"
+  symbol: "$"
+  # Balance assumed for accounts that have never been touched (database backend only).
+  startingBalance: 0
+
+# Which backend stores balances:
+#   database   - a serverless LiteDB ledger (works for online and offline players)
+#   experience - the native Unturned experience points (online players only)
+backend: "database"
+
+database:
+  # LiteDB file, created in this plugin's directory.
+  fileName: "economy.db"
+
+transfer:
+  enabled: true
+  minAmount: 1
+  # Percentage (0-100) taken from each /pay as tax.
+  taxPercent: 0
+
+# Reward currency for kills. Set an amount to 0 to disable that source.
+killRewards:
+  enabled: true
+  player: 0
+  zombie: 0
+  megaZombie: 0
+  animal: 0

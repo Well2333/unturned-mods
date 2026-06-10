@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Plugin project. Most settings are inherited from the repo-root
+    Directory.Build.props and Directory.Packages.props.
+
+    The project file name is well404.Shop.csproj, so RootNamespace and
+    AssemblyName both default to "well404.Shop" and stay EQUAL — this is
+    REQUIRED for IConfiguration / IStringLocalizer to resolve correctly.
+    Do not override them with different values.
+  -->
+
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Description>Shop</Description>
+    <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageTags>openmod openmod-plugin unturned</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenMod.Unturned" />
+    <!-- For injecting the global IEconomyProvider supplied by well404.Economy.
+         No project reference to well404.Economy is needed: the Shop depends only
+         on the shared abstraction, not the concrete economy implementation. -->
+    <PackageReference Include="OpenMod.Extensions.Economy.Abstractions" />
+    <PackageReference Include="Legacy2CPSWorkaround">
+      <PrivateAssets>All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="config.yaml" />
+    <EmbeddedResource Include="translations.yaml" />
+  </ItemGroup>
+
+  <!-- Uncomment to share code from the cross-plugin library:
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" />
+  </ItemGroup>
+  -->
+
+</Project>

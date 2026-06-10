@@ -44,6 +44,23 @@ unturned-mods/
 - **脚手架 `scripts/new-plugin.sh`**：保证每个新插件结构、约束一致，降低 AI
   逐个手写时的偏差。
 
+## 插件间协作：依赖抽象，不依赖具体插件
+
+跨插件能力（如经济系统）通过 **OpenMod 的全局服务抽象**暴露，消费方注入抽象接口，
+**不**对提供方建立 `ProjectReference`：
+
+- 提供方用 `[ServiceImplementation(Lifetime = Singleton)]` 实现某个 `[Service]` 抽象
+  接口（如 `IEconomyProvider`，来自 `OpenMod.Extensions.Economy.Abstractions`）。该实现
+  在**插件作用域**内构造，因此可直接注入插件的 `IConfiguration` / `IOpenModComponent`
+  等；但对**其他插件全局可见**。（与官方 `OpenMod.Economy` 同构。）
+- 消费方（如 `well404.Shop`）只注入抽象 `IEconomyProvider`，对提供方插件无编译期依赖，
+  仅有**运行时顺序依赖**：场上需有任一经济插件提供该实现。
+- 好处：插件可独立编译/发布/替换；第三方插件（每日签到等）也能用同一抽象给玩家发币。
+
+> 全局服务里**不要**直接注入"你自己的插件实例"；需要插件实例时用
+> `IPluginAccessor<TPlugin>`（懒访问）。但如上，注入 `IConfiguration` /
+> `IOpenModComponent` 已足够读取本插件配置与工作目录。
+
 ## 每个插件目录的标准布局
 
 ```

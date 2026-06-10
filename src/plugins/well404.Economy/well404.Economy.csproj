@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Plugin project. Most settings are inherited from the repo-root
+    Directory.Build.props and Directory.Packages.props.
+
+    The project file name is well404.Economy.csproj, so RootNamespace and
+    AssemblyName both default to "well404.Economy" and stay EQUAL — this is
+    REQUIRED for IConfiguration / IStringLocalizer to resolve correctly.
+    Do not override them with different values.
+  -->
+
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Description>Economy</Description>
+    <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageTags>openmod openmod-plugin unturned</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenMod.Unturned" />
+    <PackageReference Include="OpenMod.Extensions.Economy.Abstractions" />
+    <PackageReference Include="LiteDB" />
+    <PackageReference Include="Legacy2CPSWorkaround">
+      <PrivateAssets>All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="config.yaml" />
+    <EmbeddedResource Include="translations.yaml" />
+  </ItemGroup>
+
+  <!-- Uncomment to share code from the cross-plugin library:
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" />
+  </ItemGroup>
+  -->
+
+</Project>

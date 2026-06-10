@@ -1,13 +1,29 @@
 name: Publish to NuGet
 
-# Publishes every packable plugin to nuget.org when a GitHub Release is
-# published. --skip-duplicate means only versions not already on nuget.org are
-# actually pushed, so bump a plugin's <Version> in its .csproj before releasing.
+# Per-plugin publishing for this multi-plugin monorepo.
+#
+# Release ONE plugin by publishing a GitHub Release whose tag is:
+#     <PluginId>/v<Version>      e.g.  well404.Economy/v0.2.0
+# The workflow then builds & packs ONLY that plugin and pushes it. The tag
+# version must match the plugin's <Version> in its .csproj (guards against
+# releasing a stale version).
+#
+# A release tag that does NOT match that pattern (e.g. v1.0.0) publishes ALL
+# packable plugins (useful for a coordinated repo-wide release).
+#
+# workflow_dispatch lets you publish a specific plugin (or "all") manually.
+#
+# --skip-duplicate means only versions not already on nuget.org are pushed, so
+# bump a plugin's <Version> before releasing it.
 on:
   release:
     types: [published]
-  # Allow a manual dry-run / re-publish from the Actions tab.
   workflow_dispatch:
+    inputs:
+      plugin:
+        description: 'PluginId to publish (e.g. well404.Economy), or "all"'
+        required: true
+        default: 'all'
 
 env:
   DOTNET_NOLOGO: true
@@ -27,17 +43,59 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Determine release target
+        id: target
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            INPUT="${{ github.event.inputs.plugin }}"
+            if [ "$INPUT" = "all" ]; then
+              echo "mode=all" >> "$GITHUB_OUTPUT"
+            else
+              echo "mode=single" >> "$GITHUB_OUTPUT"
+              echo "plugin=$INPUT" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            TAG="${{ github.event.release.tag_name }}"
+            if [[ "$TAG" =~ ^(.+)/v(.+)$ ]]; then
+              echo "mode=single" >> "$GITHUB_OUTPUT"
+              echo "plugin=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+              echo "version=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+            else
+              echo "mode=all" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+          echo "Resolved mode for tag/input."
+
       - name: Restore
         run: dotnet restore UnturnedMods.sln
 
-      # Build first, then pack with --no-build. Packing during build
-      # (GeneratePackageOnBuild=true) conflicts with a solution-level
-      # `dotnet pack`, causing NU5026; this two-step avoids it.
-      - name: Build
-        run: dotnet build UnturnedMods.sln --configuration Release --no-restore
-
-      - name: Pack
-        run: dotnet pack UnturnedMods.sln --configuration Release --no-build --output ${{ runner.temp }}/packages
+      - name: Build & pack
+        run: |
+          set -euo pipefail
+          OUT="${{ runner.temp }}/packages"
+          mkdir -p "$OUT"
+          if [ "${{ steps.target.outputs.mode }}" = "single" ]; then
+            PLUGIN="${{ steps.target.outputs.plugin }}"
+            PROJ="src/plugins/$PLUGIN/$PLUGIN.csproj"
+            if [ ! -f "$PROJ" ]; then
+              echo "::error::No such plugin project: $PROJ"; exit 1
+            fi
+            VER="${{ steps.target.outputs.version }}"
+            if [ -n "$VER" ]; then
+              CSVER=$(grep -oPm1 '(?<=<Version>)[^<]+' "$PROJ")
+              if [ "$VER" != "$CSVER" ]; then
+                echo "::error::Release tag version '$VER' does not match $PROJ <Version> '$CSVER'. Bump the .csproj first."; exit 1
+              fi
+            fi
+            echo "Publishing single plugin: $PLUGIN"
+            dotnet build "$PROJ" --configuration Release --no-restore
+            dotnet pack "$PROJ" --configuration Release --no-build --output "$OUT"
+          else
+            echo "Publishing ALL packable plugins"
+            dotnet build UnturnedMods.sln --configuration Release --no-restore
+            dotnet pack UnturnedMods.sln --configuration Release --no-build --output "$OUT"
+          fi
 
       - name: Push to NuGet
         env:
