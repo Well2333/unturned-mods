@@ -25,6 +25,9 @@
     <!-- Build-time workaround shipped with the official OpenMod template.
          Reference with <PrivateAssets>All</PrivateAssets> in plugin csprojs. -->
     <PackageVersion Include="Legacy2CPSWorkaround" Version="1.0.0" />
+
+    <!-- SourceLink (referenced globally from Directory.Build.props). -->
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

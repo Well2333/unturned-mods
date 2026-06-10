@@ -31,8 +31,36 @@
     <!-- Shared package metadata (override per plugin where needed). -->
     <Authors>well404</Authors>
     <Company>well404</Company>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <!-- CC BY-NC-SA 4.0 is not an OSI/FSF license, so it is shipped as a bundled
+         license file (PackageLicenseFile) rather than an SPDX expression. -->
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Copyright>Copyright (c) well404. Licensed under CC BY-NC-SA 4.0.</Copyright>
     <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/Well2333/unturned-mods</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Well2333/unturned-mods</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- Symbols + SourceLink for debuggable published packages. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- Set to true by CI for deterministic, source-linked builds. -->
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
+
+  <!-- Pack the repo README + LICENSE into every package (only affects packable projects). -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <!-- SourceLink: maps published symbols back to GitHub source. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 
 </Project>

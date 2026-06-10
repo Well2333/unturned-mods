@@ -7,6 +7,7 @@
 | [development-standards.md](development-standards.md) | 编码规范、OpenMod 插件硬性约束、依赖与版本管理 |
 | [architecture.md](architecture.md) | 仓库结构、多插件设计、共享环境的设计决策 |
 | [commit-and-memory-workflow.md](commit-and-memory-workflow.md) | 提交流程、变更记录撰写规则、记忆同步规则 |
+| [publishing.md](publishing.md) | NuGet / GitHub 发布流程、CI、包元数据、密钥配置 |
 
 ## 修改规范的规则
 

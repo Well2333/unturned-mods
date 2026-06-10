@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore UnturnedMods.sln
+
+      - name: Build
+        run: dotnet build UnturnedMods.sln --configuration Release --no-restore
+
+      # Add test projects later; this is a no-op until any *.Tests project exists.
+      - name: Test
+        run: dotnet test UnturnedMods.sln --configuration Release --no-build --verbosity normal

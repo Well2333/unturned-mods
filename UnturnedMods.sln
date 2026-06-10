@@ -1,25 +1,30 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE1}") = "Shared", "Shared", "{846F7689-C3F0-4EF7-A4DF-DF626AE92FAA}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{756C86DC-61BC-4860-926D-83A372714080}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE1}") = "plugins", "plugins", "{B0A1C2D3-E4F5-46A7-8899-AABBCCDDEEFF}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{C74BBAD7-C25F-4460-AE04-93E3C2BDE4D8}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnturnedMods.Shared", "src\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj", "{07BA9526-68A3-45DB-B643-E16CBBE7A686}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnturnedMods.Shared", "src\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj", "{7031D81B-E641-4006-8EB5-9147ACC7361F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{07BA9526-68A3-45DB-B643-E16CBBE7A686}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{07BA9526-68A3-45DB-B643-E16CBBE7A686}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{07BA9526-68A3-45DB-B643-E16CBBE7A686}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{07BA9526-68A3-45DB-B643-E16CBBE7A686}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7031D81B-E641-4006-8EB5-9147ACC7361F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7031D81B-E641-4006-8EB5-9147ACC7361F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7031D81B-E641-4006-8EB5-9147ACC7361F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7031D81B-E641-4006-8EB5-9147ACC7361F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{07BA9526-68A3-45DB-B643-E16CBBE7A686} = {846F7689-C3F0-4EF7-A4DF-DF626AE92FAA}
+		{C74BBAD7-C25F-4460-AE04-93E3C2BDE4D8} = {756C86DC-61BC-4860-926D-83A372714080}
+		{7031D81B-E641-4006-8EB5-9147ACC7361F} = {C74BBAD7-C25F-4460-AE04-93E3C2BDE4D8}
 	EndGlobalSection
 EndGlobal
