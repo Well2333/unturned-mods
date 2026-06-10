@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
-using OpenMod.API.Ioc;
 
 namespace well404.Shop
 {
     /// <summary>
-    /// Reads the shop catalog from <c>config.yaml</c>. Plugin-scoped; reads config
-    /// on demand so edits picked up by OpenMod's config reload take effect live.
+    /// Reads the shop catalog from <c>config.yaml</c>. Reads config on demand so
+    /// edits picked up by OpenMod's config reload take effect live. Registered as a
+    /// plugin-scoped singleton in <see cref="ShopContainerConfigurator"/>.
     /// </summary>
-    [PluginServiceImplementation(Lifetime = Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton)]
     public class ShopCatalog
     {
         private readonly IConfiguration m_Configuration;

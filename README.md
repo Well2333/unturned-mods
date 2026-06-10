@@ -38,11 +38,11 @@ monorepo）。各插件彼此独立、可单独构建与部署，但共享统一
 # 新建一个插件
 scripts/new-plugin.sh well404.MyPlugin "My Plugin"
 
-# 构建全部 -> 默认输出到 build/<PluginId>/（只含插件 dll + 非宿主第三方依赖）
+# 构建全部 -> 默认平铺输出到 build/（插件 dll + 非宿主第三方依赖，如 LiteDB.dll）
 scripts/build.sh
 scripts/build.sh --test          # 构建 + 跑单元测试
 
-# 直接输出/部署到本地测试服务器（-o/--deploy 覆盖输出目录）
+# 直接输出/部署到本地测试服务器（-o/--deploy 覆盖输出目录；OpenMod 要求 dll 平铺）
 scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
 ```
 

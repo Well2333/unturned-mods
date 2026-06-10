@@ -50,10 +50,11 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
 
 - 构建需要 **.NET SDK**（建议 8.0 LTS）；当前环境已装 **SDK 8.0.127**，可直接构建。
 - `dotnet build` 因 `GeneratePackageOnBuild=true` 会产出 `.nupkg`。
-- 本地构建/测试/部署封装在 **`scripts/build.sh`**：默认把每个插件的「插件 dll +
-  非宿主第三方依赖」装配到仓库根 **`build/<PluginId>/`**（构建前清空旧产物、构建后只
-  留目标文件；中间产物用临时目录丢弃）。`-o/--deploy <dir>` 覆盖输出目录（如服务器
-  plugins 目录）、`--test` 跑测试。`build/` 下的产物已 `.gitignore`（保留
+- 本地构建/测试/部署封装在 **`scripts/build.sh`**：默认把「插件 dll + 非宿主第三方
+  依赖」**平铺**装配到仓库根 **`build/`**（构建前清旧产物、构建后只留目标文件；中间
+  产物用临时目录丢弃）。**必须平铺**——OpenMod 插件加载器只扫描 `plugins/*.dll` 顶层、
+  不递归子目录（`FileSystemPluginAssembliesSource`）。`-o/--deploy <dir>` 覆盖输出目录
+  （如服务器 plugins 目录）、`--test` 跑测试。`build/` 产物已 `.gitignore`（保留
   `templates/`）。详见 `docs/README.md`。
 - 部署二选一：`openmod install <PackageId[@Version]>`，或把插件 `.dll` 及其
   全部依赖 dll 放入服务器的 `openmod/plugins/`；之后 `openmod reload`。

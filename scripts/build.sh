@@ -2,9 +2,11 @@
 #
 # Local build / test / debug helper for the monorepo.
 #
-# Assembles each plugin's ready-to-deploy artifact set — the plugin dll plus only
-# the dependencies an OpenMod server does NOT already ship (e.g. LiteDB.dll) — into
-# a per-plugin folder under the output directory.
+# Assembles each plugin's ready-to-deploy files — the plugin dll plus only the
+# dependencies an OpenMod server does NOT already ship (e.g. LiteDB.dll) — FLAT
+# into the output directory. Flat layout is required: OpenMod's plugin loader
+# scans "<plugins>/*.dll" at the top level only (no subfolders), so a server's
+# openmod/plugins/ folder is exactly this output dir's layout.
 #
 # Usage:
 #   scripts/build.sh [PluginId] [options]
@@ -22,13 +24,15 @@
 #       --clean                 also `dotnet clean` (bin/obj) before building
 #   -h, --help                  show this help
 #
-# Output layout:  <output>/<PluginId>/<PluginId>.dll [+ extra deps]
+# Output: <output>/<PluginId>.dll [+ extra deps], all flat.
 #
-# The output folder for each built plugin is cleared BEFORE the build (removing
-# the previous run's residue) and only target files are placed in it AFTER
-# (intermediate publish output is staged in a temp dir and discarded). The default
-# build/ directory keeps only the version-controlled `templates/` plus freshly
-# built plugin folders.
+# Clean-before / prune-after: the files this run produces are removed from the
+# output dir before the build (clearing the previous run's residue) and only
+# target files are written after (intermediate publish output is staged in a temp
+# dir and discarded). Unrelated files in the output dir are left untouched, so
+# pointing --deploy at a server's plugins/ folder only refreshes THIS repo's
+# plugins. The default build/ dir additionally has its loose *.dll cleared on a
+# full (all-plugins) build; the version-controlled templates/ is never touched.
 #
 # Examples:
 #   scripts/build.sh                              # all plugins -> build/
@@ -50,7 +54,7 @@ DO_CLEAN=false
 OUTPUT=""
 PLUGIN_ID=""
 
-print_help() { sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+print_help() { sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -67,8 +71,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Default output is the repo's build/ directory.
-[[ -z "$OUTPUT" ]] && OUTPUT="$REPO_ROOT/build"
+IS_DEFAULT_OUTPUT=false
+if [[ -z "$OUTPUT" ]]; then OUTPUT="$REPO_ROOT/build"; IS_DEFAULT_OUTPUT=true; fi
 
 # Resolve the list of plugins to build.
 declare -a PLUGINS=()
@@ -83,10 +87,7 @@ else
     id="$(basename "$dir")"
     [[ -f "$dir/$id.csproj" ]] && PLUGINS+=("$id")
   done
-  if [[ ${#PLUGINS[@]} -eq 0 ]]; then
-    echo "Error: no plugins found under src/plugins/." >&2
-    exit 1
-  fi
+  [[ ${#PLUGINS[@]} -eq 0 ]] && { echo "Error: no plugins found under src/plugins/." >&2; exit 1; }
 fi
 
 if $DO_CLEAN; then
@@ -99,46 +100,46 @@ if $DO_TEST; then
   dotnet test "$SLN" -c "$CONFIG" --nologo
 fi
 
-# Returns the plugin's non-host third-party deps (its own PackageReferences minus
-# anything an OpenMod Unturned server already provides). These are the only deps
-# that need to ship next to the plugin dll.
+mkdir -p "$OUTPUT"
+# On a full build into the default build/ dir, clear all prior artifacts (loose
+# dlls and any stale subfolders) but never the version-controlled templates/.
+if $IS_DEFAULT_OUTPUT && [[ -z "$PLUGIN_ID" ]]; then
+  find "$OUTPUT" -mindepth 1 -maxdepth 1 ! -name templates -exec rm -rf {} +
+fi
+
+# A plugin's non-host third-party deps = its own PackageReferences minus anything
+# the OpenMod Unturned host already provides. These ship next to the plugin dll.
 extra_deps() {
-  local proj="$1"
-  grep -oE '<PackageReference Include="[^"]+"' "$proj" \
+  grep -oE '<PackageReference Include="[^"]+"' "$1" \
     | sed -E 's/.*Include="([^"]+)".*/\1/' \
     | grep -ivE '^(OpenMod|Legacy2CPSWorkaround|Microsoft\.SourceLink)' || true
 }
 
-echo "==> Output: $OUTPUT"
+echo "==> Output (flat): $OUTPUT"
+declare -A WRITTEN=()
 for id in "${PLUGINS[@]}"; do
   proj="$REPO_ROOT/src/plugins/$id/$id.csproj"
   staging="$(mktemp -d)"
-  dest="$OUTPUT/$id"
 
   echo "==> Building $id ($CONFIG)"
   dotnet publish "$proj" -c "$CONFIG" -o "$staging" --nologo >/dev/null
 
-  # Clean this plugin's previous output, then place only target files.
-  rm -rf "$dest"
-  mkdir -p "$dest"
-
-  copied=0
-  copy_one() {
+  copy_flat() {
     local name="$1"
-    if [[ -f "$staging/$name.dll" ]]; then
-      cp "$staging/$name.dll" "$dest/"
-      echo "    + $id/$name.dll"
-      copied=$((copied + 1))
-    fi
+    [[ -f "$staging/$name.dll" ]] || return 0
+    [[ -n "${WRITTEN[$name]:-}" ]] && return 0      # dedup shared deps (e.g. LiteDB)
+    rm -f "$OUTPUT/$name.dll"                        # clean previous residue (safe: only our files)
+    cp "$staging/$name.dll" "$OUTPUT/"
+    WRITTEN[$name]=1
+    echo "    + $name.dll"
   }
 
-  copy_one "$id"
+  copy_flat "$id"
   while IFS= read -r dep; do
-    [[ -n "$dep" ]] && copy_one "$dep"
+    [[ -n "$dep" ]] && copy_flat "$dep"
   done < <(extra_deps "$proj")
 
   rm -rf "$staging"
-  echo "    -> $copied file(s) in $dest"
 done
 
 if $DO_PACK; then
@@ -146,7 +147,7 @@ if $DO_PACK; then
   find "$REPO_ROOT/src/plugins" -path "*/bin/$CONFIG/*.nupkg" | sort | sed 's/^/    /'
 fi
 
-echo "==> Done. Artifacts in: $OUTPUT"
-echo "    Deploy by copying <output>/<PluginId>/ into the server's openmod/plugins/,"
+echo "==> Done. ${#WRITTEN[@]} file(s) in: $OUTPUT"
+echo "    Deploy by copying the dll(s) into the server's openmod/plugins/ (flat),"
 echo "    then run 'openmod reload'. (If a third-party dep has its own sub-deps, copy"
 echo "    those too, or use 'openmod install <PackageId>'.)"

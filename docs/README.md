@@ -47,12 +47,14 @@ scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
 # 然后在服务器控制台执行： openmod reload
 ```
 
-**产物布局**：`<输出目录>/<PluginId>/<PluginId>.dll`（+ 非宿主第三方依赖，如
-`well404.Economy` 会带 `LiteDB.dll`；`well404.Shop` 只有插件 dll）。每个插件的输出
-目录会在构建**前清空**上次残余、构建**后只保留目标文件**（中间产物在临时目录里丢弃）。
-默认 `build/` 目录只保留版本控制的 `templates/` 与新构建出的插件目录（构建产物已
-`.gitignore`）。部署时把 `<输出目录>/<PluginId>/` 整个复制进服务器
-`openmod/plugins/`。
+**产物布局（扁平）**：`<输出目录>/<PluginId>.dll` + 非宿主第三方依赖（如
+`well404.Economy` 会带 `LiteDB.dll`；`well404.Shop` 只有插件 dll），全部平铺。
+**必须扁平**：OpenMod 的插件加载器只扫描 `plugins/*.dll` 顶层（不递归子目录），所以
+服务器 `openmod/plugins/` 的布局就等于本输出目录。构建**前清除**上次同名残余、**后只
+留目标文件**（中间产物在临时目录丢弃）；默认 `build/` 全量构建时会清掉旧产物但保留
+版本控制的 `templates/`（构建产物已 `.gitignore`）。部署时把这些 dll 平铺复制进
+`openmod/plugins/`，OpenMod 会自动在 `plugins/<PluginId>/` 下生成各插件的
+`config.yaml`/`translations.yaml`（及如经济库 `economy.db`）。
 
 `scripts/build.sh --help` 查看全部选项。其他脚本：
 

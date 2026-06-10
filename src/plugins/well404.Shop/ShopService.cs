@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
-using OpenMod.API.Ioc;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Users;
 
@@ -10,9 +9,9 @@ namespace well404.Shop
     /// <summary>
     /// Handles the inventory side of buying and selling: granting items (single
     /// items or bundle contents) and taking them back. All inventory access runs
-    /// on the main thread.
+    /// on the main thread. Registered as a plugin-scoped singleton in
+    /// <see cref="ShopContainerConfigurator"/>.
     /// </summary>
-    [PluginServiceImplementation(Lifetime = Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton)]
     public class ShopService
     {
         private readonly IItemSpawner m_ItemSpawner;

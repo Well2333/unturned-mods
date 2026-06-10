@@ -1,5 +1,4 @@
 using System.Threading.Tasks;
-using OpenMod.API.Ioc;
 using OpenMod.API.Permissions;
 
 namespace well404.Shop
@@ -7,9 +6,9 @@ namespace well404.Shop
     /// <summary>
     /// Resolves the buy-price multiplier for an actor based on the permission
     /// tiers in config. Disabled by default; when enabled, the best (lowest)
-    /// multiplier among the actor's granted tiers applies.
+    /// multiplier among the actor's granted tiers applies. Registered as a
+    /// plugin-scoped singleton in <see cref="ShopContainerConfigurator"/>.
     /// </summary>
-    [PluginServiceImplementation(Lifetime = Microsoft.Extensions.DependencyInjection.ServiceLifetime.Singleton)]
     public class DiscountService
     {
         private readonly ShopCatalog m_Catalog;

@@ -1,10 +1,12 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Autofac;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using OpenMod.API;
+using OpenMod.API.Commands;
 using OpenMod.API.Ioc;
+using OpenMod.API.Plugins;
 using OpenMod.API.Users;
 using OpenMod.Extensions.Economy.Abstractions;
 using well404.Economy.Currency;
@@ -14,17 +16,20 @@ namespace well404.Economy
     /// <summary>
     /// Global <see cref="IEconomyProvider"/> implementation. Registered with
     /// <see cref="ServiceImplementationAttribute"/> so <b>any</b> plugin (daily
-    /// check-in, well404.Shop, ...) can inject it. Like the official OpenMod.Economy
-    /// provider, it is constructed in the plugin's scope, so it can read the
-    /// plugin's <c>config.yaml</c> and working directory directly. It reads config
-    /// on each call so live config reloads take effect, and routes to the
-    /// configured <see cref="ICurrencyBackend"/>.
+    /// check-in, well404.Shop, ...) can inject it.
+    /// <para>
+    /// A global service is activated in the global scope, where plugin-scoped
+    /// services (the plugin's <see cref="IConfiguration"/>, working directory) are
+    /// NOT injectable. So it reaches them lazily through
+    /// <see cref="IPluginAccessor{TPlugin}"/> — the documented way for a global
+    /// service to access its plugin. Config is read on each call so live reloads
+    /// take effect.
+    /// </para>
     /// </summary>
     [ServiceImplementation(Lifetime = ServiceLifetime.Singleton)]
     public sealed class EconomyProvider : IEconomyProvider
     {
-        private readonly IConfiguration m_Configuration;
-        private readonly IOpenModComponent m_Component;
+        private readonly IPluginAccessor<EconomyPlugin> m_PluginAccessor;
         private readonly IUserManager m_UserManager;
 
         private readonly object m_Lock = new object();
@@ -32,17 +37,29 @@ namespace well404.Economy
         private ExperienceCurrencyBackend? m_XpBackend;
 
         public EconomyProvider(
-            IConfiguration configuration,
-            IOpenModComponent component,
+            IPluginAccessor<EconomyPlugin> pluginAccessor,
             IUserManager userManager)
         {
-            m_Configuration = configuration;
-            m_Component = component;
+            m_PluginAccessor = pluginAccessor;
             m_UserManager = userManager;
         }
 
+        private EconomyPlugin Plugin
+        {
+            get
+            {
+                var plugin = m_PluginAccessor.Instance;
+                if (plugin == null || !plugin.IsComponentAlive)
+                {
+                    throw new UserFriendlyException("The economy plugin is not loaded.");
+                }
+
+                return plugin;
+            }
+        }
+
         private EconomySettings ReadSettings()
-            => m_Configuration.Get<EconomySettings>() ?? new EconomySettings();
+            => Plugin.LifetimeScope.Resolve<IConfiguration>().Get<EconomySettings>() ?? new EconomySettings();
 
         private ICurrencyBackend GetBackend(EconomySettings settings)
         {
@@ -54,7 +71,7 @@ namespace well404.Economy
                 }
             }
 
-            var path = Path.Combine(m_Component.WorkingDirectory, settings.Database.FileName);
+            var path = Path.Combine(Plugin.WorkingDirectory, settings.Database.FileName);
             lock (m_Lock)
             {
                 if (m_DbBackend == null || !string.Equals(m_DbBackend.FilePath, path, StringComparison.Ordinal))

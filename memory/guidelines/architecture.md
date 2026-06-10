@@ -57,9 +57,21 @@ unturned-mods/
   仅有**运行时顺序依赖**：场上需有任一经济插件提供该实现。
 - 好处：插件可独立编译/发布/替换；第三方插件（每日签到等）也能用同一抽象给玩家发币。
 
-> 全局服务里**不要**直接注入"你自己的插件实例"；需要插件实例时用
-> `IPluginAccessor<TPlugin>`（懒访问）。但如上，注入 `IConfiguration` /
-> `IOpenModComponent` 已足够读取本插件配置与工作目录。
+### 两条硬规则（已在真实服务器验证，违反会运行时报错而非编译报错）
+
+1. **全局服务（`[ServiceImplementation]`）不要在构造函数注入插件作用域的服务**
+   （如插件的 `IConfiguration`、`IOpenModComponent`）。全局单例在**全局作用域**激活，
+   那里没有这些插件服务，Autofac 会报 “None of the constructors … can be invoked”。
+   正确做法：注入 **`IPluginAccessor<TPlugin>`**（全局服务）+ 需要的其它全局服务
+   （如 `IUserManager`），在调用时**懒**读取
+   `accessor.Instance.LifetimeScope.Resolve<IConfiguration>()` 与
+   `accessor.Instance.WorkingDirectory`。
+2. **没有 `[Service]` 接口的具体类，不能用 `[ServiceImplementation]` /
+   `[PluginServiceImplementation]` 注册**——OpenMod 只会警告
+   “marked as ServiceImplementation but does not inherit any services” 并**跳过**，
+   于是注入它的命令运行时报 “Unable to resolve service …”。正确做法：实现
+   `IPluginContainerConfigurator`，在 `ConfigureContainer` 里
+   `context.ContainerBuilder.RegisterType<T>().AsSelf().SingleInstance()`。
 
 ## 每个插件目录的标准布局
 
