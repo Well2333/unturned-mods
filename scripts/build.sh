@@ -2,36 +2,42 @@
 #
 # Local build / test / debug helper for the monorepo.
 #
+# Assembles each plugin's ready-to-deploy artifact set — the plugin dll plus only
+# the dependencies an OpenMod server does NOT already ship (e.g. LiteDB.dll) — into
+# a per-plugin folder under the output directory.
+#
 # Usage:
 #   scripts/build.sh [PluginId] [options]
 #
-#   (no PluginId)        operate on the whole solution
-#   <PluginId>           operate on a single plugin (e.g. well404.Economy)
+#   (no PluginId)        build every plugin
+#   <PluginId>           build a single plugin (e.g. well404.Economy)
 #
 # Options:
 #   -c, --configuration <cfg>   Release (default) | Debug
 #   -t, --test                  run the unit tests (tests/*.Tests)
-#   -p, --pack                  report the produced .nupkg paths
-#   -d, --deploy <dir>          publish a single plugin and copy the plugin dll +
-#                               its non-host third-party deps (e.g. LiteDB.dll)
-#                               into <dir>/<PluginId>/ for a local OpenMod server
-#       --clean                 clean before building
+#   -p, --pack                  also report the produced .nupkg paths
+#   -o, --output <dir>          output directory (default: <repo>/build)
+#   -d, --deploy <dir>          alias for --output; e.g. a local server's
+#                               openmod/plugins directory
+#       --clean                 also `dotnet clean` (bin/obj) before building
 #   -h, --help                  show this help
 #
-# Examples:
-#   scripts/build.sh                              # build everything (Release)
-#   scripts/build.sh --test                       # build + run tests
-#   scripts/build.sh well404.Economy -c Debug     # build one plugin in Debug
-#   scripts/build.sh well404.Economy -d ~/unturned/U3DS/Servers/MyServer/Rocket/Plugins
+# Output layout:  <output>/<PluginId>/<PluginId>.dll [+ extra deps]
 #
-# Notes on --deploy:
-#   * It copies ONLY the plugin and dependencies an OpenMod server does NOT already
-#     ship (the host already provides OpenMod.*, Unity, Steamworks, Autofac, etc.).
-#     For well404.Economy this is the plugin dll + LiteDB.dll; for well404.Shop just
-#     the plugin dll.
-#   * After deploying, run `openmod reload` (or restart) on the server.
-#   * For a clean production install prefer `openmod install <PackageId>` instead,
-#     which resolves dependencies from NuGet automatically.
+# The output folder for each built plugin is cleared BEFORE the build (removing
+# the previous run's residue) and only target files are placed in it AFTER
+# (intermediate publish output is staged in a temp dir and discarded). The default
+# build/ directory keeps only the version-controlled `templates/` plus freshly
+# built plugin folders.
+#
+# Examples:
+#   scripts/build.sh                              # all plugins -> build/
+#   scripts/build.sh --test                       # build all + run tests
+#   scripts/build.sh well404.Economy -c Debug     # one plugin (Debug) -> build/
+#   scripts/build.sh well404.Economy -d ~/server/openmod/plugins
+#
+# For a clean production install prefer `openmod install <PackageId>`, which
+# resolves dependencies from NuGet automatically.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,17 +47,17 @@ CONFIG="Release"
 DO_TEST=false
 DO_PACK=false
 DO_CLEAN=false
-DEPLOY_DIR=""
+OUTPUT=""
 PLUGIN_ID=""
 
-print_help() { sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+print_help() { sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -c|--configuration) CONFIG="${2:?}"; shift 2 ;;
     -t|--test) DO_TEST=true; shift ;;
     -p|--pack) DO_PACK=true; shift ;;
-    -d|--deploy) DEPLOY_DIR="${2:?}"; shift 2 ;;
+    -o|--output|-d|--deploy) OUTPUT="${2:?}"; shift 2 ;;
     --clean) DO_CLEAN=true; shift ;;
     -h|--help) print_help; exit 0 ;;
     -*) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -61,82 +67,86 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-target_project() {
-  if [[ -n "$PLUGIN_ID" ]]; then
-    echo "$REPO_ROOT/src/plugins/$PLUGIN_ID/$PLUGIN_ID.csproj"
-  else
-    echo "$SLN"
-  fi
-}
+# Default output is the repo's build/ directory.
+[[ -z "$OUTPUT" ]] && OUTPUT="$REPO_ROOT/build"
 
-PROJECT="$(target_project)"
-if [[ -n "$PLUGIN_ID" && ! -f "$PROJECT" ]]; then
-  echo "Error: no such plugin project: $PROJECT" >&2
-  exit 1
+# Resolve the list of plugins to build.
+declare -a PLUGINS=()
+if [[ -n "$PLUGIN_ID" ]]; then
+  if [[ ! -f "$REPO_ROOT/src/plugins/$PLUGIN_ID/$PLUGIN_ID.csproj" ]]; then
+    echo "Error: no such plugin project: src/plugins/$PLUGIN_ID/$PLUGIN_ID.csproj" >&2
+    exit 1
+  fi
+  PLUGINS+=("$PLUGIN_ID")
+else
+  for dir in "$REPO_ROOT"/src/plugins/*/; do
+    id="$(basename "$dir")"
+    [[ -f "$dir/$id.csproj" ]] && PLUGINS+=("$id")
+  done
+  if [[ ${#PLUGINS[@]} -eq 0 ]]; then
+    echo "Error: no plugins found under src/plugins/." >&2
+    exit 1
+  fi
 fi
 
 if $DO_CLEAN; then
-  echo "==> Cleaning ($CONFIG)"
-  dotnet clean "$PROJECT" -c "$CONFIG" --nologo >/dev/null
+  echo "==> Cleaning bin/obj ($CONFIG)"
+  dotnet clean "$SLN" -c "$CONFIG" --nologo >/dev/null
 fi
-
-echo "==> Building $(basename "$PROJECT") ($CONFIG)"
-dotnet build "$PROJECT" -c "$CONFIG" --nologo
 
 if $DO_TEST; then
   echo "==> Testing"
-  dotnet test "$SLN" -c "$CONFIG" --no-build --nologo
+  dotnet test "$SLN" -c "$CONFIG" --nologo
 fi
 
-if $DO_PACK; then
-  echo "==> Packages:"
-  find "$REPO_ROOT/src/plugins" -path "*/bin/$CONFIG/*.nupkg" | sort | sed 's/^/    /'
-fi
+# Returns the plugin's non-host third-party deps (its own PackageReferences minus
+# anything an OpenMod Unturned server already provides). These are the only deps
+# that need to ship next to the plugin dll.
+extra_deps() {
+  local proj="$1"
+  grep -oE '<PackageReference Include="[^"]+"' "$proj" \
+    | sed -E 's/.*Include="([^"]+)".*/\1/' \
+    | grep -ivE '^(OpenMod|Legacy2CPSWorkaround|Microsoft\.SourceLink)' || true
+}
 
-if [[ -n "$DEPLOY_DIR" ]]; then
-  if [[ -z "$PLUGIN_ID" ]]; then
-    echo "Error: --deploy requires a PluginId." >&2
-    exit 1
-  fi
+echo "==> Output: $OUTPUT"
+for id in "${PLUGINS[@]}"; do
+  proj="$REPO_ROOT/src/plugins/$id/$id.csproj"
+  staging="$(mktemp -d)"
+  dest="$OUTPUT/$id"
 
-  STAGING="$(mktemp -d)"
-  trap 'rm -rf "$STAGING"' EXIT
-  echo "==> Publishing $PLUGIN_ID for deploy"
-  dotnet publish "$PROJECT" -c "$CONFIG" -o "$STAGING" --nologo >/dev/null
+  echo "==> Building $id ($CONFIG)"
+  dotnet publish "$proj" -c "$CONFIG" -o "$staging" --nologo >/dev/null
 
-  DEST="$DEPLOY_DIR/$PLUGIN_ID"
-  mkdir -p "$DEST"
+  # Clean this plugin's previous output, then place only target files.
+  rm -rf "$dest"
+  mkdir -p "$dest"
 
-  # The dependencies a server does NOT already ship are exactly this plugin's own
-  # non-OpenMod PackageReferences (everything else — OpenMod, Unity, Steamworks,
-  # UniTask, Autofac, ... — is part of the OpenMod Unturned host). Read them from
-  # the .csproj so the copy stays correct as dependencies change.
-  mapfile -t EXTRA_DEPS < <(
-    grep -oE '<PackageReference Include="[^"]+"' "$PROJECT" \
-      | sed -E 's/.*Include="([^"]+)".*/\1/' \
-      | grep -ivE '^(OpenMod|Legacy2CPSWorkaround|Microsoft\.SourceLink)'
-  )
-
-  echo "==> Copying to $DEST"
   copied=0
   copy_one() {
     local name="$1"
-    if [[ -f "$STAGING/$name.dll" ]]; then
-      cp "$STAGING/$name.dll" "$DEST/"
-      echo "    + $name.dll"
+    if [[ -f "$staging/$name.dll" ]]; then
+      cp "$staging/$name.dll" "$dest/"
+      echo "    + $id/$name.dll"
       copied=$((copied + 1))
     fi
   }
 
-  copy_one "$PLUGIN_ID"
-  for dep in "${EXTRA_DEPS[@]}"; do
-    copy_one "$dep"
-  done
+  copy_one "$id"
+  while IFS= read -r dep; do
+    [[ -n "$dep" ]] && copy_one "$dep"
+  done < <(extra_deps "$proj")
 
-  # Embedded config.yaml/translations.yaml live inside the plugin dll.
-  echo "==> Deployed $copied file(s). Run 'openmod reload' on the server."
-  echo "    (If a third-party dependency pulls its own sub-dependencies, copy those"
-  echo "     too, or use 'openmod install <PackageId>' which resolves deps from NuGet.)"
+  rm -rf "$staging"
+  echo "    -> $copied file(s) in $dest"
+done
+
+if $DO_PACK; then
+  echo "==> Packages (.nupkg in each plugin's bin/$CONFIG):"
+  find "$REPO_ROOT/src/plugins" -path "*/bin/$CONFIG/*.nupkg" | sort | sed 's/^/    /'
 fi
 
-echo "==> Done."
+echo "==> Done. Artifacts in: $OUTPUT"
+echo "    Deploy by copying <output>/<PluginId>/ into the server's openmod/plugins/,"
+echo "    then run 'openmod reload'. (If a third-party dep has its own sub-deps, copy"
+echo "    those too, or use 'openmod install <PackageId>'.)"

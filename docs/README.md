@@ -33,7 +33,7 @@
 需要 .NET SDK 8.0（LTS）。仓库根的 `scripts/build.sh` 封装了常用操作：
 
 ```bash
-# 构建全部（Release）
+# 构建全部 -> 默认输出到仓库根的 build/<PluginId>/
 scripts/build.sh
 
 # 构建 + 跑单元测试
@@ -42,11 +42,17 @@ scripts/build.sh --test
 # 只构建某个插件（Debug，便于调试）
 scripts/build.sh well404.Economy -c Debug
 
-# 构建并部署到本地测试服务器的 plugins 目录（只复制插件 dll + 非宿主第三方依赖，
-# 如 well404.Economy 会带上 LiteDB.dll；well404.Shop 只有插件 dll）：
+# 直接输出/部署到本地测试服务器的 plugins 目录（-o 或 --deploy 覆盖输出目录）：
 scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
 # 然后在服务器控制台执行： openmod reload
 ```
+
+**产物布局**：`<输出目录>/<PluginId>/<PluginId>.dll`（+ 非宿主第三方依赖，如
+`well404.Economy` 会带 `LiteDB.dll`；`well404.Shop` 只有插件 dll）。每个插件的输出
+目录会在构建**前清空**上次残余、构建**后只保留目标文件**（中间产物在临时目录里丢弃）。
+默认 `build/` 目录只保留版本控制的 `templates/` 与新构建出的插件目录（构建产物已
+`.gitignore`）。部署时把 `<输出目录>/<PluginId>/` 整个复制进服务器
+`openmod/plugins/`。
 
 `scripts/build.sh --help` 查看全部选项。其他脚本：
 

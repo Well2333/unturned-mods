@@ -29,5 +29,11 @@ Thumbs.db
 /.localserver/
 /artifacts/
 
+# ---- Assembled plugin artifacts from scripts/build.sh ----
+# build/ is the default output dir; everything there is generated EXCEPT the
+# version-controlled plugin templates.
+/build/*
+!/build/templates/
+
 # ---- Misc ----
 *.log
