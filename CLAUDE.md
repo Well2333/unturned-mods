@@ -25,5 +25,5 @@
 
 ## 当前环境状态
 
-- 已安装 .NET **运行时** 8.0.27，但**尚未安装 .NET SDK** —— 构建插件前需先装
-  SDK（建议 8.0 LTS）。
+- 已安装 .NET **SDK 8.0.127**（含运行时），可直接 `dotnet build` / `dotnet pack`。
+  `UnturnedMods.sln` 当前为绿色（`dotnet build -c Release` 0 警告 0 错误）。

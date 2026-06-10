@@ -48,7 +48,7 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
 
 ## 5. 构建与部署（参考）
 
-- 构建需要 **.NET SDK**（建议 8.0 LTS；当前环境仅装了运行时，尚需安装 SDK）。
+- 构建需要 **.NET SDK**（建议 8.0 LTS）；当前环境已装 **SDK 8.0.127**，可直接构建。
 - `dotnet build` 因 `GeneratePackageOnBuild=true` 会产出 `.nupkg`。
 - 部署二选一：`openmod install <PackageId[@Version]>`，或把插件 `.dll` 及其
   全部依赖 dll 放入服务器的 `openmod/plugins/`；之后 `openmod reload`。
