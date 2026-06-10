@@ -50,5 +50,8 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
 
 - 构建需要 **.NET SDK**（建议 8.0 LTS）；当前环境已装 **SDK 8.0.127**，可直接构建。
 - `dotnet build` 因 `GeneratePackageOnBuild=true` 会产出 `.nupkg`。
+- 本地构建/测试/部署封装在 **`scripts/build.sh`**（`--test` 跑测试、`--deploy <dir>`
+  发布并只复制「插件 dll + 非宿主第三方依赖」到本地服务器 plugins 目录）。详见
+  `docs/README.md`。
 - 部署二选一：`openmod install <PackageId[@Version]>`，或把插件 `.dll` 及其
   全部依赖 dll 放入服务器的 `openmod/plugins/`；之后 `openmod reload`。

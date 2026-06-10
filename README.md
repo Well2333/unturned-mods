@@ -39,12 +39,18 @@ monorepo）。各插件彼此独立、可单独构建与部署，但共享统一
 scripts/new-plugin.sh well404.MyPlugin "My Plugin"
 
 # 构建全部
-dotnet build UnturnedMods.sln -c Release
+scripts/build.sh                 # 等价于 dotnet build -c Release
+scripts/build.sh --test          # 构建 + 跑单元测试
+
+# 构建并部署到本地测试服务器（只复制插件 dll + 非宿主第三方依赖）
+scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
 ```
 
 构建产物为各插件的 `.nupkg`（`GeneratePackageOnBuild=true`）。部署到服务器：
 `openmod install <PackageId>`，或将插件 dll 及依赖放入 `openmod/plugins/` 后
 `openmod reload`。
+
+**各插件的详细用法、配置示例与本地调试见 [`docs/`](docs/README.md)。**
 
 ## 开发约定
 
