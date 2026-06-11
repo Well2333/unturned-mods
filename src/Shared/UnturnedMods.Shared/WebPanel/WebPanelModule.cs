@@ -75,7 +75,8 @@ namespace UnturnedMods.Shared.WebPanel
             Func<Task<IReadOnlyDictionary<string, string>>>? loader = null,
             Func<Task<IReadOnlyList<WebRecord>>>? recordsLoader = null,
             Func<WebActionRequest, Task<WebActionResult>>? deleteHandler = null,
-            string? keyField = null)
+            string? keyField = null,
+            string? layout = null)
         {
             Id = id ?? throw new ArgumentNullException(nameof(id));
             Label = label ?? throw new ArgumentNullException(nameof(label));
@@ -87,6 +88,7 @@ namespace UnturnedMods.Shared.WebPanel
             RecordsLoader = recordsLoader;
             DeleteHandler = deleteHandler;
             KeyField = keyField;
+            Layout = layout;
         }
 
         /// <summary>Stable, unique-within-module action id. Used for routing.</summary>
@@ -125,6 +127,13 @@ namespace UnturnedMods.Shared.WebPanel
         /// locked while editing an existing record (changing it would create a duplicate).
         /// </summary>
         public string? KeyField { get; }
+
+        /// <summary>
+        /// For <see cref="WebActionKind.Collection"/>: <c>"list"</c> renders records as a vertical
+        /// list (per-entity data, e.g. player balances); anything else (default) renders a grid of
+        /// small blocks (catalog-like data, e.g. shop items).
+        /// </summary>
+        public string? Layout { get; }
     }
 
     public enum WebFieldType

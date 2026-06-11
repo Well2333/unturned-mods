@@ -180,7 +180,7 @@ namespace well404.Shop
 
                 records.Add(new WebRecord(
                     entry.Id,
-                    $"{entry.Name}（{string.Join("，", prettyParts)}）",
+                    entry.Name,
                     new Dictionary<string, string>
                     {
                         ["id"] = entry.Id,
@@ -188,7 +188,8 @@ namespace well404.Shop
                         ["items"] = string.Join(", ", rawParts),
                         ["buyPrice"] = Num(entry.BuyPrice),
                         ["sellPrice"] = Num(entry.SellPrice)
-                    }));
+                    },
+                    prettyParts));
             }
 
             return records;

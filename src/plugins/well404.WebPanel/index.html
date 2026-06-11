@@ -40,12 +40,23 @@
   th { color:var(--muted); font-weight:600; }
   tbody tr:hover { background:var(--panel2); }
   .count { color:var(--muted); font-size:12px; margin-top:8px; }
-  .chips { display:flex; flex-wrap:wrap; gap:8px; }
-  .chip { display:inline-flex; align-items:center; background:var(--panel2); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
-  .chip-label { padding:5px 11px; cursor:pointer; font-size:13px; }
-  .chip-label:hover { background:var(--accent); color:#fff; }
-  .chip-x { padding:5px 9px; cursor:pointer; color:var(--muted); border-left:1px solid var(--line); }
-  .chip-x:hover { background:var(--err); color:#fff; }
+  /* Collection — grid of small blocks (catalog) */
+  .tiles { display:flex; flex-wrap:wrap; gap:10px; }
+  .tile { position:relative; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:10px 12px; cursor:pointer; min-width:150px; max-width:260px; }
+  .tile:hover { border-color:var(--accent); }
+  /* Collection — vertical list (per-entity data, e.g. balances) */
+  .list { display:flex; flex-direction:column; gap:6px; }
+  .lrow { display:flex; align-items:center; gap:10px; background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:8px 12px; cursor:pointer; }
+  .lrow:hover { border-color:var(--accent); }
+  .slot-title { font-weight:600; font-size:13px; margin-bottom:6px; }
+  .lrow .slot-title { margin-bottom:0; flex:0 0 auto; min-width:160px; }
+  /* capsule badges separating the elements within one slot */
+  .pills { display:flex; flex-wrap:wrap; gap:5px; }
+  .lrow .pills { flex:1; }
+  .pill { display:inline-block; background:var(--bg); border:1px solid var(--line); border-radius:11px; padding:2px 9px; font-size:12px; }
+  .slot-x { position:absolute; top:6px; right:9px; color:var(--muted); cursor:pointer; font-size:15px; line-height:1; }
+  .lrow .slot-x { position:static; margin-left:auto; }
+  .tile .slot-x:hover, .lrow .slot-x:hover { color:var(--err); }
   .muted { color:var(--muted); font-size:13px; }
   .editbox { margin-top:12px; padding:12px; border:1px dashed var(--line); border-radius:8px; background:var(--panel2); }
   .edittitle { font-size:13px; color:var(--muted); margin-bottom:10px; }
@@ -204,29 +215,37 @@ function buildCard(module, action) {
   return { card, inputs };
 }
 
-// A CRUD list: chips of records + a "新增" button. Clicking a chip opens its editor
-// pre-filled; "新增" opens a blank editor. The editor saves (upsert) / deletes the record.
+// A CRUD collection: records shown as a grid of small blocks (default) or a vertical
+// list (layout === "list"). Each slot's sub-elements render as separated pill badges.
+// Clicking a slot opens its editor pre-filled; "新增" opens a blank one.
 function buildCollection(module, action, card, msg) {
-  const chips = el("div", { class:"chips" });
+  const isList = action.layout === "list";
+  const container = el("div", { class: isList ? "list" : "tiles" });
   const editor = el("div");
   const addBtn = el("button", { class:"act", text:"＋ 新增", onclick: () => openEditor(null) });
-  card.append(chips, el("div", { class:"row", style:"margin-top:10px" }, addBtn), editor, msg);
+  card.append(container, el("div", { class:"row", style:"margin-top:10px" }, addBtn), editor, msg);
 
   function reload() {
     editor.replaceChildren();
     msg.className = "msg";
     api(`/api/modules/${enc(module.id)}/${enc(action.id)}/records`, { headers: headers() })
-      .then(d => paintChips(d.records || []))
+      .then(d => paint(d.records || []))
       .catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
   }
 
-  function paintChips(records) {
-    chips.replaceChildren(...records.map(rec => {
-      const label = el("span", { class:"chip-label", text: rec.label, onclick: () => openEditor(rec) });
-      const x = action.hasDelete ? el("span", { class:"chip-x", text:"×", title:"删除", onclick: () => del(rec) }) : null;
-      return el("span", { class:"chip" }, label, x);
+  function paint(records) {
+    if (!records.length) {
+      container.replaceChildren(el("span", { class:"muted", text:"（暂无条目，点「＋ 新增」添加）" }));
+      return;
+    }
+    container.replaceChildren(...records.map(rec => {
+      const title = el("div", { class:"slot-title", text: rec.label });
+      const pillbox = el("div", { class:"pills" }, ...(rec.tags || []).map(t => el("span", { class:"pill", text: t })));
+      const x = action.hasDelete
+        ? el("span", { class:"slot-x", text:"×", title:"删除", onclick: (e) => { e.stopPropagation(); del(rec); } })
+        : null;
+      return el("div", { class: isList ? "lrow" : "tile", onclick: () => openEditor(rec) }, title, pillbox, x);
     }));
-    if (!records.length) chips.append(el("span", { class:"muted", text:"（暂无条目，点「＋ 新增」添加）" }));
   }
 
   function openEditor(rec) {

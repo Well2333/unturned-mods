@@ -40,23 +40,35 @@ namespace UnturnedMods.Shared.WebPanel
         }
     }
 
-    /// <summary>One record in a <see cref="WebActionKind.Collection"/>: a chip + the values to edit it.</summary>
+    /// <summary>One record in a <see cref="WebActionKind.Collection"/>: a title, pill badges, and edit values.</summary>
     public sealed class WebRecord
     {
-        public WebRecord(string key, string label, IReadOnlyDictionary<string, string> values)
+        public WebRecord(
+            string key,
+            string label,
+            IReadOnlyDictionary<string, string> values,
+            IReadOnlyList<string>? tags = null)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
             Label = label ?? throw new ArgumentNullException(nameof(label));
             Values = values ?? throw new ArgumentNullException(nameof(values));
+            Tags = tags ?? System.Array.Empty<string>();
         }
 
         /// <summary>Identifies the record (passed to the delete handler).</summary>
         public string Key { get; }
 
-        /// <summary>Chip display text.</summary>
+        /// <summary>The record's title (the slot's heading).</summary>
         public string Label { get; }
 
-        /// <summary>Field values used to pre-fill the editor when the chip is clicked.</summary>
+        /// <summary>
+        /// Badges rendered as separated "pill" elements in the slot — one per sub-element
+        /// (e.g. each item in a bundle, or an account's balance). Easier to read than packing
+        /// everything into one parenthesised string.
+        /// </summary>
+        public IReadOnlyList<string> Tags { get; }
+
+        /// <summary>Field values used to pre-fill the editor when the record is clicked.</summary>
         public IReadOnlyDictionary<string, string> Values { get; }
     }
 

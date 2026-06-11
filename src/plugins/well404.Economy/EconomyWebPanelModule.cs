@@ -36,7 +36,8 @@ namespace well404.Economy
                 description: "数据库后端列全部账户，经验后端仅在线玩家。点条目编辑其余额，「新增」设置某玩家余额。",
                 recordsLoader: () => LoadBalanceRecordsAsync(economy, userManager),
                 deleteHandler: request => DeleteBalanceAsync(economy, request),
-                keyField: "player");
+                keyField: "player",
+                layout: "list");
 
             var currency = new WebPanelAction(
                 id: "currency",
@@ -200,12 +201,13 @@ namespace well404.Economy
                 var display = string.IsNullOrEmpty(name) ? account.OwnerId : name;
                 records.Add(new WebRecord(
                     account.OwnerId,
-                    $"{display}：{symbol}{balance}",
+                    display,
                     new Dictionary<string, string>
                     {
                         ["player"] = account.OwnerId,
                         ["amount"] = balance
-                    }));
+                    },
+                    new[] { symbol + balance }));
             }
 
             return records;

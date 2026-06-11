@@ -89,8 +89,15 @@ unturned-mods/
   `Func<WebActionRequest, Task<WebActionResult>>` 异步闭包。动作种类（`WebActionKind`）：
   `Table`（进页面自动加载的只读表）、`Form`（带独立按钮的命令，如增减余额）、
   `Search`（实时检索）、`Settings`（进页面用 `Loader` 预填、由页尾**统一保存**按钮批量提交）、
-  `Collection`（CRUD：`RecordsLoader` 出 chip 列表 + 新增 + 点选编辑 + `DeleteHandler` 删除，
+  `Collection`（CRUD：`RecordsLoader` 出条目 + 新增 + 点选编辑 + `DeleteHandler` 删除，
   按 `KeyField` upsert）。余额、商品目录用 `Collection`；货币/击杀奖励/转账/折扣用 `Settings`。
+
+  **Collection 展示约定（守则）**：
+  - **目录型数据**（如商店商品）用**小方块网格**（tile，`Layout` 默认）；
+    **按实体的数据**（如玩家余额）用**纵向列表**（`Layout = "list"`）。
+  - **一个槽位内有多个元素时**（如礼包的多件物品），每个元素用独立的**胶囊（pill）徽章**
+    渲染、彼此间隔——通过 `WebRecord.Tags` 传入，**不要**把多元素塞进一串括号文本
+    （如 `名称（A，B，C）`）里，胶囊更易辨认。`WebRecord.Label` 只放标题（如商品名/玩家名）。
 - 提供方 `well404.WebPanel` 用 `[ServiceImplementation(Singleton)]` 实现
   `WebPanelRegistry`（**全局单例、构造不注入任何插件作用域服务**，遵守上文硬规则 1）；
   HTTP 宿主由插件本体在 `OnLoadAsync` 起、`OnUnloadAsync` 停。

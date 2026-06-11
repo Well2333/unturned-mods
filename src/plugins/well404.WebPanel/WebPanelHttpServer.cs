@@ -300,6 +300,9 @@ namespace well404.WebPanel
                 sb.Append('{')
                     .Append("\"key\":").Append(Json.Encode(record.Key)).Append(',')
                     .Append("\"label\":").Append(Json.Encode(record.Label)).Append(',')
+                    .Append("\"tags\":");
+                AppendStringArray(sb, record.Tags);
+                sb.Append(',')
                     .Append("\"values\":{");
                 var first = true;
                 foreach (var pair in record.Values)
@@ -373,6 +376,7 @@ namespace well404.WebPanel
                         .Append("\"hasLoader\":").Append(Json.Bool(action.Loader != null)).Append(',')
                         .Append("\"hasDelete\":").Append(Json.Bool(action.DeleteHandler != null)).Append(',')
                         .Append("\"keyField\":").Append(Json.Encode(action.KeyField)).Append(',')
+                        .Append("\"layout\":").Append(Json.Encode(action.Layout)).Append(',')
                         .Append("\"description\":").Append(Json.Encode(action.Description)).Append(',')
                         .Append("\"fields\":[");
 

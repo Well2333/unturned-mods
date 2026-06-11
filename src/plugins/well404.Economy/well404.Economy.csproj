@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <Description>Economy</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
