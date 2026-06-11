@@ -94,10 +94,21 @@ namespace well404.Economy
         public Task<decimal> GetBalanceAsync(string ownerId, string ownerType)
             => GetBackend(ReadSettings()).GetBalanceAsync(ownerId, ownerType);
 
+        /// <summary>
+        /// Lists accounts from the active backend. Not part of <see cref="IEconomyProvider"/>;
+        /// used by the web panel module (which casts this concrete provider).
+        /// </summary>
+        public Task<System.Collections.Generic.IReadOnlyList<Currency.AccountSnapshot>> ListAccountsAsync()
+            => GetBackend(ReadSettings()).ListAccountsAsync();
+
         public Task<decimal> UpdateBalanceAsync(string ownerId, string ownerType, decimal changeAmount, string? reason)
             => GetBackend(ReadSettings()).UpdateBalanceAsync(ownerId, ownerType, changeAmount, reason);
 
         public Task SetBalanceAsync(string ownerId, string ownerType, decimal balance)
             => GetBackend(ReadSettings()).SetBalanceAsync(ownerId, ownerType, balance);
+
+        /// <summary>Deletes an account from the active backend. Not part of <see cref="IEconomyProvider"/>.</summary>
+        public Task DeleteAccountAsync(string ownerId, string ownerType)
+            => GetBackend(ReadSettings()).DeleteAccountAsync(ownerId, ownerType);
     }
 }

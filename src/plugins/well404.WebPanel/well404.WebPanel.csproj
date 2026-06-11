@@ -4,15 +4,15 @@
     Plugin project. Most settings are inherited from the repo-root
     Directory.Build.props and Directory.Packages.props.
 
-    The project file name is well404.Shop.csproj, so RootNamespace and
-    AssemblyName both default to "well404.Shop" and stay EQUAL — this is
+    The project file name is well404.WebPanel.csproj, so RootNamespace and
+    AssemblyName both default to "well404.WebPanel" and stay EQUAL — this is
     REQUIRED for IConfiguration / IStringLocalizer to resolve correctly.
     Do not override them with different values.
   -->
 
   <PropertyGroup>
-    <Version>0.2.0</Version>
-    <Description>Shop</Description>
+    <Version>0.1.0</Version>
+    <Description>Web Panel</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageTags>openmod openmod-plugin unturned</PackageTags>
@@ -20,10 +20,6 @@
 
   <ItemGroup>
     <PackageReference Include="OpenMod.Unturned" />
-    <!-- For injecting the global IEconomyProvider supplied by well404.Economy.
-         No project reference to well404.Economy is needed: the Shop depends only
-         on the shared abstraction, not the concrete economy implementation. -->
-    <PackageReference Include="OpenMod.Extensions.Economy.Abstractions" />
     <PackageReference Include="Legacy2CPSWorkaround">
       <PrivateAssets>All</PrivateAssets>
     </PackageReference>
@@ -32,12 +28,13 @@
   <ItemGroup>
     <EmbeddedResource Include="config.yaml" />
     <EmbeddedResource Include="translations.yaml" />
+    <!-- The generic single-page panel, served by WebPanelHttpServer. -->
+    <EmbeddedResource Include="index.html" />
   </ItemGroup>
 
-  <!-- For the optional web-panel integration (catalog editing + item search): the
-       IWebPanelRegistry abstraction lives in the shared library. The shop injects it
-       optionally, so it has no hard dependency on well404.WebPanel.
-       UnturnedMods.Shared.dll is deployed alongside (scripts/build.sh flattens it). -->
+  <!-- The web-panel registration abstraction (IWebPanelRegistry + descriptors) lives
+       in the shared library. Its compiled UnturnedMods.Shared.dll must be deployed
+       alongside the plugin; scripts/build.sh flattens ProjectReference outputs too. -->
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" />
   </ItemGroup>

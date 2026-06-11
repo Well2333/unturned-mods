@@ -1,0 +1,5 @@
+# Translations for Web Panel.
+# Keys are referenced via IStringLocalizer, e.g. m_StringLocalizer["plugin_events:plugin_start"].
+plugin_events:
+  plugin_start: "Web Panel has been loaded."
+  plugin_stop: "Web Panel has been unloaded."

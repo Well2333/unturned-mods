@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using LiteDB;
 using OpenMod.Extensions.Economy.Abstractions;
@@ -72,6 +73,26 @@ namespace well404.Economy.Currency
             return Task.FromResult(balance);
         }
 
+        public Task<IReadOnlyList<AccountSnapshot>> ListAccountsAsync()
+        {
+            var snapshots = WithDatabase(database =>
+            {
+                var result = new List<AccountSnapshot>();
+                foreach (var account in database.GetCollection<Account>("accounts").FindAll())
+                {
+                    // Keys are "ownerType:ownerId" (see Key()).
+                    var separator = account.Id.IndexOf(':');
+                    var ownerType = separator >= 0 ? account.Id.Substring(0, separator) : string.Empty;
+                    var ownerId = separator >= 0 ? account.Id.Substring(separator + 1) : account.Id;
+                    result.Add(new AccountSnapshot(ownerType, ownerId, account.Balance));
+                }
+
+                return (IReadOnlyList<AccountSnapshot>)result;
+            });
+
+            return Task.FromResult(snapshots);
+        }
+
         public Task<decimal> UpdateBalanceAsync(string ownerId, string ownerType, decimal changeAmount, string? reason)
         {
             var updated = WithDatabase(database =>
@@ -103,6 +124,19 @@ namespace well404.Economy.Currency
                 var key = Key(ownerId, ownerType);
                 database.GetCollection<Account>("accounts").Upsert(new Account { Id = key, Balance = balance });
                 AppendTransaction(database, key, 0m, balance, "set_balance");
+                return null;
+            });
+
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAccountAsync(string ownerId, string ownerType)
+        {
+            WithDatabase<object?>(database =>
+            {
+                var key = Key(ownerId, ownerType);
+                database.GetCollection<Account>("accounts").Delete(key);
+                AppendTransaction(database, key, 0m, 0m, "delete_account");
                 return null;
             });
 

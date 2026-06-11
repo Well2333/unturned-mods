@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web Panel</title>
+<style>
+  :root { --bg:#1e1f22; --panel:#2b2d31; --panel2:#313338; --line:#3f4147; --fg:#dbdee1; --muted:#949ba4; --accent:#5865f2; --ok:#3ba55d; --err:#ed4245; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header .spacer { flex:1; }
+  header input { background:var(--panel2); border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:6px 8px; width:200px; }
+  .layout { display:flex; min-height:calc(100vh - 49px); }
+  nav { width:220px; background:var(--panel); border-right:1px solid var(--line); padding:8px; }
+  nav button { display:block; width:100%; text-align:left; background:none; border:none; color:var(--fg); padding:9px 10px; border-radius:6px; cursor:pointer; font-size:14px; }
+  nav button:hover { background:var(--panel2); }
+  nav button.active { background:var(--accent); color:#fff; }
+  nav .empty { color:var(--muted); padding:10px; font-size:13px; }
+  main { flex:1; padding:18px 22px; max-width:1000px; }
+  h2 { margin:0 0 14px; font-size:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .card h3 { margin:0 0 4px; font-size:15px; }
+  .card .desc { color:var(--muted); font-size:13px; margin:0 0 12px; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field label { font-size:12px; color:var(--muted); }
+  .field input, .field select { background:var(--panel2); border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:7px 9px; min-width:160px; }
+  button.act { background:var(--accent); border:none; color:#fff; padding:8px 16px; border-radius:6px; cursor:pointer; font-size:14px; }
+  button.act:hover { filter:brightness(1.1); }
+  button.act:disabled { opacity:.5; cursor:default; }
+  .savebar { position:sticky; bottom:0; background:linear-gradient(180deg, rgba(30,31,34,0), var(--bg) 40%); padding:14px 0 4px; margin-top:4px; }
+  .savebar button.act { padding:10px 28px; font-size:15px; font-weight:600; }
+  .msg { margin-top:12px; padding:9px 12px; border-radius:6px; font-size:13px; display:none; white-space:pre-line; }
+  .msg.ok { background:rgba(59,165,93,.15); border:1px solid var(--ok); color:#a7e3bd; display:block; }
+  .msg.err { background:rgba(237,66,69,.15); border:1px solid var(--err); color:#f5b5b6; display:block; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; }
+  tbody tr:hover { background:var(--panel2); }
+  .count { color:var(--muted); font-size:12px; margin-top:8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { display:inline-flex; align-items:center; background:var(--panel2); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  .chip-label { padding:5px 11px; cursor:pointer; font-size:13px; }
+  .chip-label:hover { background:var(--accent); color:#fff; }
+  .chip-x { padding:5px 9px; cursor:pointer; color:var(--muted); border-left:1px solid var(--line); }
+  .chip-x:hover { background:var(--err); color:#fff; }
+  .muted { color:var(--muted); font-size:13px; }
+  .editbox { margin-top:12px; padding:12px; border:1px dashed var(--line); border-radius:8px; background:var(--panel2); }
+  .edittitle { font-size:13px; color:var(--muted); margin-bottom:10px; }
+  button.act.danger { background:var(--err); }
+  button.act.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛠️ Web Panel</h1>
+  <div class="spacer"></div>
+  <input id="token" type="password" placeholder="访问 token（如已配置）" />
+</header>
+<div class="layout">
+  <nav id="nav"><div class="empty">加载中…</div></nav>
+  <main id="main"></main>
+</div>
+
+<script>
+"use strict";
+const $ = (sel, el=document) => el.querySelector(sel);
+const enc = encodeURIComponent;
+const el = (tag, props={}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  for (const kid of kids) if (kid != null) n.append(kid);
+  return n;
+};
+
+const tokenInput = $("#token");
+tokenInput.value = localStorage.getItem("webpanel_token") || "";
+tokenInput.addEventListener("change", () => {
+  localStorage.setItem("webpanel_token", tokenInput.value);
+  loadModules();
+});
+
+function headers(extra={}) {
+  const h = Object.assign({}, extra);
+  const t = tokenInput.value.trim();
+  if (t) h["X-Web-Token"] = t;
+  return h;
+}
+
+async function api(path, opts={}) {
+  const res = await fetch(path, opts);
+  if (res.status === 401) throw new Error("未授权：请在右上角填入正确的访问 token。");
+  if (!res.ok) throw new Error("请求失败：HTTP " + res.status);
+  return res.json();
+}
+
+// POST an action; always send a non-empty body (a bodyless POST has no Content-Length,
+// which HttpListener rejects with 411).
+function invoke(module, action, params) {
+  const body = (params && params.toString()) || "_=1";
+  return api(`/api/modules/${enc(module.id)}/${enc(action.id)}`, {
+    method: "POST",
+    headers: headers({ "Content-Type": "application/x-www-form-urlencoded" }),
+    body
+  });
+}
+
+let modules = [];
+let activeId = null;
+let flash = null; // {ok, text} shown once at the next render, near the save button
+
+async function loadModules() {
+  const nav = $("#nav");
+  try {
+    const data = await api("/api/modules", { headers: headers() });
+    modules = data.modules || [];
+  } catch (e) {
+    nav.replaceChildren(el("div", { class:"empty", text: e.message }));
+    $("#main").replaceChildren();
+    return;
+  }
+  if (!modules.length) {
+    nav.replaceChildren(el("div", { class:"empty", text:"暂无已注册的模块。安装并加载支持 WebPanel 的插件后会出现在这里。" }));
+    $("#main").replaceChildren();
+    return;
+  }
+  if (!modules.some(m => m.id === activeId)) activeId = modules[0].id;
+  nav.replaceChildren(...modules.map(m =>
+    el("button", { class: m.id === activeId ? "active" : "", onclick: () => { activeId = m.id; flash = null; render(); } },
+      (m.icon ? m.icon + " " : "") + m.title)));
+  render();
+}
+
+function render() {
+  $("#nav").querySelectorAll("button").forEach((b, i) =>
+    b.classList.toggle("active", modules[i] && modules[i].id === activeId));
+  const module = modules.find(m => m.id === activeId);
+  const main = $("#main");
+  if (!module) { main.replaceChildren(); return; }
+  main.replaceChildren(el("h2", { text: (module.icon ? module.icon + " " : "") + module.title }));
+
+  const settings = []; // {action, inputs} groups saved together by the page button
+  for (const action of module.actions) {
+    const built = buildCard(module, action);
+    main.append(built.card);
+    if (action.kind === "settings") settings.push({ action, inputs: built.inputs });
+  }
+
+  // One unified save button at the bottom for every settings group on the page.
+  if (settings.length) {
+    const msg = el("div", { class:"msg" });
+    if (flash) { msg.className = "msg " + (flash.ok ? "ok" : "err"); msg.textContent = flash.text; flash = null; }
+    const btn = el("button", { class:"act", text:"保存", onclick: () => saveAll(module, settings, btn) });
+    main.append(el("div", { class:"savebar" }, btn, msg));
+  }
+}
+
+function buildCard(module, action) {
+  const card = el("div", { class:"card" }, el("h3", { text: action.label }));
+  if (action.description) card.append(el("div", { class:"desc", text: action.description }));
+  const msg = el("div", { class:"msg" });
+  const out = el("div");
+  const inputs = {};
+
+  if (action.kind === "table") {
+    card.append(out, msg);
+    invoke(module, action).then(r => showResult(r, msg, out)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+  } else if (action.kind === "settings") {
+    const row = el("div", { class:"row" });
+    for (const f of action.fields) row.append(fieldNode(f, inputs));
+    card.append(row, msg, out);
+    if (action.hasLoader) {
+      api(`/api/modules/${enc(module.id)}/${enc(action.id)}/values`, { headers: headers() })
+        .then(d => prefill(inputs, action.fields, d.values || {}))
+        .catch(() => {});
+    }
+  } else if (action.kind === "form") {
+    const row = el("div", { class:"row" });
+    for (const f of action.fields) row.append(fieldNode(f, inputs));
+    const btn = el("button", { class:"act", text: action.label, onclick: () => submitForm(module, action, inputs, btn, msg, out) });
+    row.append(btn);
+    card.append(row, msg, out);
+  } else if (action.kind === "search") {
+    const f = action.fields[0] || { name:"query", label:"搜索", type:"text", placeholder:"输入关键词…" };
+    card.append(el("div", { class:"row" }, fieldNode(f, inputs)), msg, out);
+    let timer = null;
+    inputs[f.name].addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        msg.className = "msg";
+        invoke(module, action, collect(inputs)).then(r => showResult(r, msg, out)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+      }, 250);
+    });
+  } else if (action.kind === "collection") {
+    buildCollection(module, action, card, msg);
+  }
+  return { card, inputs };
+}
+
+// A CRUD list: chips of records + a "新增" button. Clicking a chip opens its editor
+// pre-filled; "新增" opens a blank editor. The editor saves (upsert) / deletes the record.
+function buildCollection(module, action, card, msg) {
+  const chips = el("div", { class:"chips" });
+  const editor = el("div");
+  const addBtn = el("button", { class:"act", text:"＋ 新增", onclick: () => openEditor(null) });
+  card.append(chips, el("div", { class:"row", style:"margin-top:10px" }, addBtn), editor, msg);
+
+  function reload() {
+    editor.replaceChildren();
+    msg.className = "msg";
+    api(`/api/modules/${enc(module.id)}/${enc(action.id)}/records`, { headers: headers() })
+      .then(d => paintChips(d.records || []))
+      .catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+  }
+
+  function paintChips(records) {
+    chips.replaceChildren(...records.map(rec => {
+      const label = el("span", { class:"chip-label", text: rec.label, onclick: () => openEditor(rec) });
+      const x = action.hasDelete ? el("span", { class:"chip-x", text:"×", title:"删除", onclick: () => del(rec) }) : null;
+      return el("span", { class:"chip" }, label, x);
+    }));
+    if (!records.length) chips.append(el("span", { class:"muted", text:"（暂无条目，点「＋ 新增」添加）" }));
+  }
+
+  function openEditor(rec) {
+    const inputs = {};
+    const row = el("div", { class:"row" });
+    for (const f of action.fields) {
+      const node = fieldNode(f, inputs);
+      if (rec && rec.values[f.name] !== undefined) inputs[f.name].value = rec.values[f.name];
+      if (rec && f.name === action.keyField) inputs[f.name].disabled = true; // key is locked while editing
+      row.append(node);
+    }
+    const emsg = el("div", { class:"msg" });
+    const saveBtn = el("button", { class:"act", text:"保存", onclick: async () => {
+      saveBtn.disabled = true;
+      emsg.className = "msg";
+      try {
+        const r = await invoke(module, action, collect(inputs));
+        if (r.success) { reload(); }
+        else { emsg.className = "msg err"; emsg.textContent = r.message || "保存失败"; saveBtn.disabled = false; }
+      } catch (e) { emsg.className = "msg err"; emsg.textContent = e.message; saveBtn.disabled = false; }
+    }});
+    const actions = el("div", { class:"row", style:"margin-top:10px" }, saveBtn);
+    if (rec && action.hasDelete) actions.append(el("button", { class:"act danger", text:"删除", onclick: () => del(rec) }));
+    actions.append(el("button", { class:"act ghost", text:"取消", onclick: () => editor.replaceChildren() }));
+    editor.replaceChildren(el("div", { class:"editbox" },
+      el("div", { class:"edittitle", text: rec ? "编辑：" + rec.label : "新增条目" }), row, actions, emsg));
+  }
+
+  async function del(rec) {
+    const body = new URLSearchParams(); body.set("key", rec.key);
+    msg.className = "msg";
+    try {
+      const r = await api(`/api/modules/${enc(module.id)}/${enc(action.id)}/delete`, {
+        method: "POST", headers: headers({ "Content-Type": "application/x-www-form-urlencoded" }), body: body.toString()
+      });
+      if (r.success) reload();
+      else { msg.className = "msg err"; msg.textContent = r.message || "删除失败"; }
+    } catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
+  }
+
+  reload();
+}
+
+function fieldNode(f, inputs) {
+  let input;
+  if (f.type === "select") {
+    input = el("select");
+    for (const opt of (f.options || [])) input.append(el("option", { value: opt, text: opt }));
+  } else if (f.type === "boolean") {
+    input = el("select");
+    input.append(el("option", { value:"true", text:"是" }), el("option", { value:"false", text:"否" }));
+  } else {
+    input = el("input", { type: f.type === "number" ? "number" : "text" });
+    if (f.type === "number") input.step = "any";
+    if (f.placeholder) input.placeholder = f.placeholder;
+  }
+  inputs[f.name] = input;
+  return el("div", { class:"field" }, el("label", { text: f.label + (f.required ? " *" : "") }), input);
+}
+
+function collect(inputs) {
+  const body = new URLSearchParams();
+  for (const [name, node] of Object.entries(inputs)) body.set(name, node.value);
+  return body;
+}
+
+function prefill(inputs, fields, values) {
+  for (const f of fields) {
+    if (inputs[f.name] && values[f.name] !== undefined) inputs[f.name].value = values[f.name];
+  }
+}
+
+async function submitForm(module, action, inputs, btn, msg, out) {
+  btn.disabled = true;
+  msg.className = "msg";
+  try {
+    showResult(await invoke(module, action, collect(inputs)), msg, out);
+  } catch (e) {
+    msg.className = "msg err"; msg.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function saveAll(module, settings, btn) {
+  btn.disabled = true;
+  try {
+    const lines = [];
+    let allOk = true;
+    for (const { action, inputs } of settings) {
+      const r = await invoke(module, action, collect(inputs));
+      if (!r.success) allOk = false;
+      lines.push((r.success ? "✓ " : "✗ ") + action.label + (r.message ? "：" + r.message : ""));
+    }
+    flash = { ok: allOk, text: lines.join("\n") };
+    render(); // re-fetch fresh values/tables and show the flash next to the button
+  } catch (e) {
+    flash = { ok: false, text: e.message };
+    render();
+  }
+}
+
+function showResult(result, msg, out) {
+  out.replaceChildren();
+  if (result.message) {
+    msg.className = "msg " + (result.success ? "ok" : "err");
+    msg.textContent = result.message;
+  } else {
+    msg.className = "msg";
+  }
+  if (result.columns && result.rows) {
+    const thead = el("thead", {}, el("tr", {}, ...result.columns.map(c => el("th", { text: c }))));
+    const tbody = el("tbody", {}, ...result.rows.map(r => el("tr", {}, ...r.map(c => el("td", { text: c })))));
+    out.append(el("table", {}, thead, tbody));
+    out.append(el("div", { class:"count", text: `${result.rows.length} 行` }));
+  }
+}
+
+loadModules();
+</script>
+</body>
+</html>

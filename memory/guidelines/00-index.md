@@ -9,6 +9,7 @@
 | [commit-and-memory-workflow.md](commit-and-memory-workflow.md) | 提交流程、变更记录撰写规则、记忆同步规则 |
 | [publishing.md](publishing.md) | NuGet / GitHub 按插件发布流程、CI、包元数据、密钥配置 |
 | [testing.md](testing.md) | 测试项目放置/约定、只测游戏无关纯逻辑的原则 |
+| [local-server-testing.md](local-server-testing.md) | 大改后用 `.localserver` 自测（加载/控制台/对外接口）+ 产出游戏内待测报告 |
 
 ## 修改规范的规则
 

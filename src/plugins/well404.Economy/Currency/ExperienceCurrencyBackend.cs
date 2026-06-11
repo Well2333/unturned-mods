@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using OpenMod.API.Commands;
@@ -50,6 +51,25 @@ namespace well404.Economy.Currency
             return user.Player.Player.skills.experience;
         }
 
+        public async Task<IReadOnlyList<AccountSnapshot>> ListAccountsAsync()
+        {
+            // XP is not persisted, so only currently online players can be listed.
+            var users = await m_UserManager.GetUsersAsync(KnownActorTypes.Player);
+            await UniTask.SwitchToMainThread();
+
+            var result = new List<AccountSnapshot>();
+            foreach (var user in users)
+            {
+                if (user is UnturnedUser unturnedUser)
+                {
+                    decimal experience = unturnedUser.Player.Player.skills.experience;
+                    result.Add(new AccountSnapshot(KnownActorTypes.Player, unturnedUser.Id, experience));
+                }
+            }
+
+            return result;
+        }
+
         public async Task<decimal> UpdateBalanceAsync(string ownerId, string ownerType, decimal changeAmount, string? reason)
         {
             var user = await GetOnlineUserAsync(ownerId, ownerType);
@@ -75,6 +95,9 @@ namespace well404.Economy.Currency
             await UniTask.SwitchToMainThread();
             user.Player.Player.skills.ServerSetExperience(ClampToUInt(balance));
         }
+
+        public Task DeleteAccountAsync(string ownerId, string ownerType)
+            => throw new UserFriendlyException("经验后端不支持删除账户（经验值不作为独立账本持久化）。");
 
         private static uint ClampToUInt(decimal value)
         {

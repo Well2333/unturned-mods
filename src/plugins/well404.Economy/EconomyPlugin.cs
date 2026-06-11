@@ -1,10 +1,14 @@
 using System;
+using Autofac;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using OpenMod.API.Plugins;
+using OpenMod.API.Users;
+using OpenMod.Extensions.Economy.Abstractions;
 using OpenMod.Unturned.Plugins;
+using UnturnedMods.Shared.WebPanel;
 using well404.Economy;
 
 [assembly: PluginMetadata("well404.Economy", DisplayName = "Economy")]
@@ -16,6 +20,8 @@ namespace well404.Economy
         private readonly IConfiguration m_Configuration;
         private readonly IStringLocalizer m_StringLocalizer;
         private readonly ILogger<EconomyPlugin> m_Logger;
+
+        private IWebPanelRegistry? m_WebPanelRegistry;
 
         public EconomyPlugin(
             IConfiguration configuration,
@@ -39,12 +45,41 @@ namespace well404.Economy
                 "Currency: {Name} ({Symbol}); backend: {Backend}; kill rewards: {KillRewards}.",
                 settings.Currency.Name, settings.Currency.Symbol, settings.Backend,
                 settings.KillRewards.Enabled ? "enabled" : "disabled");
+
+            RegisterWebPanel();
         }
 
         protected override async UniTask OnUnloadAsync()
         {
             await UniTask.SwitchToMainThread();
+            m_WebPanelRegistry?.UnregisterModule(EconomyWebPanelModule.ModuleId);
+            m_WebPanelRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
+        }
+
+        /// <summary>
+        /// Registers the balance-management module with the web panel, if one is installed.
+        /// The dependency is optional (<see cref="ILifetimeScope.ResolveOptional"/>) so the
+        /// economy works exactly the same with or without well404.WebPanel present.
+        /// </summary>
+        private void RegisterWebPanel()
+        {
+            var registry = LifetimeScope.ResolveOptional<IWebPanelRegistry>();
+            if (registry == null)
+            {
+                return;
+            }
+
+            if (!(LifetimeScope.Resolve<IEconomyProvider>() is EconomyProvider economy))
+            {
+                return;
+            }
+
+            var userManager = LifetimeScope.Resolve<IUserManager>();
+            var configStore = new EconomyConfigStore(m_Configuration, WorkingDirectory);
+            registry.RegisterModule(EconomyWebPanelModule.Create(economy, userManager, configStore));
+            m_WebPanelRegistry = registry;
+            m_Logger.LogInformation("Economy: registered the balance-management module with the web panel.");
         }
     }
 }

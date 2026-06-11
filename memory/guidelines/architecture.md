@@ -38,9 +38,13 @@ unturned-mods/
   同一组依赖版本，确保运行时环境一致。
 - **命名即约束**：插件项目文件名 = 插件 Id，从而自动满足
   `RootNamespace == AssemblyName`（OpenMod 的硬性要求）。
-- **共享库 `UnturnedMods.Shared`**：放置公共基类、扩展方法、工具与抽象。注意：
-  插件引用它时，编译出的 `UnturnedMods.Shared.dll` 需与插件一起部署到
-  `openmod/plugins`。
+- **共享库 `UnturnedMods.Shared`**：放置公共基类、扩展方法、工具与**跨插件抽象**
+  （如 `IWebPanelRegistry`）。注意：插件引用它时，编译出的 `UnturnedMods.Shared.dll`
+  需与插件一起部署到 `openmod/plugins`。**`scripts/build.sh` 会平铺 `ProjectReference`
+  产物**（`project_deps` 按「项目文件名 = AssemblyName」约定取 dll 名），所以引用 Shared
+  的插件部署时会自动带上 `UnturnedMods.Shared.dll`。**NuGet 发布**：Shared 不是独立发布的包，
+  故引用它的插件 `.csproj` 用 `TargetsForTfmSpecificBuildOutput` + `BuildOutputInPackage` 把
+  `UnturnedMods.Shared.dll` 打进自身 nupkg 的 `lib/`，否则 `openmod install` 装出来会缺该 dll。
 - **脚手架 `scripts/new-plugin.sh`**：保证每个新插件结构、约束一致，降低 AI
   逐个手写时的偏差。
 
@@ -72,6 +76,36 @@ unturned-mods/
    于是注入它的命令运行时报 “Unable to resolve service …”。正确做法：实现
    `IPluginContainerConfigurator`，在 `ConfigureContainer` 里
    `context.ContainerBuilder.RegisterType<T>().AsSelf().SingleInstance()`。
+
+## WebPanel：可选的跨插件注册式扩展（well404.WebPanel）
+
+`well404.WebPanel` 是一个**通用 Web 管理面板基底**，自身不含任何具体业务功能；
+其他插件把「管理动作」**注册**进来，面板按元数据动态渲染。这是「依赖抽象、不依赖
+具体插件」的又一落地，沿用经济抽象同构的全局服务模式：
+
+- 抽象 `IWebPanelRegistry`（`[Service]`，定义在 `UnturnedMods.Shared.WebPanel`）+
+  描述符模型（`WebPanelModule` / `WebPanelAction` / `WebField` / `WebActionResult`）。
+  描述符**不含 JSON 类型**，只建模 UI 语义，handler 是
+  `Func<WebActionRequest, Task<WebActionResult>>` 异步闭包。动作种类（`WebActionKind`）：
+  `Table`（进页面自动加载的只读表）、`Form`（带独立按钮的命令，如增减余额）、
+  `Search`（实时检索）、`Settings`（进页面用 `Loader` 预填、由页尾**统一保存**按钮批量提交）、
+  `Collection`（CRUD：`RecordsLoader` 出 chip 列表 + 新增 + 点选编辑 + `DeleteHandler` 删除，
+  按 `KeyField` upsert）。余额、商品目录用 `Collection`；货币/击杀奖励/转账/折扣用 `Settings`。
+- 提供方 `well404.WebPanel` 用 `[ServiceImplementation(Singleton)]` 实现
+  `WebPanelRegistry`（**全局单例、构造不注入任何插件作用域服务**，遵守上文硬规则 1）；
+  HTTP 宿主由插件本体在 `OnLoadAsync` 起、`OnUnloadAsync` 停。
+- 消费方（如 `well404.Economy`）在 `OnLoadAsync` 里用
+  **`LifetimeScope.ResolveOptional<IWebPanelRegistry>()`** 取得注册表——**可选注入**，
+  没装 WebPanel 时返回 null、插件照常工作；拿到则 `RegisterModule(...)`，`OnUnloadAsync`
+  里 `UnregisterModule(...)`。注册表是全局单例，与插件加载顺序无关。
+
+宿主技术决策：用 BCL `System.Net.HttpListener` + 手写极简 JSON，**零额外 NuGet 依赖**
+（避免 `build.sh` 漏拷第三方包的传递子依赖，也规避 Mono 兼容风险）。监听/鉴权：
+`bindAddress` 非回环时**强制 token**（缺 token 自动降级回 `127.0.0.1`），
+`allowInsecurePublic` 为隐藏的绕过开关。前端是内嵌的单文件通用 SPA（EmbeddedResource）。
+
+handler 在 HttpListener 线程上执行，**凡触及 Unturned API 的 handler 必须先
+`await UniTask.SwitchToMainThread()`**（与硬性约束 5 一致）。
 
 ## 每个插件目录的标准布局
 

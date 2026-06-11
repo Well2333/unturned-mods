@@ -1,0 +1,24 @@
+# Configuration for Web Panel.
+# Embedded as a resource; users can override it in the plugin's data directory.
+#
+# The panel is a shared host: other plugins (well404.Economy, well404.Shop, ...)
+# register their own management modules into it, so this plugin stays generic.
+
+web:
+  # Interface to listen on:
+  #   127.0.0.1  -> loopback only (default; reach it via an SSH tunnel / reverse proxy)
+  #   0.0.0.0    -> all interfaces (public)
+  #   192.168.x  -> a specific NIC address
+  bindAddress: "127.0.0.1"
+
+  port: 8080
+
+  # Access token, required in the `X-Web-Token` header (or `?token=`) for every /api call.
+  # MANDATORY for any non-loopback bindAddress: if left empty there, the server refuses to
+  # expose the panel and falls back to 127.0.0.1 (unless allowInsecurePublic is true).
+  # Empty token + loopback bind = no auth (local machine only).
+  token: ""
+
+  # Advanced / hidden escape hatch: allow a non-loopback bind WITHOUT a token.
+  # Insecure — anyone who can reach the port gets full admin access. Leave false.
+  allowInsecurePublic: false

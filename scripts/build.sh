@@ -115,6 +115,15 @@ extra_deps() {
     | grep -ivE '^(OpenMod|Legacy2CPSWorkaround|Microsoft\.SourceLink)' || true
 }
 
+# A plugin's in-repo ProjectReferences (e.g. UnturnedMods.Shared) also need their
+# compiled dll deployed flat next to the plugin. By convention AssemblyName == the
+# project file name, so the dll basename is the .csproj name without its extension.
+project_deps() {
+  grep -oE '<ProjectReference Include="[^"]+"' "$1" \
+    | sed -E 's/.*Include="([^"]+)".*/\1/' \
+    | sed -E 's#.*[\\/]##; s#\.csproj$##' || true
+}
+
 echo "==> Output (flat): $OUTPUT"
 declare -A WRITTEN=()
 for id in "${PLUGINS[@]}"; do
@@ -138,6 +147,9 @@ for id in "${PLUGINS[@]}"; do
   while IFS= read -r dep; do
     [[ -n "$dep" ]] && copy_flat "$dep"
   done < <(extra_deps "$proj")
+  while IFS= read -r dep; do
+    [[ -n "$dep" ]] && copy_flat "$dep"
+  done < <(project_deps "$proj")
 
   rm -rf "$staging"
 done
