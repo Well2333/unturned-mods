@@ -58,6 +58,11 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
   `templates/`）。详见 `docs/README.md`。
 - 部署二选一：`openmod install <PackageId[@Version]>`，或把插件 `.dll` 及其
   全部依赖 dll 放入服务器的 `openmod/plugins/`；之后 `openmod reload`。
+- **版本打标**：`scripts/build.sh` 构建前会删除 `src/**/obj/$CONFIG/**` 下的
+  `*.AssemblyInfoInputs.cache`，强制按当前 `<Version>` + git HEAD 重新生成程序集的
+  `AssemblyVersion`/`InformationalVersion`。否则旧 `obj/` 残留可能把**过期版本号**打进
+  本地部署的 dll，导致 OpenMod `[loading] <name> v<version>` 日志显示错误版本（NuGet 包
+  版本不受影响；CI 全新 checkout 无此问题）。
 
 ## 6. 文档同步（强制）
 
