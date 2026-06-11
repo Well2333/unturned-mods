@@ -54,6 +54,9 @@ substitute < "$TEMPLATE_DIR/Plugin.csproj.template"        > "$DEST_DIR/$PLUGIN_
 substitute < "$TEMPLATE_DIR/Plugin.cs.template"            > "$DEST_DIR/$PLUGIN_CLASS.cs"
 substitute < "$TEMPLATE_DIR/config.yaml.template"          > "$DEST_DIR/config.yaml"
 substitute < "$TEMPLATE_DIR/translations.yaml.template"    > "$DEST_DIR/translations.yaml"
+# Per-plugin README.md is packed as the NuGet package's readme (see Directory.Build.props).
+# Keep it in sync with the plugin's user-facing features on every change.
+substitute < "$TEMPLATE_DIR/README.md.template"            > "$DEST_DIR/README.md"
 
 echo "Created plugin '$PLUGIN_ID' (class $PLUGIN_CLASS) at $DEST_DIR"
 

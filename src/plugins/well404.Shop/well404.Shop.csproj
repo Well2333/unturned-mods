@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>0.2.1</Version>
+    <Version>0.2.2</Version>
     <Description>Shop</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -20,9 +20,11 @@
 
   <ItemGroup>
     <PackageReference Include="OpenMod.Unturned" />
-    <!-- For injecting the global IEconomyProvider supplied by well404.Economy.
-         No project reference to well404.Economy is needed: the Shop depends only
-         on the shared abstraction, not the concrete economy implementation. -->
+    <!-- The shop processes transactions through the global IEconomyProvider, which is
+         supplied at runtime by well404.Economy. This abstraction package gives the
+         interface; the concrete provider comes from the Economy plugin (see the
+         ProjectReference to well404.Economy below — it makes that a hard, auto-installed
+         dependency). -->
     <PackageReference Include="OpenMod.Extensions.Economy.Abstractions" />
     <PackageReference Include="Legacy2CPSWorkaround">
       <PrivateAssets>All</PrivateAssets>
@@ -34,12 +36,29 @@
     <EmbeddedResource Include="translations.yaml" />
   </ItemGroup>
 
+  <!-- Hard dependency on the Economy plugin. The shop is non-functional without an
+       IEconomyProvider, and well404.Economy is the provider in this family. A plain
+       ProjectReference to a packable project makes NuGet emit a real package dependency
+       (<dependency id="well404.Economy" version="<Economy's version>"/>) in this plugin's
+       nuspec WITHOUT bundling Economy.dll — so `openmod install well404.Shop` also pulls
+       and installs well404.Economy automatically. (NO PrivateAssets here: unlike
+       UnturnedMods.Shared, we WANT this dependency to flow to consumers.)
+       Note: because the floor version tracks Economy's current <Version>, release Economy
+       BEFORE Shop whenever both are bumped, so the dependency is resolvable on nuget.org. -->
+  <ItemGroup>
+    <ProjectReference Include="..\well404.Economy\well404.Economy.csproj" />
+  </ItemGroup>
+
   <!-- For the optional web-panel integration (catalog editing + item search): the
        IWebPanelRegistry abstraction lives in the shared library. The shop injects it
        optionally, so it has no hard dependency on well404.WebPanel.
        UnturnedMods.Shared.dll is deployed alongside (scripts/build.sh flattens it). -->
   <ItemGroup>
-    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" />
+    <!-- PrivateAssets="all" keeps UnturnedMods.Shared OUT of this package's nuspec
+         dependencies. It is never published to NuGet, so a declared dependency makes
+         `openmod install` fail resolving it from nuget.org. The dll is still copied to
+         OutputPath and bundled into lib/ by IncludeSharedInPackage below. -->
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- UnturnedMods.Shared is not a published NuGet package, so bundle its compiled dll

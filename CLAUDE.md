@@ -22,6 +22,8 @@
 - **每次提交都要写变更记录**到 `memory/changelog/YYYY-MM-DD-<commithash>.md`，
   按「两步提交」流程操作。
 - **凡改动涉及开发规范，必须同步更新 `memory/guidelines/` 对应文件。**
+- **凡改动插件面向用户的行为（命令/配置/权限/Web 面板/依赖），必须同一次提交内同步
+  更新该插件的 `README.md`、`docs/<PluginId>.md` 及总表**（见 development-standards.md §6）。
 
 ## 当前环境状态
 

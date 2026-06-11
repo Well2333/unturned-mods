@@ -28,7 +28,8 @@ monorepo）。各插件彼此独立、可单独构建与部署，但共享统一
 | 插件 | 说明 |
 | --- | --- |
 | `well404.Economy` | 经济系统：以全局 `IEconomyProvider` 暴露货币；后端可选 serverless LiteDB 账本或原生经验值；支持 `/pay` 转账、`/balance`、`/eco` 管理、以及击杀（玩家/僵尸/动物）奖励。其他插件（签到等）可注入 `IEconomyProvider` 发币。 |
-| `well404.Shop` | 商店：`config.yaml` 配置商品价格，支持单物品与自定义组合包；`/buy` `/sell` `/shop`；按权限组的购买折扣（如 VIP 9 折，默认关闭）。依赖任一 `IEconomyProvider` 实现。 |
+| `well404.Shop` | 商店：`config.yaml` 配置商品价格，支持单物品与自定义组合包；`/buy` `/sell` `/shop`；按权限组的购买折扣（如 VIP 9 折，默认关闭）。**硬依赖 `well404.Economy`**,`openmod install` 会自动一并安装。 |
+| `well404.WebPanel` | 通用 Web 管理面板：内置零依赖 HTTP 服务 + 单页应用,经 `IWebPanelRegistry` 让各插件挂载可视化管理模块(设置组、集合 CRUD、搜索)。可选,装上后 Economy / Shop 自动出现管理界面。 |
 
 ## 快速开始
 

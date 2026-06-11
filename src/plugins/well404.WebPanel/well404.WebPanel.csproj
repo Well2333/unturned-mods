@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Description>Web Panel</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -36,7 +36,11 @@
        in the shared library. Its compiled UnturnedMods.Shared.dll must be deployed
        alongside the plugin; scripts/build.sh flattens ProjectReference outputs too. -->
   <ItemGroup>
-    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" />
+    <!-- PrivateAssets="all" keeps UnturnedMods.Shared OUT of this package's nuspec
+         dependencies. It is never published to NuGet, so a declared dependency makes
+         `openmod install` fail resolving it from nuget.org. The dll is still copied to
+         OutputPath and bundled into lib/ by IncludeSharedInPackage below. -->
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- UnturnedMods.Shared is not a published NuGet package, so bundle its compiled dll

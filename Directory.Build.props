@@ -49,9 +49,26 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
-  <!-- Pack the repo README + LICENSE into every package (only affects packable projects). -->
-  <ItemGroup>
+  <!-- Pack a README + LICENSE into every package (only affects packable projects).
+
+       README selection: prefer the plugin's OWN README.md (in its project directory) so
+       each NuGet package page shows plugin-specific docs instead of the whole-repo README;
+       fall back to the repo-root README for any packable project that lacks its own.
+       Both land at \README.md, matching <PackageReadmeFile>README.md above, so this works
+       for local `dotnet pack` (scripts/build.sh) and the CI publish workflow identically.
+
+       For the plugin's own README we Remove any default None item for it first, then
+       Include it with Pack=true (Remove is a harmless no-op if it wasn't a default item;
+       this avoids both a duplicate-item error and the "readme not packed" NU5039). The
+       repo-root README lives outside the project tree, so it just uses Include. -->
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)/README.md')">
+    <None Remove="README.md" />
+    <None Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('$(MSBuildProjectDirectory)/README.md')">
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 

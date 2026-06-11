@@ -58,3 +58,31 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
   `templates/`）。详见 `docs/README.md`。
 - 部署二选一：`openmod install <PackageId[@Version]>`，或把插件 `.dll` 及其
   全部依赖 dll 放入服务器的 `openmod/plugins/`；之后 `openmod reload`。
+
+## 6. 文档同步（强制）
+
+**凡改动任一插件的「面向用户的行为」——命令、配置项、权限、Web 面板模块、依赖关系——
+都必须在同一次提交内同步更新相关文档**,文档过时视为未完成:
+
+1. 该插件自己的 `src/plugins/<PluginId>/README.md`(它会被打进 NuGet 包,见 §7)。
+2. `docs/<PluginId>.md`(详细参考)。
+3. 根 `README.md` 与 `docs/README.md` 的插件总表(新增/删除插件或依赖变化时)。
+
+新插件由 `scripts/new-plugin.sh` 自动生成 README 骨架(来自
+`build/templates/plugin/README.md.template`),需在开发时填实,并保持「插件家族」表与
+其他插件一致。
+
+## 7. 打包规则(NuGet)
+
+- **每个插件随包发布自己的 `README.md`**(项目目录下),由 `Directory.Build.props` 选取为
+  `PackageReadmeFile`;无自带 README 的项目回退到仓库根 README。本地 `dotnet pack` 与 CI
+  `publish.yml` 走同一套 props,行为一致。README 内的链接用**绝对 URL**(nuget.org 不渲染
+  相对路径)。
+- **引用 `UnturnedMods.Shared`(未发布到 NuGet 的共享库)必须**:`ProjectReference` 加
+  `PrivateAssets="all"`(避免在 nuspec 里产生无法解析的依赖)**且**用
+  `IncludeSharedInPackage` 目标把 `UnturnedMods.Shared.dll` 打进 `lib/`。否则
+  `openmod install` 会因解析不到 `UnturnedMods.Shared` 而失败。模板已内置正确写法。
+- **表达「插件依赖另一个已发布插件」**(如 Shop 依赖 Economy):对那个可打包项目用
+  **不带 PrivateAssets** 的 `ProjectReference`,NuGet 会自动在 nuspec 写入
+  `<dependency>`(版本下限 = 被引用项目当前 `<Version>`),`openmod install` 据此自动级联
+  安装。**同时发版时先发被依赖者**(如先 Economy 后 Shop),否则依赖在 NuGet 上不可解析。

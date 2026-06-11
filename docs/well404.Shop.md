@@ -5,14 +5,17 @@
 
 ## 依赖
 
-需要场上有任一经济插件提供 `IEconomyProvider`（即 [`well404.Economy`](well404.Economy.md)
-或兼容实现）。
+**硬依赖 [`well404.Economy`](well404.Economy.md)**:商店通过它提供的 `IEconomyProvider`
+结算买卖。该依赖已写入 Shop 的 NuGet 包,因此 `openmod install well404.Shop` 会**自动
+一并安装** well404.Economy,无需手动先装。
 
 ```bash
-openmod install well404.Economy
-openmod install well404.Shop
+openmod install well404.Shop   # 自动带上 well404.Economy
 openmod reload
 ```
+
+> 同时升级两者并自行发版时,**先发布 Economy 再发布 Shop**:Shop 的依赖下限跟随
+> Economy 当前版本,Economy 须先在 NuGet 上可解析。
 
 ## 配置（`config.yaml`）
 
@@ -110,6 +113,16 @@ items:
 4. 玩家若同时拥有多个折扣权限，取**最优（乘数最低）**的那个。折扣只作用于**买入**。
 
 > 折扣的权限串是你在 `tiers` 里自定义的（与命令权限无关），可任意命名。
+
+## Web 管理面板（可选）
+
+安装 [`well404.WebPanel`](well404.WebPanel.md) 后,Shop 自动注册「商店」模块(图标 🛒):
+
+- **商品**(集合,网格布局):增 / 删 / 改商品目录条目(id、名称、物品×数量、买价、卖价),单物品与组合包均可。
+- **搜索**:按名称或 ID 搜索 Unturned 游戏物品(最多 100 条),便于快速填入 `itemId`。
+- **折扣**(设置):开关折扣总开关并配置权限分级,格式 `权限=乘数, 权限=乘数`(如 `well404.shop.vip=0.9`)。
+
+未安装面板时,以上均可通过 `config.yaml` + 命令完成,功能不受影响。
 
 ## 文案（`translations.yaml`）
 
