@@ -1,5 +1,9 @@
 # 发布规范：NuGet 与 GitHub（一级记忆）
 
+> ⚠️ **发版需用户当次明确授权**：本文件所有「创建 Release / 触发发布 / 推送」动作，
+> 只能在用户当次明确要求时执行，不得擅自进行（详见
+> [commit-and-memory-workflow.md](commit-and-memory-workflow.md) 的最高红线）。
+
 ## 仓库
 
 - GitHub：`https://github.com/Well2333/unturned-mods`（public）。
