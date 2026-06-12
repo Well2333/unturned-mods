@@ -9,6 +9,8 @@ namespace well404.Essentials
 
         public TpaSettings Tpa { get; set; } = new TpaSettings();
 
+        public PartySettings Party { get; set; } = new PartySettings();
+
         public BackSettings Back { get; set; } = new BackSettings();
 
         public SleepSettings Sleep { get; set; } = new SleepSettings();
@@ -53,6 +55,18 @@ namespace well404.Essentials
     {
         /// <summary>How long (seconds) a teleport request stays open before it expires.</summary>
         public int ExpirationSeconds { get; set; } = 30;
+    }
+
+    public class PartySettings
+    {
+        /// <summary>How long (seconds) a party invite stays open before it expires.</summary>
+        public int InviteExpirationSeconds { get; set; } = 60;
+
+        /// <summary>
+        /// Maximum party size enforced by this plugin (0 = no extra cap). The plugin always
+        /// bypasses Unturned's vanilla group-size limit; this is its own optional cap.
+        /// </summary>
+        public int MaxMembers { get; set; } = 0;
     }
 
     public class BackSettings

@@ -3,6 +3,7 @@ using OpenMod.API.Plugins;
 using well404.Essentials.Back;
 using well404.Essentials.Data;
 using well404.Essentials.Gift;
+using well404.Essentials.Party;
 using well404.Essentials.Sleep;
 using well404.Essentials.Teleport;
 using well404.Essentials.Tp;
@@ -27,6 +28,8 @@ namespace well404.Essentials
             builder.RegisterType<CooldownManager>().AsSelf().SingleInstance();
             builder.RegisterType<TeleportService>().AsSelf().SingleInstance();
             builder.RegisterType<TeleportRequestManager>().AsSelf().SingleInstance();
+            builder.RegisterType<PartyInviteManager>().AsSelf().SingleInstance();
+            builder.RegisterType<PartyService>().AsSelf().SingleInstance();
             builder.RegisterType<WarpService>().AsSelf().SingleInstance();
             builder.RegisterType<GiftService>().AsSelf().SingleInstance();
             builder.RegisterType<SleepVoteService>().AsSelf().SingleInstance();

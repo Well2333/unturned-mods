@@ -11,6 +11,9 @@
 - **/home**：回到你设置的家；`/home set` 把当前位置设为家（单个家）。
 - **/tp <玩家>**：传送到某玩家。**同队**直接传送；**不同队**则发出请求，对方用
   `/tpa` 接受或 `/tpd` 拒绝（请求会超时）。
+- **/party**：组队。`/party invite <玩家>` 发邀请，对方 `/party accept` 入队（绕过难用的
+  游戏内组队菜单）；还有 `/party deny`、`/party leave`、`/party kick`、`/party`（看成员）。
+  组队后队友之间 `/tp` 即可免确认直传。
 - **/warp**：传送点。`/warp <名称>` 传送，`/warp set <名称> [冷却]` 新建，
   `/warp delete <名称>` 删除，`/warps` 列出你有权限使用的传送点（指令格式参考 NewEssentials）。
 - **/gift**：免费礼包。`/gift` 列出你可领取的，`/gift <id>` 领取。每个礼包可设
@@ -43,6 +46,12 @@ openmod install well404.Essentials
 | `/tp` | | `<玩家>` | 传送到玩家（同队直传，跨队发请求） |
 | `/tpa` | | `[玩家]` | 接受传送请求（最新的，或指定玩家的） |
 | `/tpd` | | `[玩家]` | 拒绝传送请求 |
+| `/party` | | | 查看你的队伍成员 |
+| `/party invite` | | `<玩家>` | 邀请玩家入队 |
+| `/party accept` | | `[玩家]` | 接受入队邀请 |
+| `/party deny` | | `[玩家]` | 拒绝入队邀请 |
+| `/party leave` | | | 离开队伍 |
+| `/party kick` | | `<玩家>` | 踢出队员（仅队长） |
 | `/warp` | | `<名称>` | 传送到传送点 |
 | `/warp set` | | `<名称> [冷却秒]` | 新建传送点（管理） |
 | `/warp delete` | `del` | `<名称>` | 删除传送点（管理） |
@@ -77,6 +86,9 @@ teleport:
     back: 0
 tpa:
   expirationSeconds: 30   # /tp 请求超时
+party:
+  inviteExpirationSeconds: 60  # /party 邀请超时
+  maxMembers: 0           # 队伍人数上限，0=不额外限制
 back:
   invincibilitySeconds: 5 # /back 落地后的无敌秒数
 sleep:

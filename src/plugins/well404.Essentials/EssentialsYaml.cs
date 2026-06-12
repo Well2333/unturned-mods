@@ -35,6 +35,11 @@ namespace well404.Essentials
             sb.Append("  expirationSeconds: ").Append(Int(s.Tpa.ExpirationSeconds)).Append('\n');
             sb.Append('\n');
 
+            sb.Append("party:\n");
+            sb.Append("  inviteExpirationSeconds: ").Append(Int(s.Party.InviteExpirationSeconds)).Append('\n');
+            sb.Append("  maxMembers: ").Append(Int(s.Party.MaxMembers)).Append('\n');
+            sb.Append('\n');
+
             sb.Append("back:\n");
             sb.Append("  invincibilitySeconds: ").Append(Int(s.Back.InvincibilitySeconds)).Append('\n');
             sb.Append('\n');

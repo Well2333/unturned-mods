@@ -25,6 +25,12 @@ openmod reload
 | `/tp` | `<玩家>` | `well404.Essentials:tp` | 传送到玩家。同队**直接**传送；跨队发出请求 |
 | `/tpa` | `[玩家]` | `well404.Essentials:tpa` | 接受请求（不带参=最新一条；带参=指定玩家） |
 | `/tpd` | `[玩家]` | `well404.Essentials:tpd` | 拒绝请求 |
+| `/party` | | `well404.Essentials:party` | 查看队伍成员 |
+| `/party invite` | `<玩家>` | `well404.Essentials:party.invite` | 邀请玩家入队 |
+| `/party accept` | `[玩家]` | `well404.Essentials:party.accept` | 接受邀请（不带参=最新） |
+| `/party deny` | `[玩家]` | `well404.Essentials:party.deny` | 拒绝邀请 |
+| `/party leave` | | `well404.Essentials:party.leave` | 离开队伍 |
+| `/party kick` | `<玩家>` | `well404.Essentials:party.kick` | 踢出队员（仅队长 ADMIN） |
 | `/warp` | `<名称>` | `well404.Essentials:warp` | 传送到传送点（还需 per-warp 权限，见下） |
 | `/warp set` | `<名称> [冷却秒]` | `well404.Essentials:warp.set` | 新建/覆盖传送点（管理命令） |
 | `/warp delete`（`del`） | `<名称>` | `well404.Essentials:warp.delete` | 删除传送点（管理命令） |
@@ -55,6 +61,21 @@ openmod reload
 跨队 `/tp` 不立即传送，而是给目标发请求；目标 `/tpa` 接受后，**发起者**完成上面的预热并
 传送到目标当时所在位置，`/tpd` 则拒绝。请求在 `tpa.expirationSeconds` 后自动过期并通知发起者。
 
+## 组队（`/party`）
+
+绕过 Unturned 难用的游戏内组队菜单，用指令直接组队。采用**邀请 + 接受**模式（防滥用）：
+
+- `/party invite <玩家>` 发出邀请；对方 `/party accept` 入队、`/party deny` 拒绝，
+  邀请在 `party.inviteExpirationSeconds` 后过期。
+- 邀请者若**还没有队伍**，接受时会自动新建一个队伍（邀请者为队长 ADMIN，新成员为
+  MEMBER）；若已有队伍则直接加入。
+- `/party leave` 离队；`/party kick <玩家>` 由**队长**踢人；`/party` 查看在线队员与角色。
+- `party.maxMembers > 0` 时按此上限拦截入队（始终绕过原版人数上限，仅用插件自己的上限）。
+
+实现上用服务端 `PlayerQuests.ServerAssignToGroup` + `GroupManager` 直接改组，因此**与原版
+组队完全互通**：组好的队伍在客户端 UI 正常显示，并让 Essentials 的 `/tp` 走「同队免确认
+直传」分支（`isMemberOfSameGroupAs` 对无队玩家返回 false，所以单人不会被误判同队）。
+
 ## 配置（`config.yaml`）
 
 首次加载后生成于 `openmod/plugins/well404.Essentials/config.yaml`。装了 WebPanel 时这些值
@@ -73,6 +94,9 @@ teleport:
     back: 0
 tpa:
   expirationSeconds: 30   # /tp 请求有效期
+party:
+  inviteExpirationSeconds: 60  # /party 邀请有效期
+  maxMembers: 0           # 队伍人数上限，0=不额外限制（始终绕过原版上限）
 back:
   invincibilitySeconds: 5 # /back 落地后的无敌秒数，0=无
 sleep:

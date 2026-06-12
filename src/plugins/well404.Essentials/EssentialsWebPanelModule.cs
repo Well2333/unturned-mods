@@ -60,14 +60,18 @@ namespace well404.Essentials
                 fields: new[]
                 {
                     new WebField("tpaExpiration", "tpa 请求有效期(秒)", WebFieldType.Number),
+                    new WebField("partyInviteExpiration", "party 邀请有效期(秒)", WebFieldType.Number),
+                    new WebField("partyMaxMembers", "party 人数上限", WebFieldType.Number, placeholder: "0=不额外限制"),
                     new WebField("sleepEnabled", "sleep 投票", WebFieldType.Select, options: new[] { "开", "关" }),
                     new WebField("sleepRatio", "sleep 通过比例", WebFieldType.Number, placeholder: "0.5=半数"),
                     new WebField("backInvincibility", "back 无敵秒数", WebFieldType.Number)
                 },
-                description: "tpa 请求超时、sleep 投票开关与通过比例(在线玩家的比例)、/back 落地后的无敌秒数(0=无)。",
+                description: "tpa/party 请求超时、party 人数上限、sleep 投票开关与通过比例(在线玩家的比例)、/back 落地后的无敌秒数(0=无)。",
                 loader: () => Task.FromResult(store.Read(s => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
                 {
                     ["tpaExpiration"] = Int(s.Tpa.ExpirationSeconds),
+                    ["partyInviteExpiration"] = Int(s.Party.InviteExpirationSeconds),
+                    ["partyMaxMembers"] = Int(s.Party.MaxMembers),
                     ["sleepEnabled"] = s.Sleep.Enabled ? "开" : "关",
                     ["sleepRatio"] = Num(s.Sleep.RequiredRatio),
                     ["backInvincibility"] = Int(s.Back.InvincibilitySeconds)
@@ -154,6 +158,8 @@ namespace well404.Essentials
             store.Update(s =>
             {
                 s.Tpa.ExpirationSeconds = ReadInt(request, "tpaExpiration", s.Tpa.ExpirationSeconds);
+                s.Party.InviteExpirationSeconds = ReadInt(request, "partyInviteExpiration", s.Party.InviteExpirationSeconds);
+                s.Party.MaxMembers = ReadInt(request, "partyMaxMembers", s.Party.MaxMembers);
                 var sleep = request.Get("sleepEnabled");
                 if (sleep != null)
                 {

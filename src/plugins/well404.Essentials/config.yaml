@@ -26,6 +26,13 @@ tpa:
   # How long a /tp request to a non-teammate stays open (seconds).
   expirationSeconds: 30
 
+party:
+  # How long a /party invite stays open (seconds).
+  inviteExpirationSeconds: 60
+  # Max party size this plugin enforces (0 = no extra cap). Unturned's vanilla
+  # group-size limit is always bypassed; this is the plugin's own optional cap.
+  maxMembers: 0
+
 back:
   # Damage immunity granted after /back lands on the death point (0 = none).
   invincibilitySeconds: 5
