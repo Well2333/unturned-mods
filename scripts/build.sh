@@ -124,6 +124,15 @@ project_deps() {
     | sed -E 's#.*[\\/]##; s#\.csproj$##' || true
 }
 
+# Force fresh version stamps. A stale obj/ from a prior <Version> can otherwise stamp
+# the deployed dll with an old version (the assembly's Version/InformationalVersion),
+# which then shows up wrong in OpenMod's "[loading] <name> v<version>" logs even though
+# the package version is correct. Dropping the GenerateAssemblyInfo input cache forces
+# the stamps to be re-derived from the current <Version> + git HEAD on the next build;
+# thanks to WriteOnlyWhenDifferent it only rewrites (and recompiles) when actually stale.
+# CI is unaffected — it always builds from a fresh checkout with no obj/.
+find "$REPO_ROOT/src" -path "*/obj/$CONFIG/*" -name "*.AssemblyInfoInputs.cache" -delete 2>/dev/null || true
+
 echo "==> Output (flat): $OUTPUT"
 declare -A WRITTEN=()
 for id in "${PLUGINS[@]}"; do

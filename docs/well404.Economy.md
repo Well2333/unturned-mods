@@ -129,6 +129,17 @@ public class CommandDaily : Command
 > 服务器上**只应启用一个**经济提供方（well404.Economy 或其他实现 `IEconomyProvider`
 > 的插件），否则解析会按优先级二选一。
 
+## Web 管理面板（可选）
+
+安装 [`well404.WebPanel`](well404.WebPanel.md) 后,Economy 自动注册「经济」模块(图标 💰):
+
+- **所有余额**(集合,列表布局):浏览、编辑、删除玩家余额(database 后端列出全部;experience 后端仅在线玩家)。
+- **货币**(设置):配置货币名称、符号、初始余额与后端选择。
+- **击杀奖励**(设置):配置玩家 / 僵尸 / 巨型僵尸 / 动物的奖励金额与总开关。
+- **转账**(设置):配置转账开关、最低额度与税率。
+
+未安装面板时,以上均可通过 `config.yaml` + 命令完成,功能不受影响。
+
 ## 文案（`translations.yaml`）
 
 所有面向玩家的文本都在 `translations.yaml`，可自行汉化/改写。占位符用 SmartFormat，

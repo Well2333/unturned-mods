@@ -6,19 +6,33 @@
 | --- | --- |
 | `well404.Economy` | [经济系统](well404.Economy.md) — 货币、转账、击杀奖励、`IEconomyProvider` 对接 |
 | `well404.Shop` | [商店](well404.Shop.md) — 商品/组合包、买卖、权限折扣 |
+| `well404.WebPanel` | [Web 管理面板](well404.WebPanel.md) — 通用可视化管理面板,供各插件挂载模块 |
 
-> `well404.Shop` 依赖任一 `IEconomyProvider` 实现（即 `well404.Economy` 或兼容经济
-> 插件）提供货币，需与之同时安装。
+> `well404.Shop` **硬依赖** `well404.Economy`(由它提供 `IEconomyProvider` 结算交易)。
+> 该依赖已写入 Shop 的 NuGet 包,`openmod install well404.Shop` 会自动一并安装 Economy。
+>
+> `well404.WebPanel` 是可选的基础设施插件:装上它后,Economy / Shop 会自动出现可视化
+> 管理模块;不装也不影响这两个插件通过命令工作。
 
 ## 安装
 
+> **前置**:`openmod install` 会读取服务器 `openmod.yaml` 里的 `nuget:install:allowedActors`。
+> 若该段缺失(旧配置),命令会以 `ArgumentNullException` 报错。补上即可:
+> ```yaml
+> nuget:
+>   install:
+>     allowedActors:
+>     - "*"
+> ```
+
 二选一：
 
-- **从 NuGet 安装（推荐）**，自动解析依赖（如 LiteDB）：
+- **从 NuGet 安装（推荐）**，自动解析依赖（如 LiteDB,以及 Shop 会带上 Economy）：
 
   ```bash
   openmod install well404.Economy
-  openmod install well404.Shop
+  openmod install well404.Shop      # 自动一并安装 well404.Economy
+  openmod install well404.WebPanel  # 可选:可视化管理面板
   openmod reload
   ```
 

@@ -1,0 +1,43 @@
+# __PLUGIN_ID__
+
+> __PLUGIN_DISPLAY_NAME__ —— 一句话简介(开发时替换我)。
+
+`__PLUGIN_ID__` 是 **well404 OpenMod 插件家族** 的一员。
+
+## 功能
+
+- TODO:列出本插件的主要功能。
+
+## 安装
+
+```
+openmod install __PLUGIN_ID__
+```
+
+重启服务器或执行 `openmod reload` 后生效。
+
+## 命令
+
+| 命令 | 别名 | 说明 |
+| --- | --- | --- |
+| `/example` | | TODO |
+
+## 配置 (config.yaml)
+
+```yaml
+# TODO:贴上关键配置项及说明
+```
+
+## well404 OpenMod 插件家族
+
+| 插件 | 说明 |
+| --- | --- |
+| [well404.Economy](https://www.nuget.org/packages/well404.Economy/) | 货币经济核心,全局 `IEconomyProvider` 供币 |
+| [well404.Shop](https://www.nuget.org/packages/well404.Shop/) | 物品商店,买卖物品 / 组合包,依赖 Economy |
+| [well404.WebPanel](https://www.nuget.org/packages/well404.WebPanel/) | 通用 Web 管理面板,供各插件挂载可视化管理模块 |
+
+完整文档见 [GitHub 仓库](https://github.com/Well2333/unturned-mods) 的 [`docs/`](https://github.com/Well2333/unturned-mods/tree/main/docs)。
+
+## 许可
+
+CC BY-NC-SA 4.0 © well404
