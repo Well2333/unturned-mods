@@ -91,3 +91,24 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
   **不带 PrivateAssets** 的 `ProjectReference`,NuGet 会自动在 nuspec 写入
   `<dependency>`(版本下限 = 被引用项目当前 `<Version>`),`openmod install` 据此自动级联
   安装。**同时发版时先发被依赖者**(如先 Economy 后 Shop),否则依赖在 NuGet 上不可解析。
+
+## 8. Web 面板配置同步(强制)
+
+**凡是插件「玩家/管理员可配置的设置项」(`config.yaml` 里的值),都必须在安装
+`well404.WebPanel` 时支持在 WebUI 里编辑。** 这是默认要求,适用于**所有现有及未来插件、
+以及任何新增功能**——除非该设置项被**明确说明**为「不纳入 WebUI」。新增/修改配置项时,
+若遗漏了对应的 WebPanel 模块入口,视为未完成(与 §6 文档同步同级)。
+
+落地方式(详见 [architecture.md](architecture.md) 的「WebPanel」一节):
+
+- 插件在 `OnLoadAsync` 里 **可选注入** `IWebPanelRegistry`
+  (`LifetimeScope.ResolveOptional<IWebPanelRegistry>()`),拿到则 `RegisterModule(...)`、
+  `OnUnloadAsync` 里 `UnregisterModule(...)`;**没装 WebPanel 时返回 null,插件照常工作**——
+  即「可选依赖,不硬依赖」。
+- 标量设置用 `WebActionKind.Settings`(进页面预填、页尾统一保存);列表/目录型设置
+  (商品、传送点、礼包、玩家余额等)用 `WebActionKind.Collection` 做 CRUD;只读数据用
+  `Table`,检索用 `Search`。
+- WebUI 的写入应落到与命令**同一份**配置来源(重写 `config.yaml` 或共享的配置 store),
+  保证命令与面板看到一致的数据(参考 `EssentialsConfigStore` / `ShopConfigStore`)。
+- **判断标准**:装上 WebPanel 后,管理员**无需手改 `config.yaml`** 就能完成该插件的全部
+  日常配置。达不到即不合规。

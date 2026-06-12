@@ -24,6 +24,9 @@
 - **凡改动涉及开发规范，必须同步更新 `memory/guidelines/` 对应文件。**
 - **凡改动插件面向用户的行为（命令/配置/权限/Web 面板/依赖），必须同一次提交内同步
   更新该插件的 `README.md`、`docs/<PluginId>.md` 及总表**（见 development-standards.md §6）。
+- **凡插件的可配置项（config.yaml 中的值），都必须在装了 `well404.WebPanel` 时支持 WebUI
+  编辑**（可选注入 `IWebPanelRegistry`，没装则照常工作）；适用于所有现有/未来插件及新增
+  功能，除非明确说明排除（见 development-standards.md §8）。
 
 ## 当前环境状态
 

@@ -1,0 +1,73 @@
+# Translations for Essentials.
+# Keys are referenced via IStringLocalizer, e.g. m_StringLocalizer["plugin_events:plugin_start"].
+# Placeholders use SmartFormat, e.g. {player}, {seconds}, {symbol}.
+plugin_events:
+  plugin_start: "Essentials has been loaded."
+  plugin_stop: "Essentials has been unloaded."
+
+errors:
+  not_a_player: "This command can only be used by a player."
+  player_not_found: "Player not found: {player}"
+
+teleport:
+  warmup: "Hold still for {seconds}s to teleport..."
+  cancelled_move: "Teleport cancelled: you moved."
+  cooldown: "Please wait {seconds}s before teleporting again."
+  fee_charged: "Charged {symbol}{amount} for the teleport."
+  not_enough_money: "You need {symbol}{amount} to teleport."
+
+home:
+  set: "Home set to your current location."
+  none: "You have not set a home yet. Use /home set first."
+  success: "Teleported home."
+
+tp:
+  self: "You cannot teleport to yourself."
+  teleported: "Teleported to {player}."
+  request_sent: "Teleport request sent to {player}. They have {seconds}s to /tpa or /tpd."
+  request_received: "{player} wants to teleport to you. Type /tpa to accept or /tpd to deny."
+  already_requested: "You already have a pending request to {player}."
+  request_expired_sender: "Your teleport request to {player} expired."
+
+tpa:
+  none: "You have no pending teleport requests."
+  none_from: "You have no pending request from {player}."
+  sender_offline: "{player} is no longer online."
+  accepted: "Accepted {player}'s teleport request."
+  accepted_other: "{player} accepted your teleport request."
+  denied: "Denied {player}'s teleport request."
+  denied_other: "{player} denied your teleport request."
+
+warp:
+  not_found: "No warp named '{name}'."
+  no_permission: "You do not have access to the warp '{name}'."
+  success: "Warped to '{name}'."
+  set: "Warp '{name}' saved at your location."
+  deleted: "Warp '{name}' deleted."
+  list: "Warps: {warps}"
+  list_empty: "There are no warps you can use."
+  cooldown: "Warp '{name}' is on cooldown for {seconds}s."
+
+gift:
+  none: "There are no gifts available to you right now."
+  list_header: "Gifts you can claim:"
+  list_entry: "- {id}: {name} {status}"
+  status_ready: "(ready)"
+  status_wait: "(refreshes in {time})"
+  not_found: "No gift named '{id}', or you cannot claim it."
+  no_permission: "This gift is not available to you."
+  on_cooldown: "You already claimed '{name}'. It refreshes in {time}."
+  claimed: "Claimed '{name}'! Check your inventory."
+  inventory_full: "Your inventory is full — some items were dropped at your feet."
+
+sleep:
+  disabled: "Sleep voting is disabled on this server."
+  already_voted: "You have already voted to sleep."
+  progress: "{player} wants to sleep. ({current}/{required})"
+  passed_night: "Enough players slept — night falls."
+  passed_day: "Enough players slept — a new day dawns."
+
+back:
+  none: "You have no death point to return to."
+  success: "Returned to your death point."
+  invincible: "You are invincible for {seconds}s."
