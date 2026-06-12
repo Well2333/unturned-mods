@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>玩家面板</title>
+<style>
+  :root { --bg:#1e1f22; --panel:#2b2d31; --panel2:#313338; --line:#3f4147; --fg:#dbdee1; --muted:#949ba4; --accent:#5865f2; --ok:#3ba55d; --err:#ed4245; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:10px; padding:12px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header .spacer { flex:1; }
+  header .who { color:var(--muted); font-size:13px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:49px; z-index:9; }
+  .tabs button { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:7px 14px; border-radius:999px; cursor:pointer; font-size:14px; }
+  .tabs button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  main { padding:16px; max-width:720px; margin:0 auto; }
+  .head { font-size:14px; color:var(--muted); margin:0 0 14px; }
+  .notice { padding:10px 13px; border-radius:8px; font-size:13px; margin:0 0 14px; background:var(--panel2); border:1px solid var(--line); white-space:pre-line; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .card h3 { margin:0 0 8px; font-size:15px; }
+  .card .lines { color:var(--muted); font-size:13px; margin:0 0 8px; }
+  .card .lines div { margin:2px 0; }
+  .pills { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px; }
+  .pill { display:inline-block; background:var(--bg); border:1px solid var(--line); border-radius:11px; padding:2px 9px; font-size:12px; }
+  .btns { display:flex; flex-wrap:wrap; gap:8px; }
+  button.act { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:8px 16px; border-radius:7px; cursor:pointer; font-size:14px; }
+  button.act:hover { filter:brightness(1.15); }
+  button.act:disabled { opacity:.5; cursor:default; }
+  button.act.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.act.danger { background:var(--err); border-color:var(--err); color:#fff; }
+  .flash { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); max-width:90%; padding:11px 16px; border-radius:8px; font-size:14px; z-index:20; box-shadow:0 4px 16px rgba(0,0,0,.4); white-space:pre-line; }
+  .flash.ok { background:var(--ok); color:#fff; }
+  .flash.err { background:var(--err); color:#fff; }
+  .empty { color:var(--muted); text-align:center; padding:50px 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎮 玩家面板</h1>
+  <div class="spacer"></div>
+  <div class="who" id="who"></div>
+</header>
+<div class="tabs" id="tabs"></div>
+<main id="main"><div class="empty">加载中…</div></main>
+
+<script>
+"use strict";
+const $ = (s, r=document) => r.querySelector(s);
+const enc = encodeURIComponent;
+
+// The session token is in the query string (?t=...); the focused tab is the #hash.
+const TOKEN = new URLSearchParams(location.search).get("t") || "";
+let menus = [];
+let activeId = decodeURIComponent((location.hash || "").replace(/^#/, "")) || null;
+
+function el(tag, attrs={}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2), v);
+    else if (v !== null && v !== undefined) node.setAttribute(k, v);
+  }
+  for (const c of children) if (c) node.append(c);
+  return node;
+}
+
+async function api(path, opts={}) {
+  const sep = path.includes("?") ? "&" : "?";
+  const res = await fetch(path + sep + "t=" + enc(TOKEN), opts);
+  if (res.status === 401) throw new Error("会话已过期，请在游戏内重新打开面板。");
+  if (!res.ok) throw new Error("请求失败：HTTP " + res.status);
+  return res.json();
+}
+
+let flashTimer = null;
+function flash(message, ok) {
+  if (!message) return;
+  clearTimeout(flashTimer);
+  const old = $(".flash");
+  if (old) old.remove();
+  const node = el("div", { class: "flash " + (ok ? "ok" : "err"), text: message });
+  document.body.append(node);
+  flashTimer = setTimeout(() => node.remove(), 4000);
+}
+
+async function load() {
+  let data;
+  try {
+    data = await api("/api/p/view");
+  } catch (e) {
+    $("#main").replaceChildren(el("div", { class: "empty", text: e.message }));
+    return;
+  }
+  menus = data.menus || [];
+  $("#who").textContent = data.player ? data.player.name : "";
+  if (!menus.length) {
+    $("#tabs").replaceChildren();
+    $("#main").replaceChildren(el("div", { class: "empty", text: "暂时没有可用的功能。" }));
+    return;
+  }
+  if (!menus.some(m => m.id === activeId)) activeId = menus[0].id;
+  renderTabs();
+  renderActive();
+}
+
+function renderTabs() {
+  $("#tabs").replaceChildren(...menus.map(m =>
+    el("button", { class: m.id === activeId ? "active" : "", onclick: () => {
+      activeId = m.id;
+      history.replaceState(null, "", "#" + enc(m.id));
+      renderTabs();
+      renderActive();
+    } }, (m.icon ? m.icon + " " : "") + m.title)));
+}
+
+function renderActive() {
+  const menu = menus.find(m => m.id === activeId);
+  if (!menu) return;
+  renderView(menu, menu.view);
+}
+
+function renderView(menu, view) {
+  const main = $("#main");
+  main.replaceChildren();
+  if (view.header) main.append(el("div", { class: "head", text: view.header }));
+  if (view.message) main.append(el("div", { class: "notice", text: view.message }));
+  if (!view.cards || !view.cards.length) {
+    if (!view.message) main.append(el("div", { class: "empty", text: "（暂无内容）" }));
+    return;
+  }
+  for (const card of view.cards) main.append(buildCard(menu, card));
+}
+
+function buildCard(menu, card) {
+  const node = el("div", { class: "card" }, el("h3", { text: card.label }));
+  if (card.lines && card.lines.length) {
+    node.append(el("div", { class: "lines" }, ...card.lines.map(l => el("div", { text: l }))));
+  }
+  if (card.tags && card.tags.length) {
+    node.append(el("div", { class: "pills" }, ...card.tags.map(t => el("span", { class: "pill", text: t }))));
+  }
+  if (card.buttons && card.buttons.length) {
+    node.append(el("div", { class: "btns" }, ...card.buttons.map(b => {
+      const btn = el("button", { class: "act " + (b.style || ""), text: b.label,
+        onclick: () => invoke(menu, card, b, btn) });
+      return btn;
+    })));
+  }
+  return node;
+}
+
+async function invoke(menu, card, button, btnNode) {
+  let value = null;
+  if (button.promptLabel) {
+    const entered = window.prompt(button.promptLabel, "1");
+    if (entered === null) return; // cancelled
+    value = entered.trim();
+  }
+  btnNode.disabled = true;
+  const body = new URLSearchParams();
+  body.set("action", button.actionId);
+  body.set("cardKey", card.key);
+  if (value !== null) body.set("value", value);
+
+  let r;
+  try {
+    r = await api("/api/p/invoke/" + enc(menu.id), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+  } catch (e) {
+    flash(e.message, false);
+    btnNode.disabled = false;
+    return;
+  }
+
+  flash(r.message, r.success);
+  if (r.refresh && r.view) {
+    menu.view = r.view;
+    if (menu.id === activeId) renderView(menu, r.view);
+  } else {
+    btnNode.disabled = false;
+  }
+}
+
+if (!TOKEN) {
+  $("#main").replaceChildren(el("div", { class: "empty", text: "缺少会话令牌。请在游戏内输入 /menu 重新打开面板。" }));
+} else {
+  load();
+}
+</script>
+</body>
+</html>

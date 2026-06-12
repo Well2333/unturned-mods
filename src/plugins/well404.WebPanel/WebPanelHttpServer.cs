@@ -20,29 +20,49 @@ namespace well404.WebPanel
     /// <item><c>GET /api/modules</c> — module + action metadata to render from.</item>
     /// <item><c>POST /api/modules/{module}/{action}</c> — invoke an action.</item>
     /// </list>
-    /// All <c>/api</c> calls require the token (when one is configured) in the
+    /// All admin <c>/api</c> calls require the token (when one is configured) in the
     /// <c>X-Web-Token</c> header or a <c>?token=</c> query parameter.
+    /// <para>
+    /// It also serves a separate, per-player surface (no admin token; authenticated by a
+    /// short-lived session token a player receives in-game):
+    /// <list type="bullet">
+    /// <item><c>GET /p</c> — the player SPA (reads the <c>?t=</c> session token).</item>
+    /// <item><c>GET /api/p/view</c> — the player's menus, each pre-rendered.</item>
+    /// <item><c>POST /api/p/invoke/{menu}</c> — execute a card button as that player.</item>
+    /// </list>
+    /// Player <c>/api/p</c> calls carry the session token in <c>?t=</c> (or the
+    /// <c>X-Player-Token</c> header); it is validated against <see cref="PlayerWebSessionManager"/>.
+    /// </para>
     /// </summary>
     public sealed class WebPanelHttpServer : IDisposable
     {
         private readonly IWebPanelRegistry m_Registry;
+        private readonly IPlayerMenuRegistry m_PlayerRegistry;
+        private readonly PlayerWebSessionManager m_Sessions;
         private readonly ILogger m_Logger;
         private readonly string m_Token;
         private readonly string m_Html;
+        private readonly string m_PlayerHtml;
         private readonly HttpListener m_Listener;
         private CancellationTokenSource? m_Cts;
 
         public WebPanelHttpServer(
             IWebPanelRegistry registry,
+            IPlayerMenuRegistry playerRegistry,
+            PlayerWebSessionManager sessions,
             ILogger logger,
             string prefix,
             string token,
-            string html)
+            string html,
+            string playerHtml)
         {
             m_Registry = registry;
+            m_PlayerRegistry = playerRegistry;
+            m_Sessions = sessions;
             m_Logger = logger;
             m_Token = token;
             m_Html = html;
+            m_PlayerHtml = playerHtml;
             m_Listener = new HttpListener();
             m_Listener.Prefixes.Add(prefix);
         }
@@ -91,6 +111,19 @@ namespace well404.WebPanel
                 if (request.HttpMethod == "GET" && (path == "/" || path == "/index.html"))
                 {
                     WriteText(context.Response, 200, "text/html; charset=utf-8", m_Html);
+                    return;
+                }
+
+                // ----- player surface (separate auth) -------------------------
+                if (request.HttpMethod == "GET" && (path == "/p" || path == "/p/"))
+                {
+                    WriteText(context.Response, 200, "text/html; charset=utf-8", m_PlayerHtml);
+                    return;
+                }
+
+                if (path.StartsWith("/api/p/", StringComparison.Ordinal) || path == "/api/p")
+                {
+                    await HandlePlayerApiAsync(context, path).ConfigureAwait(false);
                     return;
                 }
 
@@ -321,6 +354,186 @@ namespace well404.WebPanel
 
             sb.Append("]}");
             return sb.ToString();
+        }
+
+        // ----- player surface -------------------------------------------------
+
+        /// <summary>
+        /// Routes the player-facing JSON API. Authenticates every call against the
+        /// per-player session token (<c>?t=</c> or <c>X-Player-Token</c>); the admin token is
+        /// never accepted here, and the session token is never accepted on the admin API.
+        /// </summary>
+        private async Task HandlePlayerApiAsync(HttpListenerContext context, string path)
+        {
+            var session = m_Sessions.Validate(GetPlayerToken(context.Request));
+            if (session == null)
+            {
+                WriteJson(context.Response, 401,
+                    "{\"ok\":false,\"message\":\"会话已过期，请在游戏内重新打开面板。\"}");
+                return;
+            }
+
+            var ctx = new PlayerMenuContext(session.SteamId, session.DisplayName);
+            var segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // ["api", "p", "view"]
+            if (context.Request.HttpMethod == "GET" && segments.Length == 3 && segments[2] == "view")
+            {
+                await PlayerViewAsync(context, ctx).ConfigureAwait(false);
+                return;
+            }
+
+            // ["api", "p", "invoke", "{menuId}"]
+            if (context.Request.HttpMethod == "POST" && segments.Length == 4 && segments[2] == "invoke")
+            {
+                await PlayerInvokeAsync(context, ctx, segments[3]).ConfigureAwait(false);
+                return;
+            }
+
+            WriteJson(context.Response, 404, "{\"ok\":false,\"message\":\"Unknown endpoint\"}");
+        }
+
+        private async Task PlayerViewAsync(HttpListenerContext context, PlayerMenuContext ctx)
+        {
+            var menus = m_PlayerRegistry.GetMenus();
+            var sb = new StringBuilder();
+            sb.Append("{\"ok\":true,\"player\":")
+                .Append("{\"name\":").Append(Json.Encode(ctx.DisplayName)).Append('}')
+                .Append(",\"menus\":[");
+
+            for (var i = 0; i < menus.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(',');
+                }
+
+                var menu = menus[i];
+                var view = await RenderSafeAsync(menu, ctx).ConfigureAwait(false);
+                sb.Append('{')
+                    .Append("\"id\":").Append(Json.Encode(menu.Id)).Append(',')
+                    .Append("\"title\":").Append(Json.Encode(menu.Title)).Append(',')
+                    .Append("\"icon\":").Append(Json.Encode(menu.Icon)).Append(',')
+                    .Append("\"view\":");
+                AppendPlayerView(sb, view);
+                sb.Append('}');
+            }
+
+            sb.Append("]}");
+            WriteJson(context.Response, 200, sb.ToString());
+        }
+
+        private async Task PlayerInvokeAsync(HttpListenerContext context, PlayerMenuContext ctx, string menuId)
+        {
+            var menu = m_PlayerRegistry.GetMenu(menuId);
+            if (menu == null)
+            {
+                WriteJson(context.Response, 404, "{\"success\":false,\"message\":\"Unknown menu\"}");
+                return;
+            }
+
+            var values = ParseForm(ReadBody(context.Request));
+            values.TryGetValue("action", out var actionId);
+            values.TryGetValue("cardKey", out var cardKey);
+            values.TryGetValue("value", out var value);
+
+            PlayerActionResult result;
+            try
+            {
+                result = await menu.InvokeAsync(ctx, actionId ?? string.Empty, cardKey ?? string.Empty,
+                    string.IsNullOrEmpty(value) ? null : value).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} action threw.", menuId);
+                result = PlayerActionResult.Fail(ex.Message);
+            }
+
+            var sb = new StringBuilder();
+            sb.Append('{')
+                .Append("\"success\":").Append(Json.Bool(result.Success)).Append(',')
+                .Append("\"message\":").Append(Json.Encode(result.Message)).Append(',')
+                .Append("\"refresh\":").Append(Json.Bool(result.Refresh)).Append(',')
+                .Append("\"view\":");
+
+            if (result.Refresh)
+            {
+                AppendPlayerView(sb, await RenderSafeAsync(menu, ctx).ConfigureAwait(false));
+            }
+            else
+            {
+                sb.Append("null");
+            }
+
+            sb.Append('}');
+            WriteJson(context.Response, 200, sb.ToString());
+        }
+
+        private async Task<PlayerMenuView> RenderSafeAsync(IPlayerMenu menu, PlayerMenuContext ctx)
+        {
+            try
+            {
+                return await menu.RenderAsync(ctx).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} render threw.", menu.Id);
+                return new PlayerMenuView(menu.Title, null, Array.Empty<PlayerCard>(),
+                    "加载失败：" + ex.Message);
+            }
+        }
+
+        private static void AppendPlayerView(StringBuilder sb, PlayerMenuView view)
+        {
+            sb.Append('{')
+                .Append("\"title\":").Append(Json.Encode(view.Title)).Append(',')
+                .Append("\"header\":").Append(Json.Encode(view.Header)).Append(',')
+                .Append("\"message\":").Append(Json.Encode(view.Message)).Append(',')
+                .Append("\"cards\":[");
+
+            for (var i = 0; i < view.Cards.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(',');
+                }
+
+                var card = view.Cards[i];
+                sb.Append('{')
+                    .Append("\"key\":").Append(Json.Encode(card.Key)).Append(',')
+                    .Append("\"label\":").Append(Json.Encode(card.Label)).Append(',')
+                    .Append("\"lines\":");
+                AppendStringArray(sb, card.Lines);
+                sb.Append(",\"tags\":");
+                AppendStringArray(sb, card.Tags);
+                sb.Append(",\"buttons\":[");
+
+                for (var j = 0; j < card.Buttons.Count; j++)
+                {
+                    if (j > 0)
+                    {
+                        sb.Append(',');
+                    }
+
+                    var button = card.Buttons[j];
+                    sb.Append('{')
+                        .Append("\"actionId\":").Append(Json.Encode(button.ActionId)).Append(',')
+                        .Append("\"label\":").Append(Json.Encode(button.Label)).Append(',')
+                        .Append("\"style\":").Append(Json.Encode(button.Style)).Append(',')
+                        .Append("\"promptLabel\":").Append(Json.Encode(button.PromptLabel))
+                        .Append('}');
+                }
+
+                sb.Append("]}");
+            }
+
+            sb.Append("]}");
+        }
+
+        private static string? GetPlayerToken(HttpListenerRequest request)
+        {
+            var header = request.Headers["X-Player-Token"];
+            return !string.IsNullOrEmpty(header) ? header : request.QueryString["t"];
         }
 
         private bool IsAuthorized(HttpListenerRequest request)

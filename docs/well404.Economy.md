@@ -140,6 +140,15 @@ public class CommandDaily : Command
 
 未安装面板时,以上均可通过 `config.yaml` + 命令完成,功能不受影响。
 
+## 玩家网页钱包（可选）
+
+装了 `well404.WebPanel` 后,Economy 还会注册一个**面向玩家**的钱包菜单(玩家面 `/p`,图标 💰)。
+玩家在游戏内输入 `/menu`(或 `/menu economy`)收到链接,在浏览器里:
+
+- 顶部显示自己的余额与货币名;
+- 每个其他在线玩家一张卡片,点「转账」并输入金额即可转账——沿用 `/pay` 的开关、最低额度
+  与税率(扣款、入账、失败退款逻辑一致;关闭转账时仅显示余额)。
+
 ## 文案（`translations.yaml`）
 
 所有面向玩家的文本都在 `translations.yaml`，可自行汉化/改写。占位符用 SmartFormat，

@@ -29,5 +29,17 @@ namespace well404.WebPanel
         /// token. Insecure — anyone who can reach the port gets full admin access.
         /// </summary>
         public bool AllowInsecurePublic { get; set; } = false;
+
+        /// <summary>
+        /// Public base URL given to players in the in-game shop/gift links (the player surface
+        /// at <c>/p</c>), e.g. <c>http://your-server-ip:8080</c>. Must be reachable from players'
+        /// browsers. Empty = derive from <see cref="BindAddress"/> + <see cref="Port"/> (only
+        /// works when the bind address is a routable address, not 127.0.0.1 / 0.0.0.0). When no
+        /// usable base URL is available, the player-link feature is simply disabled.
+        /// </summary>
+        public string PublicBaseUrl { get; set; } = string.Empty;
+
+        /// <summary>How long a player web-session link stays valid, in minutes.</summary>
+        public int PlayerSessionMinutes { get; set; } = 5;
     }
 }

@@ -77,9 +77,13 @@ namespace well404.WebPanel
             var prefix = $"http://{host}:{web.Port}/";
 
             var registry = LifetimeScope.Resolve<IWebPanelRegistry>();
-            var html = LoadHtml();
+            var playerRegistry = LifetimeScope.Resolve<IPlayerMenuRegistry>();
+            var sessions = LifetimeScope.Resolve<PlayerWebSessionManager>();
+            var html = LoadResource("index.html");
+            var playerHtml = LoadResource("player.html");
 
-            var server = new WebPanelHttpServer(registry, m_Logger, prefix, token, html);
+            var server = new WebPanelHttpServer(
+                registry, playerRegistry, sessions, m_Logger, prefix, token, html, playerHtml);
             try
             {
                 server.Start();
@@ -107,12 +111,12 @@ namespace well404.WebPanel
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
 
-        /// <summary>Loads the embedded single-page panel (matched by resource-name suffix).</summary>
-        private static string LoadHtml()
+        /// <summary>Loads an embedded HTML resource (matched by resource-name suffix).</summary>
+        private static string LoadResource(string suffix)
         {
             var assembly = typeof(WebPanelPlugin).Assembly;
             var resourceName = assembly.GetManifestResourceNames()
-                .FirstOrDefault(n => n.EndsWith("index.html", StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
 
             if (resourceName == null)
             {

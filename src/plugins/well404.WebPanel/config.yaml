@@ -22,3 +22,14 @@ web:
   # Advanced / hidden escape hatch: allow a non-loopback bind WITHOUT a token.
   # Insecure — anyone who can reach the port gets full admin access. Leave false.
   allowInsecurePublic: false
+
+  # ---- Player surface (the /p page players open in-game via /menu) ----
+
+  # Public base URL handed to players in their /menu link, e.g. "http://your-ip:8080".
+  # Must be reachable from players' browsers. Leave empty to derive it from bindAddress
+  # + port (only works when bindAddress is a routable address, not 127.0.0.1 / 0.0.0.0).
+  # When no usable URL is available, /menu tells the player the panel isn't reachable.
+  publicBaseUrl: ""
+
+  # How long a player's /menu link stays valid, in minutes.
+  playerSessionMinutes: 5

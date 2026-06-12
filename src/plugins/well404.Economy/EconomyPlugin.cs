@@ -8,6 +8,7 @@ using OpenMod.API.Plugins;
 using OpenMod.API.Users;
 using OpenMod.Extensions.Economy.Abstractions;
 using OpenMod.Unturned.Plugins;
+using OpenMod.Unturned.Users;
 using UnturnedMods.Shared.WebPanel;
 using well404.Economy;
 
@@ -22,6 +23,7 @@ namespace well404.Economy
         private readonly ILogger<EconomyPlugin> m_Logger;
 
         private IWebPanelRegistry? m_WebPanelRegistry;
+        private IPlayerMenuRegistry? m_PlayerMenuRegistry;
 
         public EconomyPlugin(
             IConfiguration configuration,
@@ -47,6 +49,7 @@ namespace well404.Economy
                 settings.KillRewards.Enabled ? "enabled" : "disabled");
 
             RegisterWebPanel();
+            RegisterPlayerMenu();
         }
 
         protected override async UniTask OnUnloadAsync()
@@ -54,6 +57,8 @@ namespace well404.Economy
             await UniTask.SwitchToMainThread();
             m_WebPanelRegistry?.UnregisterModule(EconomyWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
+            m_PlayerMenuRegistry?.UnregisterMenu(EconomyPlayerMenu.MenuId);
+            m_PlayerMenuRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
 
@@ -80,6 +85,28 @@ namespace well404.Economy
             registry.RegisterModule(EconomyWebPanelModule.Create(economy, userManager, configStore));
             m_WebPanelRegistry = registry;
             m_Logger.LogInformation("Economy: registered the balance-management module with the web panel.");
+        }
+
+        /// <summary>
+        /// Registers the player-facing wallet menu (balance + transfer) with the web panel's
+        /// player surface, if a panel is installed. Optional, like <see cref="RegisterWebPanel"/>.
+        /// </summary>
+        private void RegisterPlayerMenu()
+        {
+            var registry = LifetimeScope.ResolveOptional<IPlayerMenuRegistry>();
+            if (registry == null)
+            {
+                return;
+            }
+
+            var menu = new EconomyPlayerMenu(
+                LifetimeScope.Resolve<IEconomyProvider>(),
+                LifetimeScope.Resolve<IUserManager>(),
+                LifetimeScope.Resolve<IUnturnedUserDirectory>(),
+                m_Configuration);
+            registry.RegisterMenu(menu);
+            m_PlayerMenuRegistry = registry;
+            m_Logger.LogInformation("Economy: registered the player wallet menu with the web panel.");
         }
     }
 }
