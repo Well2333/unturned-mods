@@ -68,7 +68,6 @@
 <header>
   <h1>🛠️ Web Panel</h1>
   <div class="spacer"></div>
-  <input id="token" type="password" placeholder="访问 token（如已配置）" />
 </header>
 <div class="layout">
   <nav id="nav"><div class="empty">加载中…</div></nav>
@@ -91,23 +90,15 @@ const el = (tag, props={}, ...kids) => {
   return n;
 };
 
-const tokenInput = $("#token");
-tokenInput.value = localStorage.getItem("webpanel_token") || "";
-tokenInput.addEventListener("change", () => {
-  localStorage.setItem("webpanel_token", tokenInput.value);
-  loadModules();
-});
-
+// The page is served under a secret token path (…/<token>/), so every relative API call
+// carries the token automatically — there is no separate token field to fill in.
 function headers(extra={}) {
-  const h = Object.assign({}, extra);
-  const t = tokenInput.value.trim();
-  if (t) h["X-Web-Token"] = t;
-  return h;
+  return Object.assign({}, extra);
 }
 
 async function api(path, opts={}) {
   const res = await fetch(path, opts);
-  if (res.status === 401) throw new Error("未授权：请在右上角填入正确的访问 token。");
+  if (res.status === 401 || res.status === 404) throw new Error("未授权：访问链接中的 token 无效或已变更，请向管理员索取最新链接。");
   if (!res.ok) throw new Error("请求失败：HTTP " + res.status);
   return res.json();
 }
@@ -116,7 +107,7 @@ async function api(path, opts={}) {
 // which HttpListener rejects with 411).
 function invoke(module, action, params) {
   const body = (params && params.toString()) || "_=1";
-  return api(`/api/modules/${enc(module.id)}/${enc(action.id)}`, {
+  return api(`api/modules/${enc(module.id)}/${enc(action.id)}`, {
     method: "POST",
     headers: headers({ "Content-Type": "application/x-www-form-urlencoded" }),
     body
@@ -130,7 +121,7 @@ let flash = null; // {ok, text} shown once at the next render, near the save but
 async function loadModules() {
   const nav = $("#nav");
   try {
-    const data = await api("/api/modules", { headers: headers() });
+    const data = await api("api/modules", { headers: headers() });
     modules = data.modules || [];
   } catch (e) {
     nav.replaceChildren(el("div", { class:"empty", text: e.message }));
@@ -188,7 +179,7 @@ function buildCard(module, action) {
     for (const f of action.fields) row.append(fieldNode(f, inputs));
     card.append(row, msg, out);
     if (action.hasLoader) {
-      api(`/api/modules/${enc(module.id)}/${enc(action.id)}/values`, { headers: headers() })
+      api(`api/modules/${enc(module.id)}/${enc(action.id)}/values`, { headers: headers() })
         .then(d => prefill(inputs, action.fields, d.values || {}))
         .catch(() => {});
     }
@@ -228,7 +219,7 @@ function buildCollection(module, action, card, msg) {
   function reload() {
     editor.replaceChildren();
     msg.className = "msg";
-    api(`/api/modules/${enc(module.id)}/${enc(action.id)}/records`, { headers: headers() })
+    api(`api/modules/${enc(module.id)}/${enc(action.id)}/records`, { headers: headers() })
       .then(d => paint(d.records || []))
       .catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
   }
@@ -278,7 +269,7 @@ function buildCollection(module, action, card, msg) {
     const body = new URLSearchParams(); body.set("key", rec.key);
     msg.className = "msg";
     try {
-      const r = await api(`/api/modules/${enc(module.id)}/${enc(action.id)}/delete`, {
+      const r = await api(`api/modules/${enc(module.id)}/${enc(action.id)}/delete`, {
         method: "POST", headers: headers({ "Content-Type": "application/x-www-form-urlencoded" }), body: body.toString()
       });
       if (r.success) reload();

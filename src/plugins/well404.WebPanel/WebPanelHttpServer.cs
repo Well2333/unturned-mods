@@ -14,14 +14,16 @@ namespace well404.WebPanel
     /// <summary>
     /// A dependency-free HTTP host (BCL <see cref="HttpListener"/>) that serves the
     /// generic single-page panel and a small JSON API over the
-    /// <see cref="IWebPanelRegistry"/>:
+    /// <see cref="IWebPanelRegistry"/>. The admin surface lives entirely under a secret
+    /// <b>token path</b> (<c>/&lt;token&gt;/…</c>) — the unguessable first path segment IS the
+    /// auth, so a wrong or missing token is an ordinary 404 (no unauthorized oracle):
     /// <list type="bullet">
-    /// <item><c>GET /</c> — the SPA (no auth, so the token can be entered there).</item>
-    /// <item><c>GET /api/modules</c> — module + action metadata to render from.</item>
-    /// <item><c>POST /api/modules/{module}/{action}</c> — invoke an action.</item>
+    /// <item><c>GET /&lt;token&gt;/</c> — the SPA (its API calls are relative, so they stay in-path).</item>
+    /// <item><c>GET /&lt;token&gt;/api/modules</c> — module + action metadata to render from.</item>
+    /// <item><c>POST /&lt;token&gt;/api/modules/{module}/{action}</c> — invoke an action.</item>
     /// </list>
-    /// All admin <c>/api</c> calls require the token (when one is configured) in the
-    /// <c>X-Web-Token</c> header or a <c>?token=</c> query parameter.
+    /// The token is mandatory (the plugin generates one when config leaves it empty); anything
+    /// outside the token path — including bare <c>/</c> — reveals nothing.
     /// <para>
     /// It also serves a separate, per-player surface (no admin token; authenticated by a
     /// short-lived session token a player receives in-game):
@@ -108,13 +110,14 @@ namespace well404.WebPanel
                 var request = context.Request;
                 var path = request.Url?.AbsolutePath ?? "/";
 
-                if (request.HttpMethod == "GET" && (path == "/" || path == "/index.html"))
+                // CORS preflight (only fires for non-simple cross-origin requests via a proxy).
+                if (request.HttpMethod == "OPTIONS")
                 {
-                    WriteText(context.Response, 200, "text/html; charset=utf-8", m_Html);
+                    WriteText(context.Response, 204, "text/plain; charset=utf-8", string.Empty);
                     return;
                 }
 
-                // ----- player surface (separate auth) -------------------------
+                // ----- player surface (separate, per-player session auth) -----
                 if (request.HttpMethod == "GET" && (path == "/p" || path == "/p/"))
                 {
                     WriteText(context.Response, 200, "text/html; charset=utf-8", m_PlayerHtml);
@@ -127,25 +130,52 @@ namespace well404.WebPanel
                     return;
                 }
 
-                if (!path.StartsWith("/api/", StringComparison.Ordinal) && path != "/api")
+                // ----- admin surface (token-in-path: /<token>/…) --------------
+                // The secret token is the first path segment; a wrong/absent one is a plain 404,
+                // indistinguishable from a non-existent route (no "unauthorized" oracle).
+                var prefix = "/" + m_Token;
+                if (path == prefix)
+                {
+                    // Redirect to the trailing-slash form so the SPA's relative API calls resolve
+                    // under /<token>/ rather than the server root.
+                    context.Response.Redirect(prefix + "/");
+                    context.Response.StatusCode = 302;
+                    context.Response.Close();
+                    return;
+                }
+
+                if (!path.StartsWith(prefix + "/", StringComparison.Ordinal))
+                {
+                    // Anything outside the token path (including bare "/") reveals nothing.
+                    var body = path == "/"
+                        ? "Web Panel is running. Access requires the admin token URL."
+                        : "Not found";
+                    WriteText(context.Response, path == "/" ? 200 : 404, "text/plain; charset=utf-8", body);
+                    return;
+                }
+
+                // Strip the token prefix; route the remainder exactly like the old admin API.
+                var adminPath = path.Substring(prefix.Length);
+
+                if (request.HttpMethod == "GET" && (adminPath == "/" || adminPath == "/index.html"))
+                {
+                    WriteText(context.Response, 200, "text/html; charset=utf-8", m_Html);
+                    return;
+                }
+
+                if (!adminPath.StartsWith("/api/", StringComparison.Ordinal) && adminPath != "/api")
                 {
                     WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
                     return;
                 }
 
-                if (!IsAuthorized(request))
-                {
-                    WriteJson(context.Response, 401, "{\"success\":false,\"message\":\"Unauthorized\"}");
-                    return;
-                }
-
-                if (request.HttpMethod == "GET" && path == "/api/modules")
+                if (request.HttpMethod == "GET" && adminPath == "/api/modules")
                 {
                     WriteJson(context.Response, 200, BuildModulesJson());
                     return;
                 }
 
-                var segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                var segments = adminPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
                 if (segments.Length == 5 && segments[1] == "modules")
                 {
                     // ["api", "modules", "{module}", "{action}", "values" | "records" | "delete"]
@@ -536,23 +566,6 @@ namespace well404.WebPanel
             return !string.IsNullOrEmpty(header) ? header : request.QueryString["t"];
         }
 
-        private bool IsAuthorized(HttpListenerRequest request)
-        {
-            if (string.IsNullOrEmpty(m_Token))
-            {
-                return true;
-            }
-
-            var header = request.Headers["X-Web-Token"];
-            if (string.Equals(header, m_Token, StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            var query = request.QueryString["token"];
-            return string.Equals(query, m_Token, StringComparison.Ordinal);
-        }
-
         // ----- JSON building -------------------------------------------------
 
         private string BuildModulesJson()
@@ -726,11 +739,25 @@ namespace well404.WebPanel
         private static void WriteText(HttpListenerResponse response, int status, string contentType, string body)
         {
             var bytes = Encoding.UTF8.GetBytes(body);
+            SetCorsHeaders(response);
             response.StatusCode = status;
             response.ContentType = contentType;
             response.ContentLength64 = bytes.Length;
             response.OutputStream.Write(bytes, 0, bytes.Length);
             response.OutputStream.Close();
+        }
+
+        /// <summary>
+        /// Permissive CORS so the panel keeps working behind an arbitrary user-supplied reverse
+        /// proxy that may serve the page from a different origin. Safe to allow <c>*</c> here: auth
+        /// is a secret URL/token, never a cookie, so cross-origin JS gains nothing a direct request
+        /// wouldn't already have.
+        /// </summary>
+        private static void SetCorsHeaders(HttpListenerResponse response)
+        {
+            response.Headers["Access-Control-Allow-Origin"] = "*";
+            response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-Player-Token";
         }
 
         private static void WriteJson(HttpListenerResponse response, int status, string json)

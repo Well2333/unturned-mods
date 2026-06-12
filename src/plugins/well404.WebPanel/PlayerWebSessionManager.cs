@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using Autofac;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenMod.API.Ioc;
 using OpenMod.API.Plugins;
+using OpenMod.Unturned.Users;
 using UnturnedMods.Shared.WebPanel;
 
 namespace well404.WebPanel
@@ -38,10 +40,20 @@ namespace well404.WebPanel
         private readonly ConcurrentDictionary<string, PlayerSession> m_Sessions =
             new ConcurrentDictionary<string, PlayerSession>(StringComparer.Ordinal);
 
+        private volatile string? m_TunnelBaseUrl;
+
         public PlayerWebSessionManager(IPluginAccessor<WebPanelPlugin> pluginAccessor)
         {
             m_PluginAccessor = pluginAccessor;
         }
+
+        /// <summary>
+        /// Sets (or clears, with null) the live tunnel base URL. When present it takes precedence
+        /// over <c>web.publicBaseUrl</c>, so player links use the current public address even when
+        /// it is assigned dynamically at startup. Set by the plugin once the tunnel is up.
+        /// </summary>
+        public void SetTunnelBaseUrl(string? baseUrl)
+            => m_TunnelBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl!.Trim().TrimEnd('/');
 
         private WebServerSettings? ReadSettings()
         {
@@ -68,13 +80,16 @@ namespace well404.WebPanel
                 return null;
             }
 
-            var baseUrl = ResolveBaseUrl(settings);
+            // A live tunnel URL wins over static config; otherwise derive from settings.
+            var baseUrl = m_TunnelBaseUrl ?? ResolveBaseUrl(settings);
             if (baseUrl == null)
             {
                 return null;
             }
 
-            var minutes = settings.PlayerSessionMinutes > 0 ? settings.PlayerSessionMinutes : 5;
+            // Links are valid for at least 15 minutes (the floor); past that they stay valid only
+            // while the player is online (see Validate). So the "expiry" stored here is the floor.
+            var minutes = Math.Max(settings.PlayerSessionMinutes, 15);
             var token = NewToken();
             m_Sessions[token] = new PlayerSession(steamId, displayName ?? string.Empty,
                 DateTime.UtcNow.AddMinutes(minutes));
@@ -88,7 +103,11 @@ namespace well404.WebPanel
             return url;
         }
 
-        /// <summary>Returns the session for a token, or null if unknown/expired (expired ones are dropped).</summary>
+        /// <summary>
+        /// Returns the session for a token, or null if unknown/expired. A session is valid for at
+        /// least its floor window (≥15 min from creation); after that it stays valid only while the
+        /// player is still online, and is dropped the moment they go offline.
+        /// </summary>
         public PlayerSession? Validate(string? token)
         {
             if (string.IsNullOrEmpty(token) || !m_Sessions.TryGetValue(token!, out var session))
@@ -96,13 +115,41 @@ namespace well404.WebPanel
                 return null;
             }
 
-            if (session.ExpiresUtc <= DateTime.UtcNow)
+            // Within the floor window: always valid (even briefly offline mid-login).
+            if (DateTime.UtcNow <= session.ExpiresUtc)
             {
-                m_Sessions.TryRemove(token!, out _);
-                return null;
+                return session;
             }
 
-            return session;
+            // Past the floor: valid as long as the player is online; expire on disconnect.
+            if (IsOnline(session.SteamId))
+            {
+                return session;
+            }
+
+            m_Sessions.TryRemove(token!, out _);
+            return null;
+        }
+
+        /// <summary>True if a player with this Steam ID is currently connected.</summary>
+        private bool IsOnline(string steamId)
+        {
+            var plugin = m_PluginAccessor.Instance;
+            if (plugin == null || !plugin.IsComponentAlive)
+            {
+                return false;
+            }
+
+            try
+            {
+                var directory = plugin.LifetimeScope.Resolve<IUnturnedUserDirectory>();
+                return directory.GetOnlineUsers()
+                    .Any(u => string.Equals(u.Id, steamId, StringComparison.Ordinal));
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>Derives the public base URL (no trailing slash), or null if none is usable.</summary>

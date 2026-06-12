@@ -6,7 +6,7 @@
 | --- | --- |
 | `well404.Economy` | [经济系统](well404.Economy.md) — 货币、转账、击杀奖励、`IEconomyProvider` 对接 |
 | `well404.Shop` | [商店](well404.Shop.md) — 商品/组合包、买卖、权限折扣 |
-| `well404.WebPanel` | [Web 管理面板](well404.WebPanel.md) — 通用可视化管理面板(供各插件挂载模块)+ 面向玩家的网页界面(`/menu`:商店买卖、钱包转账、传送) |
+| `well404.WebPanel` | [Web 管理面板](well404.WebPanel.md) — 通用可视化管理面板(供各插件挂载模块)+ 面向玩家的网页界面(`/menu`:商店买卖、钱包转账、传送);路径式 token 鉴权 + 可选内置反代(cloudflared/ngrok) |
 | `well404.Essentials` | [实用功能](well404.Essentials.md) — 面向玩家的 home/tp/warp/gift/sleep/back，统一传送规则，经济收费可选 |
 
 > `well404.Shop` **硬依赖** `well404.Economy`(由它提供 `IEconomyProvider` 结算交易)。

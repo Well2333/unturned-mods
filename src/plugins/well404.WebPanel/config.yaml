@@ -13,15 +13,35 @@ web:
 
   port: 8080
 
-  # Access token, required in the `X-Web-Token` header (or `?token=`) for every /api call.
-  # MANDATORY for any non-loopback bindAddress: if left empty there, the server refuses to
-  # expose the panel and falls back to 127.0.0.1 (unless allowInsecurePublic is true).
-  # Empty token + loopback bind = no auth (local machine only).
+  # Secret admin token. The admin panel is ALWAYS served behind it as a path prefix:
+  #   http://host:port/<token>/
+  # The token IS the auth — a wrong/missing one returns a plain 404. Leave empty to have a
+  # random token minted each run (printed in the server log at startup); set a stable value
+  # here to keep the admin URL constant across restarts.
   token: ""
 
-  # Advanced / hidden escape hatch: allow a non-loopback bind WITHOUT a token.
-  # Insecure — anyone who can reach the port gets full admin access. Leave false.
-  allowInsecurePublic: false
+  # ---- Tunnel / reverse proxy (optional; exposes the panel without opening ports) ----
+  # Launches an admin-installed CLI tunnel (NOT bundled/downloaded) and uses its public URL
+  # for player /menu links and the admin URL. Hides the server's real IP; gives HTTPS for free.
+  tunnel:
+    enabled: false
+
+    # type: "cloudflare" | "custom"
+    #   cloudflare -> a no-account Cloudflare Quick Tunnel. Install `cloudflared`, then leave the
+    #                 rest at defaults; args/urlPattern are preset, only `command` (binary path)
+    #                 is used. You get a random https://<...>.trycloudflare.com URL.
+    #   custom     -> you control everything below (command/args/urlPattern/apiUrl), e.g. ngrok.
+    type: "cloudflare"
+
+    # The tunnel binary (or a full path to it). For cloudflare this is the only field that matters.
+    command: "cloudflared"
+
+    # The following four only apply when type: "custom". `{port}` is replaced with the panel port.
+    args: "http {port}"
+    urlPattern: "https://[a-z0-9-]+\\.ngrok[a-z0-9.-]*"   # regex to pull the URL out of output/api
+    apiUrl: "http://127.0.0.1:4040/api/tunnels"           # optional local JSON API to poll instead of logs
+    readyTimeoutSeconds: 30
+    # ^ The custom example above is ngrok (run `ngrok config add-authtoken <token>` once first).
 
   # ---- Player surface (the /p page players open in-game via /menu) ----
 

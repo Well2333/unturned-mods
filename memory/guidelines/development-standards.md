@@ -112,3 +112,8 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
   保证命令与面板看到一致的数据(参考 `EssentialsConfigStore` / `ShopConfigStore`)。
 - **判断标准**:装上 WebPanel 后,管理员**无需手改 `config.yaml`** 就能完成该插件的全部
   日常配置。达不到即不合规。
+
+**明确排除项**:`well404.WebPanel` 自身的 `web.*` 基础设施配置(`bindAddress`、`port`、
+管理面 `token`、`tunnel`、`publicBaseUrl` 等)**不纳入 WebUI 编辑**,只能改 `config.yaml`。
+理由:这些控制「面板自身如何对外暴露与鉴权」,把管理面密钥放进管理面页面里可改既矛盾又
+危险。其中**管理面 `token` 尤其严禁出现在任何 WebUI 表单或接口里**。

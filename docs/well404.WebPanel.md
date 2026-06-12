@@ -17,7 +17,8 @@ openmod install well404.WebPanel
 openmod reload
 ```
 
-启动后浏览器访问 `http://<bindAddress>:<port>`。装了哪个家族插件,面板里就出现对应模块。
+启动后日志会打印管理面访问地址 `http://<bindAddress>:<port>/<token>/`(见下「鉴权」)。
+装了哪个家族插件,面板里就出现对应模块。
 
 ## 配置（`config.yaml`）
 
@@ -27,40 +28,69 @@ openmod reload
 web:
   bindAddress: "127.0.0.1"   # 监听地址:127.0.0.1(仅本机)| 0.0.0.0(全部网卡)| 指定 IP
   port: 8080                 # 监听端口
-  token: ""                  # 访问令牌;对外暴露(非回环)时必填
-  allowInsecurePublic: false # 【危险】允许无令牌对外暴露,请保持 false
-  publicBaseUrl: ""          # 玩家 /menu 链接用的公网地址,如 http://your-ip:8080;空=由 bindAddress+port 推导
-  playerSessionMinutes: 5    # 玩家 /menu 链接的有效期(分钟)
+  token: ""                  # 管理面密钥;留空=首次启动随机生成 12 位并写回本文件
+  tunnel:                    # 可选:内置反代,把面板安全地暴露到公网(见下)
+    enabled: false
+    type: "cloudflare"       # cloudflare | custom
+    command: "cloudflared"
+  publicBaseUrl: ""          # 玩家 /menu 链接用的公网地址;空=由 bindAddress+port 推导(开了 tunnel 时自动用隧道地址)
+  playerSessionMinutes: 5    # 玩家链接有效期下限(分钟);实际不少于 15
 ```
 
-> **玩家面要能用,必须让玩家的浏览器能访问到本服务。** 若面板绑定 `127.0.0.1`,请把
-> `publicBaseUrl` 设为玩家可达的公网地址(经反向代理时通常是你的域名);否则 `/menu`
-> 会提示玩家面板不可达。玩家链接用一次性短时令牌鉴权,与管理员 `token` 完全独立。
+> **玩家面要能用,必须让玩家的浏览器能访问到本服务**:要么开 `tunnel`(推荐,见下),
+> 要么手动把 `publicBaseUrl` 设为玩家可达的公网地址。否则 `/menu` 会提示面板不可达。
 
-### 鉴权与安全
+### 鉴权与安全（路径式 token）
 
-| 场景 | 行为 |
+管理面**始终**藏在一个密钥路径后面:`http://host:port/<token>/`。**这个 token 就是鉴权**
+——路径不对(或没带)一律返回普通 404,不会泄露「未授权」这种信号,扫描者无从判断面板是否存在。
+
+- **token 强制存在**:`web.token` 留空时,插件会随机生成一个 **12 位大小写字母+数字**的
+  token 并**写回 `config.yaml`**(重启保持不变);也可自己设一个固定值。
+- token **不在 WebUI 中可改**(避免把后台钥匙暴露在后台页面里);只能改 `config.yaml`。
+- 启动日志会打印完整管理面地址 `…/<token>/`,**请妥善保管,等同后台密码**。
+- 玩家面(`/p`)用各玩家自己的一次性短时令牌,与管理员 token **完全独立、互不通用**。
+
+> 推荐做法:面板绑定 `127.0.0.1`,开启内置 `tunnel`(或自建反向代理)对外。这样游戏服
+> 不暴露真实 IP、不开入站端口,且自动获得 HTTPS。
+
+### 内置反代 / 隧道（`web.tunnel`，可选)
+
+开启后,插件会拉起一个**你已安装**的隧道工具(不内置、不下载二进制),把面板端口安全地
+反代到公网,并自动把得到的公网地址用于玩家 `/menu` 链接与管理面地址。两种类型:
+
+| `type` | 说明 |
 | --- | --- |
-| 回环地址 + 空令牌 | 无鉴权,仅本机可访问(默认,最安全) |
-| 对外地址 + 设置令牌 | 所有 `/api` 调用需带 `X-Web-Token` 头或 `?token=` 查询参数 |
-| 对外地址 + 空令牌 | 自动降级回 `127.0.0.1`,除非显式 `allowInsecurePublic: true`(强烈不建议) |
-| 回环地址 + 设置令牌 | 令牌被忽略(回环本就只对本机开放) |
+| `cloudflare` | Cloudflare Quick Tunnel(无需账号)。装好 `cloudflared` 即可,参数/URL 解析已内置;只需在 `command` 指定二进制路径(默认 `cloudflared`)。得到随机 `https://<…>.trycloudflare.com`。 |
+| `custom` | 你完全自定义 `command` / `args` / `urlPattern` / `apiUrl`(`{port}` 会被替换为面板端口)。适配 ngrok 等任意工具。 |
 
-> 推荐做法:面板绑定 `127.0.0.1`,通过 SSH 隧道或反向代理(自带 TLS + 鉴权)对外访问;
-> 如必须直接对外,请务必设置高强度 `token`。
+`custom` + ngrok 示例:
+
+```yaml
+tunnel:
+  enabled: true
+  type: "custom"
+  command: "ngrok"
+  args: "http {port}"
+  apiUrl: "http://127.0.0.1:4040/api/tunnels"
+  urlPattern: "https://[a-z0-9-]+\\.ngrok[a-z0-9.-]*"
+```
+
+> 隧道把**整个端口**(管理面 + 玩家面)反代出去,所以管理面的路径式 token 此时就是唯一防线
+> ——务必保密。隧道随插件卸载自动关闭。响应已带宽松 CORS 头,便于套在任意第三方反代后面。
 
 ## HTTP 接口
 
-| 方法 | 路径 | 鉴权 | 说明 |
-| --- | --- | --- | --- |
-| GET | `/`、`/index.html` | 否 | 单页应用(无需令牌,便于在 UI 内输入令牌) |
-| GET | `/api/modules` | 是* | 列出已注册模块及其字段 schema |
-| GET | `/api/modules/{module}/{action}/values` | 是* | 拉取设置 / 搜索动作的预填值 |
-| GET | `/api/modules/{module}/{action}/records` | 是* | 列出集合动作的记录 |
-| POST | `/api/modules/{module}/{action}` | 是* | 提交动作(表单 / 搜索) |
-| POST | `/api/modules/{module}/{action}/delete` | 是* | 删除集合中的一条记录 |
+管理面全部在 `/<token>/` 路径下(下表省略该前缀);路径式 token 即鉴权,无需额外头部。
 
-\* 仅当配置了 `token`(或对外暴露)时强制校验。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/<token>/`、`/<token>/index.html` | 管理单页应用(其 API 调用为相对路径,自动带上 token 前缀) |
+| GET | `/<token>/api/modules` | 列出已注册模块及其字段 schema |
+| GET | `/<token>/api/modules/{module}/{action}/values` | 拉取设置 / 搜索动作的预填值 |
+| GET | `/<token>/api/modules/{module}/{action}/records` | 列出集合动作的记录 |
+| POST | `/<token>/api/modules/{module}/{action}` | 提交动作(表单 / 搜索) |
+| POST | `/<token>/api/modules/{module}/{action}/delete` | 删除集合中的一条记录 |
 
 ### 玩家面接口(`/p`,独立鉴权)
 
@@ -70,8 +100,8 @@ web:
 | GET | `/api/p/view` | 玩家令牌 | 该玩家的全部菜单,每个菜单已预渲染 |
 | POST | `/api/p/invoke/{menu}` | 玩家令牌 | 以该玩家身份执行某张卡片的按钮 |
 
-> 玩家令牌经 `?t=`(或 `X-Player-Token` 头)传入,由短时会话校验;**管理员 `token`
-> 在玩家面无效,玩家令牌在管理面也无效**,两套鉴权互不通用。
+> 玩家令牌经 `?t=`(或 `X-Player-Token` 头)传入,由短时会话校验。**有效期至少 15 分钟,
+> 之后只要玩家仍在线就一直有效,一旦下线即失效**。管理员 token 在玩家面无效,反之亦然。
 
 ## 命令与权限
 
