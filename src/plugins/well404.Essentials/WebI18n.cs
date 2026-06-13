@@ -154,8 +154,8 @@ namespace well404.Essentials
                 = "列出所有你被允许传送的传送点。",
             ["Claim the free gift packs available to you (some refresh on a schedule)."]
                 = "领取向你开放的免费礼包（部分礼包会按计划定时刷新）。",
-            ["Vote to skip the night; once enough online players vote, the time changes to morning."]
-                = "投票跳过夜晚；当足够多的在线玩家投票后，时间会切换到白天。",
+            ["Cast a sleep vote; once enough online players have voted, the world toggles between day and night."]
+                = "投票睡觉；当足够多的在线玩家投票后，世界在白天与黑夜之间切换。",
         };
     }
 }

@@ -134,7 +134,7 @@ namespace well404.Essentials
                 new PlayerCommandInfo("/warp <name>", "Teleport to a named warp point you have access to.", "well404.Essentials:commands.warp", "Utilities"),
                 new PlayerCommandInfo("/warps", "List every warp point you are allowed to teleport to.", "well404.Essentials:commands.warps", "Utilities"),
                 new PlayerCommandInfo("/gift", "Claim the free gift packs available to you (some refresh on a schedule).", "well404.Essentials:commands.gift", "Utilities"),
-                new PlayerCommandInfo("/sleep", "Vote to skip the night; once enough online players vote, the time changes to morning.", "well404.Essentials:commands.sleep", "Utilities")
+                new PlayerCommandInfo("/sleep", "Cast a sleep vote; once enough online players have voted, the world toggles between day and night.", "well404.Essentials:commands.sleep", "Utilities")
             });
             m_Logger.LogInformation("Essentials: registered the player utilities menu with the web panel.");
         }
