@@ -607,6 +607,8 @@ namespace well404.WebPanel
                 AppendStringArray(sb, card.Lines);
                 sb.Append(",\"tags\":");
                 AppendStringArray(sb, card.Tags);
+                sb.Append(",\"meta\":");
+                AppendStringMap(sb, card.Meta);
                 sb.Append(",\"buttons\":[");
 
                 for (var j = 0; j < card.Buttons.Count; j++)
@@ -753,6 +755,27 @@ namespace well404.WebPanel
 
             sb.Append('}');
             return sb.ToString();
+        }
+
+        private static void AppendStringMap(StringBuilder sb, IReadOnlyDictionary<string, string>? map)
+        {
+            sb.Append('{');
+            if (map != null)
+            {
+                var first = true;
+                foreach (var pair in map)
+                {
+                    if (!first)
+                    {
+                        sb.Append(',');
+                    }
+
+                    first = false;
+                    sb.Append(Json.Encode(pair.Key)).Append(':').Append(Json.Encode(pair.Value));
+                }
+            }
+
+            sb.Append('}');
         }
 
         private static void AppendStringArray(StringBuilder sb, IReadOnlyList<string>? items)

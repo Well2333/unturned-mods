@@ -40,15 +40,41 @@
   .pills { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px; }
   .pill { display:inline-block; background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:3px 10px; font-size:12px; color:var(--fg); }
   .btns { display:flex; flex-wrap:wrap; gap:8px; }
-  /* Shop tab: lay items out as responsive product tiles instead of a tall single column. */
-  .cards.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; align-items:stretch; }
-  .cards.grid .card { display:flex; flex-direction:column; margin-bottom:0; }
-  .cards.grid .card h3 { font-size:16px; }
-  .cards.grid .card .lines { font-size:13.5px; }
-  .cards.grid .card .pills { margin-top:2px; }
-  .cards.grid .card .btns { margin-top:auto; padding-top:4px; }
-  .cards.grid .card .btns .act { flex:1; min-width:0; padding:9px 10px; }
-  .cards.grid .card .act.primary { background:var(--ok); border-color:var(--ok); }
+  /* ---- Shop: e-commerce-style sections, dense card grid + compact list mode ---- */
+  .shopbar { display:flex; align-items:center; gap:10px; margin:0 0 14px; flex-wrap:wrap; }
+  .shopbar .head { margin:0; }
+  .modeToggle { margin-left:auto; display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .modeToggle button { background:var(--panel2); border:0; color:var(--muted); padding:6px 12px; cursor:pointer; font-size:13px; line-height:1; }
+  .modeToggle button.active { background:var(--accent); color:#fff; }
+  .shopsec { margin:0 0 16px; }
+  .shopsec .grouphead { display:flex; align-items:center; gap:8px; margin:0 0 8px; }
+  .shopsec .grouphead .cnt { color:var(--muted); font-weight:400; }
+  /* card grid */
+  .tilegrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:10px; }
+  .tilegrid.bundles { grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:11px 12px; display:flex; flex-direction:column; gap:7px; transition:border-color .12s, box-shadow .12s; }
+  .tile:hover { border-color:#4a4d55; box-shadow:0 4px 14px rgba(0,0,0,.25); }
+  .tile .nm { font-weight:600; font-size:14.5px; line-height:1.25; }
+  .tile .price { display:flex; align-items:baseline; gap:7px; flex-wrap:wrap; }
+  .tile .buy { color:var(--ok); font-size:17px; font-weight:700; }
+  .tile .was { color:var(--muted); text-decoration:line-through; font-size:12px; }
+  .tile .sell { color:var(--muted); font-size:12px; }
+  .tile .pills { margin:0; }
+  .tile .btns { margin-top:auto; display:flex; gap:6px; padding-top:2px; }
+  .tile .btns .act { flex:1; min-width:0; padding:8px 8px; font-size:13px; }
+  .tile .btns .act.buy { background:var(--ok); border-color:var(--ok); color:#fff; }
+  /* list mode: compact responsive rows (1 col on narrow Steam webview, more when wide) */
+  .shoplist { display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:7px; }
+  .srow { display:flex; align-items:center; gap:9px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 11px; }
+  .srow.bundle { grid-column:1/-1; }
+  .srow .idb { font-size:11px; color:var(--muted); background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:2px 6px; flex:0 0 auto; font-variant-numeric:tabular-nums; }
+  .srow .nm { font-weight:600; font-size:14px; flex:0 0 auto; max-width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .srow .mid { flex:1 1 auto; min-width:0; display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+  .srow .qty { font-size:11px; color:var(--muted); background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:1px 7px; }
+  .srow .px { display:flex; gap:6px; flex:0 0 auto; margin-left:auto; }
+  button.act.sm { padding:6px 10px; font-size:13px; border-radius:6px; white-space:nowrap; }
+  button.act.sm.buy { background:var(--ok); border-color:var(--ok); color:#fff; }
+  .pricedash { color:var(--muted); padding:6px 4px; font-size:13px; }
   button.act { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:8px 16px; border-radius:7px; cursor:pointer; font-size:14px; }
   button.act:hover { filter:brightness(1.15); }
   button.act:disabled { opacity:.5; cursor:default; }
@@ -88,12 +114,14 @@ const STR = {
         empty:"(nothing here)", noToken:"Missing session token. Type /menu in-game to reopen the panel.",
         sessionEnded:"Session expired — reopen the panel in-game with /menu.",
         staleNote:"This page does not refresh on its own — tap ↻ to get the latest data.",
-        refresh:"Refresh", reqFailed:"Request failed" },
+        refresh:"Refresh", reqFailed:"Request failed",
+        items:"Items", bundles:"Bundles", cardMode:"Cards", listMode:"List" },
   zh: { title:"🎮 玩家面板", loading:"加载中…", noFeatures:"暂时没有可用的功能。",
         empty:"（暂无内容）", noToken:"缺少会话令牌。请在游戏内输入 /menu 重新打开面板。",
         sessionEnded:"会话已过期，请在游戏内用 /menu 重新打开面板。",
         staleNote:"本页不会自动刷新——点 ↻ 获取最新数据。",
-        refresh:"刷新", reqFailed:"请求失败" }
+        refresh:"刷新", reqFailed:"请求失败",
+        items:"单品", bundles:"礼包", cardMode:"卡片", listMode:"列表" }
 };
 function T(k){ return (STR[lang] && STR[lang][k]) || STR.en[k] || k; }
 
@@ -214,6 +242,10 @@ function renderView(menu, view) {
   const main = $("#main");
   main.replaceChildren();
   main.append(el("div", { class: "note" }, el("span", { text: "ℹ " + T("staleNote") })));
+
+  // The shop gets a dedicated e-commerce layout (sections + card/list modes).
+  if (menu.id === "shop") { renderShop(menu, view, main); return; }
+
   if (view.bodyMarkdown) main.append(el("div", { class: "md", html: mdToHtml(view.bodyMarkdown) }));
   if (view.header) main.append(el("div", { class: "head", text: view.header }));
   if (view.message) main.append(el("div", { class: "notice", text: view.message }));
@@ -221,10 +253,108 @@ function renderView(menu, view) {
     if (!view.message) main.append(el("div", { class: "empty", text: T("empty") }));
     return;
   }
-  // The shop reads best as a grid of product tiles; other menus stay a single column.
-  const wrap = el("div", { class: "cards" + (menu.id === "shop" ? " grid" : "") });
+  const wrap = el("div", { class: "cards" });
   for (const card of (view.cards || [])) wrap.append(buildCard(menu, card));
   main.append(wrap);
+}
+
+let shopMode = localStorage.getItem("shop_mode") || "card";   // "card" | "list"
+
+// The shop: a balance chip + a card/list mode toggle, then items and bundles in
+// separate sections, each laid out densely to avoid wasted space (esp. the narrow
+// Steam in-game browser). Card mode = product tiles; list mode = compact rows.
+function renderShop(menu, view, main) {
+  const bar = el("div", { class: "shopbar" });
+  if (view.header) bar.append(el("div", { class: "head", text: view.header }));
+  const toggle = el("div", { class: "modeToggle" });
+  for (const m of ["card", "list"]) {
+    toggle.append(el("button", {
+      class: shopMode === m ? "active" : "",
+      text: T(m === "card" ? "cardMode" : "listMode"),
+      onclick: () => { if (shopMode !== m) { shopMode = m; localStorage.setItem("shop_mode", m); renderView(menu, view); } }
+    }));
+  }
+  bar.append(toggle);
+  main.append(bar);
+
+  if (view.message) main.append(el("div", { class: "notice", text: view.message }));
+
+  const cards = view.cards || [];
+  if (!cards.length) { main.append(el("div", { class: "empty", text: T("empty") })); return; }
+
+  const items = cards.filter(c => (c.meta && c.meta.kind) !== "bundle");
+  const bundles = cards.filter(c => (c.meta && c.meta.kind) === "bundle");
+  if (items.length) main.append(shopSection(menu, T("items"), items, false));
+  if (bundles.length) main.append(shopSection(menu, T("bundles"), bundles, true));
+}
+
+function shopSection(menu, title, cards, isBundle) {
+  const sec = el("div", { class: "shopsec" });
+  sec.append(el("div", { class: "grouphead" },
+    el("span", { text: title }), el("span", { class: "cnt", text: "· " + cards.length })));
+  if (shopMode === "list") {
+    const list = el("div", { class: "shoplist" });
+    for (const c of cards) list.append(buildShopRow(menu, c, isBundle));
+    sec.append(list);
+  } else {
+    const grid = el("div", { class: "tilegrid" + (isBundle ? " bundles" : "") });
+    for (const c of cards) grid.append(buildShopTile(menu, c, isBundle));
+    sec.append(grid);
+  }
+  return sec;
+}
+
+// Finds a card's buy/sell button and renders it showing the price; returns a muted dash
+// when that side is unavailable (price 0). `small` picks the compact list-row styling.
+function priceButton(menu, card, actionId, small) {
+  const btnDef = (card.buttons || []).find(b => b.actionId === actionId);
+  const price = card.meta && card.meta[actionId];   // meta.buy / meta.sell
+  if (!btnDef || !price) return el("span", { class: "pricedash", text: "—" });
+  const cls = "act " + (small ? "sm " : "") + (actionId === "buy" ? "buy" : "");
+  const node = el("button", { class: cls, text: btnDef.label + " " + price,
+    onclick: () => invoke(menu, card, btnDef, node) });
+  return node;
+}
+
+function buildShopTile(menu, card, isBundle) {
+  const meta = card.meta || {};
+  const tile = el("div", { class: "tile" });
+  tile.append(el("div", { class: "nm", text: card.label }));
+
+  if (meta.buy) {
+    const price = el("div", { class: "price" }, el("span", { class: "buy", text: meta.buy }));
+    if (meta.buyWas) price.append(el("span", { class: "was", text: meta.buyWas }));
+    tile.append(price);
+  }
+  if (isBundle && card.tags && card.tags.length) {
+    tile.append(el("div", { class: "pills" }, ...card.tags.map(t => el("span", { class: "pill", text: t }))));
+  } else if (!isBundle && meta.qty) {
+    tile.append(el("div", { class: "pills" }, el("span", { class: "qty", text: "×" + meta.qty })));
+  }
+
+  const btns = el("div", { class: "btns" });
+  const buy = (card.buttons || []).find(b => b.actionId === "buy");
+  const sell = (card.buttons || []).find(b => b.actionId === "sell");
+  if (buy) { const b = el("button", { class: "act buy", text: buy.label, onclick: () => invoke(menu, card, buy, b) }); btns.append(b); }
+  if (sell) { const s = el("button", { class: "act", text: sell.label + (meta.sell ? " " + meta.sell : ""), onclick: () => invoke(menu, card, sell, s) }); btns.append(s); }
+  if (buy || sell) tile.append(btns);
+  return tile;
+}
+
+function buildShopRow(menu, card, isBundle) {
+  const meta = card.meta || {};
+  const row = el("div", { class: "srow" + (isBundle ? " bundle" : "") });
+  if (!isBundle && meta.itemId) row.append(el("span", { class: "idb", text: "#" + meta.itemId }));
+  row.append(el("span", { class: "nm", text: card.label }));
+  const mid = el("div", { class: "mid" });
+  if (isBundle) {
+    for (const t of (card.tags || [])) mid.append(el("span", { class: "pill", text: t }));
+  } else if (meta.qty) {
+    mid.append(el("span", { class: "qty", text: "×" + meta.qty }));
+  }
+  row.append(mid);
+  row.append(el("div", { class: "px" }, priceButton(menu, card, "buy", true), priceButton(menu, card, "sell", true)));
+  return row;
 }
 
 function buildCard(menu, card) {

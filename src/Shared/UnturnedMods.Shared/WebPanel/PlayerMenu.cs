@@ -61,14 +61,19 @@ namespace UnturnedMods.Shared.WebPanel
             string label,
             IReadOnlyList<string>? lines = null,
             IReadOnlyList<string>? tags = null,
-            IReadOnlyList<PlayerButton>? buttons = null)
+            IReadOnlyList<PlayerButton>? buttons = null,
+            IReadOnlyDictionary<string, string>? meta = null)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
             Label = label ?? throw new ArgumentNullException(nameof(label));
             Lines = lines ?? Array.Empty<string>();
             Tags = tags ?? Array.Empty<string>();
             Buttons = buttons ?? Array.Empty<PlayerButton>();
+            Meta = meta ?? EmptyMeta;
         }
+
+        private static readonly IReadOnlyDictionary<string, string> EmptyMeta =
+            new Dictionary<string, string>(0);
 
         /// <summary>Identifies the entry; passed back as the <c>cardKey</c> on a button action.</summary>
         public string Key { get; }
@@ -82,6 +87,14 @@ namespace UnturnedMods.Shared.WebPanel
         public IReadOnlyList<string> Tags { get; }
 
         public IReadOnlyList<PlayerButton> Buttons { get; }
+
+        /// <summary>
+        /// Optional structured key/value hints a menu can attach for richer client rendering (e.g.
+        /// the shop sets <c>kind</c>=item|bundle, <c>itemId</c>, formatted <c>buy</c>/<c>sell</c>
+        /// prices) so the page can offer card/list layouts. Values are pre-formatted strings; the
+        /// generic renderer ignores keys it doesn't know.
+        /// </summary>
+        public IReadOnlyDictionary<string, string> Meta { get; }
     }
 
     /// <summary>The rendered state of a player menu (one tab).</summary>

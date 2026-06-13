@@ -68,6 +68,12 @@ namespace well404.Shop
             {
                 var lines = new List<string>();
                 var buttons = new List<PlayerButton>();
+                // Structured hints so the client can render either a product-card grid or a compact
+                // list (id | name | buy | sell). Prices here are pre-formatted with the currency.
+                var meta = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["kind"] = entry.IsBundle ? "bundle" : "item",
+                };
 
                 if (entry.BuyPrice > 0m)
                 {
@@ -76,12 +82,18 @@ namespace well404.Shop
                         ? m_Tr.Format(lang, "Buy price: {0}{1} each (was {0}{2})", symbol, Money(unit), Money(entry.BuyPrice))
                         : m_Tr.Format(lang, "Buy price: {0}{1} each", symbol, Money(unit)));
                     buttons.Add(new PlayerButton("buy", m_Tr.Resolve("Buy", lang), "primary", m_Tr.Resolve("Quantity to buy", lang)));
+                    meta["buy"] = symbol + Money(unit);
+                    if (multiplier < 1m)
+                    {
+                        meta["buyWas"] = symbol + Money(entry.BuyPrice);
+                    }
                 }
 
                 if (entry.SellPrice > 0m)
                 {
                     lines.Add(m_Tr.Format(lang, "Sell price: {0}{1} each", symbol, Money(entry.SellPrice)));
                     buttons.Add(new PlayerButton("sell", m_Tr.Resolve("Sell", lang), promptLabel: m_Tr.Resolve("Quantity to sell", lang)));
+                    meta["sell"] = symbol + Money(entry.SellPrice);
                 }
 
                 // A bundle: show a "contains" note as a line (distinct from the pills), then each
@@ -96,12 +108,17 @@ namespace well404.Shop
                         tags.Add(ItemLabel(content.ItemId, content.Amount, names));
                     }
                 }
-                else if (entry.Amount > 1)
+                else
                 {
-                    lines.Add(m_Tr.Format(lang, "Each purchase gives {0}.", ItemLabel(entry.ItemId, entry.Amount, names)));
+                    meta["itemId"] = entry.ItemId.ToString(CultureInfo.InvariantCulture);
+                    if (entry.Amount > 1)
+                    {
+                        lines.Add(m_Tr.Format(lang, "Each purchase gives {0}.", ItemLabel(entry.ItemId, entry.Amount, names)));
+                        meta["qty"] = entry.Amount.ToString(CultureInfo.InvariantCulture);
+                    }
                 }
 
-                cards.Add(new PlayerCard(entry.Id, entry.Name, lines, tags, buttons));
+                cards.Add(new PlayerCard(entry.Id, entry.Name, lines, tags, buttons, meta));
             }
 
             var header = m_Tr.Format(lang, "Balance: {0}{1}", symbol, Money(balance));
