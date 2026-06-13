@@ -4,15 +4,15 @@
     Plugin project. Most settings are inherited from the repo-root
     Directory.Build.props and Directory.Packages.props.
 
-    The project file name is well404.WebPanel.csproj, so RootNamespace and
-    AssemblyName both default to "well404.WebPanel" and stay EQUAL — this is
+    The project file name is well404.AdminTools.csproj, so RootNamespace and
+    AssemblyName both default to "well404.AdminTools" and stay EQUAL — this is
     REQUIRED for IConfiguration / IStringLocalizer to resolve correctly.
     Do not override them with different values.
   -->
 
   <PropertyGroup>
-    <Version>0.4.0</Version>
-    <Description>Web Panel</Description>
+    <Version>0.1.0</Version>
+    <Description>Admin Tools</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageTags>openmod openmod-plugin unturned</PackageTags>
@@ -28,26 +28,14 @@
   <ItemGroup>
     <EmbeddedResource Include="config.yaml" />
     <EmbeddedResource Include="translations.yaml" />
-    <!-- The generic single-page panel, served by WebPanelHttpServer. -->
-    <EmbeddedResource Include="index.html" />
-    <!-- The player-facing single-page surface, served at /p. -->
-    <EmbeddedResource Include="player.html" />
   </ItemGroup>
 
-  <!-- The web-panel registration abstraction (IWebPanelRegistry + descriptors) lives
-       in the shared library. Its compiled UnturnedMods.Shared.dll must be deployed
-       alongside the plugin; scripts/build.sh flattens ProjectReference outputs too. -->
+  <!-- Shares the WebPanel abstractions (IWebPanelRegistry / IWebTranslationRegistry) from the
+       cross-plugin library. UnturnedMods.Shared is NEVER published to NuGet, so it is kept OUT of
+       this package's nuspec deps (PrivateAssets="all") and bundled into lib/ as a plain dll. -->
   <ItemGroup>
-    <!-- PrivateAssets="all" keeps UnturnedMods.Shared OUT of this package's nuspec
-         dependencies. It is never published to NuGet, so a declared dependency makes
-         `openmod install` fail resolving it from nuget.org. The dll is still copied to
-         OutputPath and bundled into lib/ by IncludeSharedInPackage below. -->
     <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" PrivateAssets="all" />
   </ItemGroup>
-
-  <!-- UnturnedMods.Shared is not a published NuGet package, so bundle its compiled dll
-       into this plugin's package (lib/) — otherwise `openmod install` would deploy the
-       plugin without it. (scripts/build.sh already handles the flat local deploy.) -->
   <PropertyGroup>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeSharedInPackage</TargetsForTfmSpecificBuildOutput>
   </PropertyGroup>

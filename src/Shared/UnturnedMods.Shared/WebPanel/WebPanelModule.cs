@@ -141,7 +141,10 @@ namespace UnturnedMods.Shared.WebPanel
         Text,
         Number,
         Boolean,
-        Select
+        Select,
+
+        /// <summary>A multi-line text box (e.g. for Markdown content).</summary>
+        TextArea
     }
 
     /// <summary>An input field in a <see cref="WebActionKind.Form"/> or <see cref="WebActionKind.Search"/> action.</summary>

@@ -1,5 +1,7 @@
 # unturned-mods
 
+> 🌐 **English:** see [README.en.md](README.en.md) for an English overview.
+
 基于 [OpenMod](https://openmod.github.io/) 开发的 **Unturned** 插件集合（多插件
 monorepo）。各插件彼此独立、可单独构建与部署，但共享统一的构建与运行环境。
 

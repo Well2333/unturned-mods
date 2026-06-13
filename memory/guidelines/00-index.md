@@ -4,6 +4,7 @@
 
 | 文件 | 内容 |
 | --- | --- |
+| [working-protocol.md](working-protocol.md) | **接到任务后如何推进**：提问只在开头、之后自动作业、禁止中途停下提问 |
 | [development-standards.md](development-standards.md) | 编码规范、OpenMod 插件硬性约束、依赖与版本管理 |
 | [architecture.md](architecture.md) | 仓库结构、多插件设计、共享环境的设计决策 |
 | [commit-and-memory-workflow.md](commit-and-memory-workflow.md) | 提交流程、变更记录撰写规则、记忆同步规则 |

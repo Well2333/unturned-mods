@@ -40,6 +40,7 @@ namespace well404.WebPanel
     {
         private readonly IWebPanelRegistry m_Registry;
         private readonly IPlayerMenuRegistry m_PlayerRegistry;
+        private readonly IWebTranslationRegistry m_Translations;
         private readonly PlayerWebSessionManager m_Sessions;
         private readonly ILogger m_Logger;
         private readonly string m_Token;
@@ -51,6 +52,7 @@ namespace well404.WebPanel
         public WebPanelHttpServer(
             IWebPanelRegistry registry,
             IPlayerMenuRegistry playerRegistry,
+            IWebTranslationRegistry translations,
             PlayerWebSessionManager sessions,
             ILogger logger,
             string prefix,
@@ -60,6 +62,7 @@ namespace well404.WebPanel
         {
             m_Registry = registry;
             m_PlayerRegistry = playerRegistry;
+            m_Translations = translations;
             m_Sessions = sessions;
             m_Logger = logger;
             m_Token = token;
@@ -68,6 +71,15 @@ namespace well404.WebPanel
             m_Listener = new HttpListener();
             m_Listener.Prefixes.Add(prefix);
         }
+
+        /// <summary>The language requested via <c>?lang=</c>, or the default when absent.</summary>
+        private string LangOf(HttpListenerRequest request)
+        {
+            var lang = request.QueryString["lang"];
+            return string.IsNullOrWhiteSpace(lang) ? m_Translations.DefaultLanguage : lang!;
+        }
+
+        private string Tr(string? key, string lang) => m_Translations.Resolve(key ?? string.Empty, lang);
 
         public void Start()
         {
@@ -171,7 +183,7 @@ namespace well404.WebPanel
 
                 if (request.HttpMethod == "GET" && adminPath == "/api/modules")
                 {
-                    WriteJson(context.Response, 200, BuildModulesJson());
+                    WriteJson(context.Response, 200, BuildModulesJson(LangOf(request)));
                     return;
                 }
 
@@ -239,7 +251,7 @@ namespace well404.WebPanel
             WebActionResult result;
             try
             {
-                result = await action.Handler(new WebActionRequest(values)).ConfigureAwait(false);
+                result = await action.Handler(new WebActionRequest(values, LangOf(context.Request))).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -329,7 +341,7 @@ namespace well404.WebPanel
             WebActionResult result;
             try
             {
-                result = await action.DeleteHandler(new WebActionRequest(values)).ConfigureAwait(false);
+                result = await action.DeleteHandler(new WebActionRequest(values, LangOf(context.Request))).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -399,11 +411,11 @@ namespace well404.WebPanel
             if (session == null)
             {
                 WriteJson(context.Response, 401,
-                    "{\"ok\":false,\"message\":\"会话已过期，请在游戏内重新打开面板。\"}");
+                    "{\"ok\":false,\"message\":\"Session expired — reopen the panel in-game.\"}");
                 return;
             }
 
-            var ctx = new PlayerMenuContext(session.SteamId, session.DisplayName);
+            var ctx = new PlayerMenuContext(session.SteamId, session.DisplayName, LangOf(context.Request));
             var segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
 
             // ["api", "p", "view"]
@@ -429,7 +441,10 @@ namespace well404.WebPanel
             var sb = new StringBuilder();
             sb.Append("{\"ok\":true,\"player\":")
                 .Append("{\"name\":").Append(Json.Encode(ctx.DisplayName)).Append('}')
-                .Append(",\"menus\":[");
+                .Append(",\"lang\":").Append(Json.Encode(ctx.Language))
+                .Append(',');
+            AppendLanguagesJson(sb);
+            sb.Append(",\"menus\":[");
 
             for (var i = 0; i < menus.Count; i++)
             {
@@ -442,7 +457,7 @@ namespace well404.WebPanel
                 var view = await RenderSafeAsync(menu, ctx).ConfigureAwait(false);
                 sb.Append('{')
                     .Append("\"id\":").Append(Json.Encode(menu.Id)).Append(',')
-                    .Append("\"title\":").Append(Json.Encode(menu.Title)).Append(',')
+                    .Append("\"title\":").Append(Json.Encode(Tr(menu.Title, ctx.Language))).Append(',')
                     .Append("\"icon\":").Append(Json.Encode(menu.Icon)).Append(',')
                     .Append("\"view\":");
                 AppendPlayerView(sb, view);
@@ -509,7 +524,7 @@ namespace well404.WebPanel
             {
                 m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} render threw.", menu.Id);
                 return new PlayerMenuView(menu.Title, null, Array.Empty<PlayerCard>(),
-                    "加载失败：" + ex.Message);
+                    "Failed to load: " + ex.Message);
             }
         }
 
@@ -519,6 +534,7 @@ namespace well404.WebPanel
                 .Append("\"title\":").Append(Json.Encode(view.Title)).Append(',')
                 .Append("\"header\":").Append(Json.Encode(view.Header)).Append(',')
                 .Append("\"message\":").Append(Json.Encode(view.Message)).Append(',')
+                .Append("\"bodyMarkdown\":").Append(Json.Encode(view.BodyMarkdown)).Append(',')
                 .Append("\"cards\":[");
 
             for (var i = 0; i < view.Cards.Count; i++)
@@ -568,10 +584,20 @@ namespace well404.WebPanel
 
         // ----- JSON building -------------------------------------------------
 
-        private string BuildModulesJson()
+        /// <summary>Appends <c>"lang":"..","languages":[..]</c> for the client's language switcher.</summary>
+        private void AppendLanguagesJson(StringBuilder sb)
+        {
+            sb.Append("\"defaultLanguage\":").Append(Json.Encode(m_Translations.DefaultLanguage))
+                .Append(",\"languages\":");
+            AppendStringArray(sb, m_Translations.Languages);
+        }
+
+        private string BuildModulesJson(string lang)
         {
             var sb = new StringBuilder();
-            sb.Append("{\"modules\":[");
+            sb.Append("{\"lang\":").Append(Json.Encode(lang)).Append(',');
+            AppendLanguagesJson(sb);
+            sb.Append(",\"modules\":[");
             var modules = m_Registry.GetModules();
             for (var i = 0; i < modules.Count; i++)
             {
@@ -583,7 +609,7 @@ namespace well404.WebPanel
 
                 sb.Append('{')
                     .Append("\"id\":").Append(Json.Encode(module.Id)).Append(',')
-                    .Append("\"title\":").Append(Json.Encode(module.Title)).Append(',')
+                    .Append("\"title\":").Append(Json.Encode(Tr(module.Title, lang))).Append(',')
                     .Append("\"icon\":").Append(Json.Encode(module.Icon)).Append(',')
                     .Append("\"actions\":[");
 
@@ -597,13 +623,13 @@ namespace well404.WebPanel
 
                     sb.Append('{')
                         .Append("\"id\":").Append(Json.Encode(action.Id)).Append(',')
-                        .Append("\"label\":").Append(Json.Encode(action.Label)).Append(',')
+                        .Append("\"label\":").Append(Json.Encode(Tr(action.Label, lang))).Append(',')
                         .Append("\"kind\":").Append(Json.Encode(action.Kind.ToString().ToLowerInvariant())).Append(',')
                         .Append("\"hasLoader\":").Append(Json.Bool(action.Loader != null)).Append(',')
                         .Append("\"hasDelete\":").Append(Json.Bool(action.DeleteHandler != null)).Append(',')
                         .Append("\"keyField\":").Append(Json.Encode(action.KeyField)).Append(',')
                         .Append("\"layout\":").Append(Json.Encode(action.Layout)).Append(',')
-                        .Append("\"description\":").Append(Json.Encode(action.Description)).Append(',')
+                        .Append("\"description\":").Append(Json.Encode(Tr(action.Description, lang))).Append(',')
                         .Append("\"fields\":[");
 
                     for (var k = 0; k < action.Fields.Count; k++)
@@ -616,12 +642,12 @@ namespace well404.WebPanel
 
                         sb.Append('{')
                             .Append("\"name\":").Append(Json.Encode(field.Name)).Append(',')
-                            .Append("\"label\":").Append(Json.Encode(field.Label)).Append(',')
+                            .Append("\"label\":").Append(Json.Encode(Tr(field.Label, lang))).Append(',')
                             .Append("\"type\":").Append(Json.Encode(field.Type.ToString().ToLowerInvariant())).Append(',')
                             .Append("\"required\":").Append(Json.Bool(field.Required)).Append(',')
-                            .Append("\"placeholder\":").Append(Json.Encode(field.Placeholder)).Append(',')
+                            .Append("\"placeholder\":").Append(Json.Encode(field.Placeholder == null ? null : Tr(field.Placeholder, lang))).Append(',')
                             .Append("\"options\":");
-                        AppendStringArray(sb, field.Options);
+                        AppendLocalizedStringArray(sb, field.Options, lang);
                         sb.Append('}');
                     }
 
@@ -686,6 +712,29 @@ namespace well404.WebPanel
                 }
 
                 sb.Append(Json.Encode(items[i]));
+            }
+
+            sb.Append(']');
+        }
+
+        /// <summary>Like <see cref="AppendStringArray"/> but resolves each item as an i18n key.</summary>
+        private void AppendLocalizedStringArray(StringBuilder sb, IReadOnlyList<string>? items, string lang)
+        {
+            if (items == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('[');
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(',');
+                }
+
+                sb.Append(Json.Encode(Tr(items[i], lang)));
             }
 
             sb.Append(']');

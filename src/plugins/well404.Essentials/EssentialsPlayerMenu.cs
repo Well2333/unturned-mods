@@ -1,101 +1,299 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Localization;
 using OpenMod.API.Users;
 using OpenMod.Core.Users;
 using OpenMod.Unturned.Users;
+using Steamworks;
 using UnturnedMods.Shared.WebPanel;
 using well404.Essentials.Data;
+using well404.Essentials.Gift;
+using well404.Essentials.Party;
 using well404.Essentials.Teleport;
+using well404.Essentials.Tp;
+using well404.Essentials.Util;
 using well404.Essentials.Warps;
+using well404.Essentials.Sleep;
 
 namespace well404.Essentials
 {
     /// <summary>
-    /// The player-facing convenience surface for the web panel: lets a player teleport home, back
-    /// to their last death point, and to any warp they have access to. Each destination is a card
-    /// with a single teleport button; the teleport runs through the same <see cref="TeleportService"/>
-    /// pipeline as the in-game commands (cooldown, optional fee, warmup). Registered optionally via
-    /// <see cref="IPlayerMenuRegistry"/>.
+    /// The player-facing "Utilities" surface for the web panel: home/back/warps, teleport requests
+    /// (send and accept), party invites (send/accept/leave/members), gift claiming and sleep voting —
+    /// all driven through the same services as the in-game commands. Web text is localized to the
+    /// player's chosen language; in-game notices use the server's language.
     /// </summary>
     public sealed class EssentialsPlayerMenu : IPlayerMenu
     {
         public const string MenuId = "essentials";
-
         private const string WarpPrefix = "warp:";
 
         private readonly PlayerDataStore m_PlayerData;
         private readonly WarpService m_Warps;
         private readonly TeleportService m_Teleport;
-        private readonly IUserManager m_UserManager;
+        private readonly TeleportRequestManager m_Requests;
+        private readonly PartyInviteManager m_Invites;
+        private readonly PartyService m_Party;
+        private readonly GiftService m_Gifts;
+        private readonly SleepVoteService m_Sleep;
+        private readonly IUnturnedUserDirectory m_UserDirectory;
+        private readonly IConfiguration m_Configuration;
+        private readonly IWebTranslationRegistry m_Tr;
+        private readonly IStringLocalizer m_StringLocalizer;
 
         public EssentialsPlayerMenu(
-            PlayerDataStore playerData,
-            WarpService warps,
-            TeleportService teleport,
-            IUserManager userManager)
+            PlayerDataStore playerData, WarpService warps, TeleportService teleport,
+            TeleportRequestManager requests, PartyInviteManager invites, PartyService party,
+            GiftService gifts, SleepVoteService sleep, IUnturnedUserDirectory userDirectory,
+            IConfiguration configuration, IWebTranslationRegistry translations, IStringLocalizer stringLocalizer)
         {
             m_PlayerData = playerData;
             m_Warps = warps;
             m_Teleport = teleport;
-            m_UserManager = userManager;
+            m_Requests = requests;
+            m_Invites = invites;
+            m_Party = party;
+            m_Gifts = gifts;
+            m_Sleep = sleep;
+            m_UserDirectory = userDirectory;
+            m_Configuration = configuration;
+            m_Tr = translations;
+            m_StringLocalizer = stringLocalizer;
         }
 
         public string Id => MenuId;
 
-        public string Title => "便民";
+        public string Title => "Utilities";
 
         public string? Icon => "🧭";
 
+        private string L(string lang, string key) => m_Tr.Resolve(key, lang);
+
         public async Task<PlayerMenuView> RenderAsync(PlayerMenuContext context)
         {
-            var user = await ResolveOnlineAsync(context.SteamId);
-            if (user == null)
+            var lang = context.Language;
+            await UniTask.SwitchToMainThread();
+            var me = m_UserDirectory.FindUser(new CSteamID(ulong.Parse(context.SteamId)));
+            if (me == null)
             {
-                return new PlayerMenuView(Title, null, Array.Empty<PlayerCard>(), "你需要在线才能使用传送。");
+                return new PlayerMenuView(L(lang, "Utilities"), null, Array.Empty<PlayerCard>(),
+                    L(lang, "You must be online to use these tools."));
             }
 
+            var meId = me.SteamId.m_SteamID;
             var cards = new List<PlayerCard>();
 
+            // --- home / back / warps ---
             var home = await m_PlayerData.GetHomeAsync(context.SteamId);
             cards.Add(home != null
-                ? new PlayerCard("home", "🏠 家", null, null,
-                    new[] { new PlayerButton("go", "回家", "primary") })
-                : new PlayerCard("home", "🏠 家", new[] { "尚未设置家，用 /sethome 设置。" }));
+                ? new PlayerCard("home", "🏠 " + L(lang, "Home"), null, null, new[] { new PlayerButton("go", L(lang, "Go home"), "primary") })
+                : new PlayerCard("home", "🏠 " + L(lang, "Home"), new[] { L(lang, "No home set — use /sethome.") }));
 
             var death = await m_PlayerData.GetLastDeathAsync(context.SteamId);
             if (death != null)
             {
-                cards.Add(new PlayerCard("back", "↩ 返回死亡点", null, null,
-                    new[] { new PlayerButton("go", "返回") }));
+                cards.Add(new PlayerCard("back", "↩ " + L(lang, "Back to death point"), null, null, new[] { new PlayerButton("go", L(lang, "Return")) }));
             }
 
             foreach (var warp in m_Warps.All)
             {
-                if (await m_Warps.HasAccessAsync(user, warp.Name))
+                if (await m_Warps.HasAccessAsync(me, warp.Name))
                 {
-                    cards.Add(new PlayerCard(WarpPrefix + warp.Name, "📍 " + warp.Name, null, null,
-                        new[] { new PlayerButton("go", "传送") }));
+                    cards.Add(new PlayerCard(WarpPrefix + warp.Name, "📍 " + warp.Name, null, null, new[] { new PlayerButton("go", L(lang, "Teleport")) }));
                 }
             }
 
-            return new PlayerMenuView(Title, "点击即可传送（可能需要短暂站立读条）", cards);
+            // --- incoming teleport requests ---
+            foreach (var requesterId in m_Requests.PendingSenders(meId))
+            {
+                var name = NameOf(requesterId);
+                cards.Add(new PlayerCard("tpreq:" + requesterId, m_Tr.Format(lang, "Teleport request from {0}", name), null, null, new[]
+                {
+                    new PlayerButton("tpaccept", L(lang, "Accept"), "primary"),
+                    new PlayerButton("tpdeny", L(lang, "Deny"), "danger")
+                }));
+            }
+
+            // --- incoming party invites ---
+            foreach (var inviterId in m_Invites.PendingSenders(meId))
+            {
+                var name = NameOf(inviterId);
+                cards.Add(new PlayerCard("pinv:" + inviterId, m_Tr.Format(lang, "Party invite from {0}", name), null, null, new[]
+                {
+                    new PlayerButton("pacc", L(lang, "Accept"), "primary"),
+                    new PlayerButton("pden", L(lang, "Deny"), "danger")
+                }));
+            }
+
+            // --- my party ---
+            if (m_Party.IsInParty(me))
+            {
+                var lines = new List<string>();
+                foreach (var member in m_Party.GetMembers(me))
+                {
+                    lines.Add(member.IsLeader ? m_Tr.Format(lang, "{0} (leader)", member.DisplayName) : member.DisplayName);
+                }
+
+                cards.Add(new PlayerCard("party", "👥 " + (m_Party.GetPartyName(me) ?? L(lang, "Party")), lines, null,
+                    new[] { new PlayerButton("pleave", L(lang, "Leave party"), "danger") }));
+            }
+
+            // --- other online players: request teleport / invite to party ---
+            foreach (var other in m_UserDirectory.GetOnlineUsers())
+            {
+                if (other.SteamId.m_SteamID == meId)
+                {
+                    continue;
+                }
+
+                cards.Add(new PlayerCard("p:" + other.SteamId.m_SteamID, "👤 " + other.DisplayName, null, null, new[]
+                {
+                    new PlayerButton("tpreq", L(lang, "Request teleport")),
+                    new PlayerButton("pinvite", L(lang, "Invite to party"))
+                }));
+            }
+
+            // --- gifts ---
+            foreach (var gift in await m_Gifts.GetListingsAsync(me))
+            {
+                if (gift.Ready)
+                {
+                    cards.Add(new PlayerCard("gift:" + gift.Id, "🎁 " + gift.Name, null, null,
+                        new[] { new PlayerButton("giftclaim", L(lang, "Claim"), "primary") }));
+                }
+                else
+                {
+                    cards.Add(new PlayerCard("gift:" + gift.Id, "🎁 " + gift.Name,
+                        new[] { m_Tr.Format(lang, "Refreshes in {0}", Duration((int)Math.Ceiling(gift.RefreshInSeconds))) }));
+                }
+            }
+
+            // --- sleep vote ---
+            cards.Add(new PlayerCard("sleep", "😴 " + L(lang, "Sleep vote"), null, null,
+                new[] { new PlayerButton("sleepvote", L(lang, "Vote to sleep"), "primary") }));
+
+            return new PlayerMenuView(L(lang, "Utilities"), L(lang, "Tap to use; some teleports need you to stand still briefly."), cards);
         }
 
         public async Task<PlayerActionResult> InvokeAsync(
             PlayerMenuContext context, string actionId, string cardKey, string? value)
         {
-            if (actionId != "go")
+            var lang = context.Language;
+            await UniTask.SwitchToMainThread();
+            var me = m_UserDirectory.FindUser(new CSteamID(ulong.Parse(context.SteamId)));
+            if (me == null)
             {
-                return PlayerActionResult.Fail("未知操作。");
+                return PlayerActionResult.Fail(L(lang, "You must be online to use these tools."));
             }
 
-            var user = await ResolveOnlineAsync(context.SteamId);
-            if (user == null)
-            {
-                return PlayerActionResult.Fail("你需要在线才能传送。");
-            }
+            var meId = me.SteamId.m_SteamID;
+            var settings = m_Configuration.Get<EssentialsSettings>() ?? new EssentialsSettings();
 
+            switch (actionId)
+            {
+                case "go":
+                    return await TeleportToAsync(me, cardKey, lang);
+
+                case "tpreq":
+                {
+                    var targetId = ParseId(cardKey, "p:");
+                    var target = m_UserDirectory.FindUser(new CSteamID(targetId));
+                    if (target == null) return PlayerActionResult.Fail(L(lang, "That player is no longer online."));
+                    if (!m_Requests.Open(meId, targetId, settings.Tpa.ExpirationSeconds * 1000))
+                        return PlayerActionResult.Fail(m_Tr.Format(lang, "You already have a teleport request to {0}.", target.DisplayName));
+                    await Notify(target, "tp:request_received", new { player = me.DisplayName });
+                    return PlayerActionResult.Ok(m_Tr.Format(lang, "Teleport request sent to {0}.", target.DisplayName));
+                }
+
+                case "tpaccept":
+                {
+                    var requesterId = ParseId(cardKey, "tpreq:");
+                    if (!m_Requests.Take(meId, requesterId)) return PlayerActionResult.Fail(L(lang, "That request is no longer pending."));
+                    var requester = m_UserDirectory.FindUser(new CSteamID(requesterId));
+                    if (requester == null) return PlayerActionResult.Fail(L(lang, "That player is no longer online."));
+                    var destination = LocationHelper.FromPlayer(me.Player);
+                    await Notify(requester, "tpa:accepted_other", new { player = me.DisplayName });
+                    await m_Teleport.TryTeleportAsync(requester, destination, TeleportKind.Tp, "tp");
+                    return PlayerActionResult.Ok(m_Tr.Format(lang, "Accepted {0}'s teleport request.", requester.DisplayName));
+                }
+
+                case "tpdeny":
+                {
+                    var requesterId = ParseId(cardKey, "tpreq:");
+                    m_Requests.Take(meId, requesterId);
+                    return PlayerActionResult.Ok(L(lang, "Teleport request denied."));
+                }
+
+                case "pinvite":
+                {
+                    var targetId = ParseId(cardKey, "p:");
+                    var target = m_UserDirectory.FindUser(new CSteamID(targetId));
+                    if (target == null) return PlayerActionResult.Fail(L(lang, "That player is no longer online."));
+                    if (m_Party.SameParty(me, target)) return PlayerActionResult.Fail(m_Tr.Format(lang, "{0} is already in your party.", target.DisplayName));
+                    if (!m_Invites.Open(meId, targetId, settings.Party.InviteExpirationSeconds * 1000))
+                        return PlayerActionResult.Fail(m_Tr.Format(lang, "You already invited {0}.", target.DisplayName));
+                    await Notify(target, "party:invite_received", new { player = me.DisplayName, seconds = settings.Party.InviteExpirationSeconds });
+                    return PlayerActionResult.Ok(m_Tr.Format(lang, "Party invite sent to {0}.", target.DisplayName));
+                }
+
+                case "pacc":
+                {
+                    var inviterId = ParseId(cardKey, "pinv:");
+                    if (!m_Invites.Take(meId, inviterId)) return PlayerActionResult.Fail(L(lang, "That invite is no longer pending."));
+                    var inviter = m_UserDirectory.FindUser(new CSteamID(inviterId));
+                    if (inviter == null) return PlayerActionResult.Fail(L(lang, "That player is no longer online."));
+                    var status = m_Party.JoinViaInvite(inviter, me);
+                    if (status == PartyJoinStatus.Full) return PlayerActionResult.Fail(L(lang, "That party is full."));
+                    if (status == PartyJoinStatus.Failed) return PlayerActionResult.Fail(L(lang, "Could not join the party."));
+                    await Notify(inviter, "party:joined_other", new { player = me.DisplayName });
+                    return PlayerActionResult.Ok(m_Tr.Format(lang, "Joined {0}'s party.", inviter.DisplayName));
+                }
+
+                case "pden":
+                {
+                    var inviterId = ParseId(cardKey, "pinv:");
+                    m_Invites.Take(meId, inviterId);
+                    return PlayerActionResult.Ok(L(lang, "Party invite denied."));
+                }
+
+                case "pleave":
+                    return PlayerActionResult.Ok(m_Party.Leave(me) ? L(lang, "You left the party.") : L(lang, "You are not in a party."));
+
+                case "giftclaim":
+                {
+                    var giftId = cardKey.StartsWith("gift:", StringComparison.Ordinal) ? cardKey.Substring(5) : cardKey;
+                    var result = await m_Gifts.ClaimAsync(me, giftId);
+                    switch (result.Status)
+                    {
+                        case GiftClaimStatus.Claimed: return PlayerActionResult.Ok(m_Tr.Format(lang, "Claimed {0}.", result.GiftName));
+                        case GiftClaimStatus.NoPermission: return PlayerActionResult.Fail(L(lang, "You can't claim that gift."));
+                        case GiftClaimStatus.OnCooldown: return PlayerActionResult.Fail(m_Tr.Format(lang, "Not ready yet — refreshes in {0}.", Duration((int)Math.Ceiling(result.RefreshInSeconds))));
+                        default: return PlayerActionResult.Fail(L(lang, "Gift not found."));
+                    }
+                }
+
+                case "sleepvote":
+                {
+                    var outcome = await m_Sleep.VoteAsync(me);
+                    switch (outcome)
+                    {
+                        case SleepVoteOutcome.Disabled: return PlayerActionResult.Fail(L(lang, "Sleep voting is disabled."));
+                        case SleepVoteOutcome.AlreadyVoted: return PlayerActionResult.Fail(L(lang, "You already voted to sleep."));
+                        case SleepVoteOutcome.Passed: return PlayerActionResult.Ok(L(lang, "The vote passed — time changed."));
+                        default: return PlayerActionResult.Ok(L(lang, "Your sleep vote was counted."));
+                    }
+                }
+
+                default:
+                    return PlayerActionResult.Fail(L(lang, "Unknown action."));
+            }
+        }
+
+        private async Task<PlayerActionResult> TeleportToAsync(UnturnedUser me, string cardKey, string lang)
+        {
             PlayerLocation destination;
             TeleportKind kind;
             string cooldownKey;
@@ -103,61 +301,58 @@ namespace well404.Essentials
 
             if (cardKey == "home")
             {
-                var home = await m_PlayerData.GetHomeAsync(context.SteamId);
-                if (home == null)
-                {
-                    return PlayerActionResult.Fail("你还没有设置家。");
-                }
-
-                destination = home;
-                kind = TeleportKind.Home;
-                cooldownKey = "home";
+                var home = await m_PlayerData.GetHomeAsync(me.Id);
+                if (home == null) return PlayerActionResult.Fail(L(lang, "You haven't set a home yet."));
+                destination = home; kind = TeleportKind.Home; cooldownKey = "home";
             }
             else if (cardKey == "back")
             {
-                var death = await m_PlayerData.GetLastDeathAsync(context.SteamId);
-                if (death == null)
-                {
-                    return PlayerActionResult.Fail("没有可返回的死亡点。");
-                }
-
-                destination = death;
-                kind = TeleportKind.Back;
-                cooldownKey = "back";
+                var d = await m_PlayerData.GetLastDeathAsync(me.Id);
+                if (d == null) return PlayerActionResult.Fail(L(lang, "No death point to return to."));
+                destination = d; kind = TeleportKind.Back; cooldownKey = "back";
             }
             else if (cardKey.StartsWith(WarpPrefix, StringComparison.Ordinal))
             {
                 var name = cardKey.Substring(WarpPrefix.Length);
                 var warp = m_Warps.Find(name);
-                if (warp == null)
-                {
-                    return PlayerActionResult.Fail("找不到该传送点。");
-                }
-
-                if (!await m_Warps.HasAccessAsync(user, warp.Name))
-                {
-                    return PlayerActionResult.Fail("你没有权限使用该传送点。");
-                }
-
-                destination = WarpService.ToLocation(warp);
-                kind = TeleportKind.Warp;
-                cooldownKey = WarpPrefix + warp.Name.ToLowerInvariant();
-                cooldownOverride = warp.CooldownSeconds;
+                if (warp == null) return PlayerActionResult.Fail(L(lang, "Warp not found."));
+                if (!await m_Warps.HasAccessAsync(me, warp.Name)) return PlayerActionResult.Fail(L(lang, "You don't have access to that warp."));
+                destination = WarpService.ToLocation(warp); kind = TeleportKind.Warp; cooldownKey = WarpPrefix + warp.Name.ToLowerInvariant(); cooldownOverride = warp.CooldownSeconds;
             }
             else
             {
-                return PlayerActionResult.Fail("未知目的地。");
+                return PlayerActionResult.Fail(L(lang, "Unknown destination."));
             }
 
-            // TryTeleportAsync prints the specific reason (cooldown, fee, moved) to the player
-            // in-game and returns false; we surface a short outcome to the web client.
-            var ok = await m_Teleport.TryTeleportAsync(user, destination, kind, cooldownKey, cooldownOverride);
-            return ok
-                ? PlayerActionResult.Ok("已传送。")
-                : PlayerActionResult.Fail("传送未完成，请查看游戏内提示。", refresh: true);
+            var ok = await m_Teleport.TryTeleportAsync(me, destination, kind, cooldownKey, cooldownOverride);
+            return ok ? PlayerActionResult.Ok(L(lang, "Teleported.")) : PlayerActionResult.Fail(L(lang, "Teleport didn't complete — check the in-game notice."), refresh: true);
         }
 
-        private async Task<UnturnedUser?> ResolveOnlineAsync(string steamId)
-            => await m_UserManager.FindUserAsync(KnownActorTypes.Player, steamId, UserSearchMode.FindById) as UnturnedUser;
+        private string NameOf(ulong steamId)
+        {
+            var user = m_UserDirectory.FindUser(new CSteamID(steamId));
+            return user?.DisplayName ?? steamId.ToString();
+        }
+
+        private static ulong ParseId(string cardKey, string prefix)
+        {
+            var raw = cardKey.StartsWith(prefix, StringComparison.Ordinal) ? cardKey.Substring(prefix.Length) : cardKey;
+            return ulong.TryParse(raw, out var id) ? id : 0;
+        }
+
+        private async Task Notify(UnturnedUser user, string key, object args)
+        {
+            try { await user.PrintMessageAsync(m_StringLocalizer[key, args]); }
+            catch { /* best-effort in-game notice */ }
+        }
+
+        private static string Duration(int seconds)
+        {
+            if (seconds < 0) seconds = 0;
+            if (seconds < 60) return seconds + "s";
+            var m = seconds / 60;
+            var s = seconds % 60;
+            return s == 0 ? m + "m" : m + "m " + s + "s";
+        }
     }
 }

@@ -10,10 +10,9 @@ using UnturnedMods.Shared.WebPanel;
 namespace well404.Shop
 {
     /// <summary>
-    /// The player-facing shop surface for the web panel: lists the catalog as cards and lets a
-    /// player buy and sell as themselves. Mirrors the <c>/buy</c> and <c>/sell</c> command logic
-    /// (discount, atomic charge + refund on failure). Registered optionally via
-    /// <see cref="IPlayerMenuRegistry"/>, so the shop works with or without the panel installed.
+    /// The player-facing shop surface for the web panel: lists the catalog and lets a player buy and
+    /// sell as themselves (mirrors <c>/buy</c> and <c>/sell</c>). All text is localized to the
+    /// player's chosen language.
     /// </summary>
     public sealed class ShopPlayerMenu : IPlayerMenu
     {
@@ -24,29 +23,33 @@ namespace well404.Shop
         private readonly DiscountService m_DiscountService;
         private readonly IEconomyProvider m_Economy;
         private readonly IUserManager m_UserManager;
+        private readonly IWebTranslationRegistry m_Tr;
 
         public ShopPlayerMenu(
             ShopCatalog catalog,
             ShopService shopService,
             DiscountService discountService,
             IEconomyProvider economy,
-            IUserManager userManager)
+            IUserManager userManager,
+            IWebTranslationRegistry translations)
         {
             m_Catalog = catalog;
             m_ShopService = shopService;
             m_DiscountService = discountService;
             m_Economy = economy;
             m_UserManager = userManager;
+            m_Tr = translations;
         }
 
         public string Id => MenuId;
 
-        public string Title => "商店";
+        public string Title => "Shop";
 
         public string? Icon => "🛒";
 
         public async Task<PlayerMenuView> RenderAsync(PlayerMenuContext context)
         {
+            var lang = context.Language;
             var balance = await m_Economy.GetBalanceAsync(context.SteamId, KnownActorTypes.Player);
             var user = await ResolveOnlineAsync(context.SteamId);
             var multiplier = user != null ? await m_DiscountService.GetMultiplierAsync(user) : 1m;
@@ -62,21 +65,21 @@ namespace well404.Shop
                 {
                     var unit = DiscountService.ApplyDiscount(entry.BuyPrice, multiplier);
                     lines.Add(multiplier < 1m
-                        ? $"买价：{symbol}{Money(unit)} / 个（原价 {symbol}{Money(entry.BuyPrice)}）"
-                        : $"买价：{symbol}{Money(unit)} / 个");
-                    buttons.Add(new PlayerButton("buy", "购买", "primary", "购买数量"));
+                        ? m_Tr.Format(lang, "Buy price: {0}{1} each (was {0}{2})", symbol, Money(unit), Money(entry.BuyPrice))
+                        : m_Tr.Format(lang, "Buy price: {0}{1} each", symbol, Money(unit)));
+                    buttons.Add(new PlayerButton("buy", m_Tr.Resolve("Buy", lang), "primary", m_Tr.Resolve("Quantity to buy", lang)));
                 }
 
                 if (entry.SellPrice > 0m)
                 {
-                    lines.Add($"卖价：{symbol}{Money(entry.SellPrice)} / 个");
-                    buttons.Add(new PlayerButton("sell", "出售", promptLabel: "出售数量"));
+                    lines.Add(m_Tr.Format(lang, "Sell price: {0}{1} each", symbol, Money(entry.SellPrice)));
+                    buttons.Add(new PlayerButton("sell", m_Tr.Resolve("Sell", lang), promptLabel: m_Tr.Resolve("Quantity to sell", lang)));
                 }
 
                 var tags = new List<string>();
                 if (entry.IsBundle)
                 {
-                    tags.Add("礼包");
+                    tags.Add(m_Tr.Resolve("Bundle", lang));
                     foreach (var content in entry.Contents)
                     {
                         tags.Add($"#{content.ItemId}×{content.Amount}");
@@ -90,44 +93,45 @@ namespace well404.Shop
                 cards.Add(new PlayerCard(entry.Id, entry.Name, lines, tags, buttons));
             }
 
-            var header = $"余额：{symbol}{Money(balance)}";
-            var message = user == null ? "你需要在线才能购买或出售物品。" : null;
-            return new PlayerMenuView(Title, header, cards, message);
+            var header = m_Tr.Format(lang, "Balance: {0}{1}", symbol, Money(balance));
+            var message = user == null ? m_Tr.Resolve("You must be online to buy or sell.", lang) : null;
+            return new PlayerMenuView(m_Tr.Resolve("Shop", lang), header, cards, message);
         }
 
         public async Task<PlayerActionResult> InvokeAsync(
             PlayerMenuContext context, string actionId, string cardKey, string? value)
         {
+            var lang = context.Language;
             var entry = m_Catalog.Find(cardKey);
             if (entry == null)
             {
-                return PlayerActionResult.Fail("找不到该商品。");
+                return PlayerActionResult.Fail(m_Tr.Resolve("Item not found.", lang));
             }
 
             if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount) || amount <= 0)
             {
-                return PlayerActionResult.Fail("请输入有效的数量。");
+                return PlayerActionResult.Fail(m_Tr.Resolve("Enter a valid quantity.", lang));
             }
 
             var user = await ResolveOnlineAsync(context.SteamId);
             if (user == null)
             {
-                return PlayerActionResult.Fail("你需要在线才能交易。");
+                return PlayerActionResult.Fail(m_Tr.Resolve("You must be online to trade.", lang));
             }
 
             switch (actionId)
             {
-                case "buy": return await BuyAsync(user, entry, amount);
-                case "sell": return await SellAsync(user, entry, amount);
-                default: return PlayerActionResult.Fail("未知操作。");
+                case "buy": return await BuyAsync(user, entry, amount, lang);
+                case "sell": return await SellAsync(user, entry, amount, lang);
+                default: return PlayerActionResult.Fail(m_Tr.Resolve("Unknown action.", lang));
             }
         }
 
-        private async Task<PlayerActionResult> BuyAsync(UnturnedUser user, ShopEntry entry, int amount)
+        private async Task<PlayerActionResult> BuyAsync(UnturnedUser user, ShopEntry entry, int amount, string lang)
         {
             if (entry.BuyPrice <= 0m)
             {
-                return PlayerActionResult.Fail($"{entry.Name} 不可购买。");
+                return PlayerActionResult.Fail(m_Tr.Format(lang, "{0} is not buyable.", entry.Name));
             }
 
             var multiplier = await m_DiscountService.GetMultiplierAsync(user);
@@ -140,7 +144,7 @@ namespace well404.Shop
             }
             catch (NotEnoughBalanceException)
             {
-                return PlayerActionResult.Fail("余额不足。");
+                return PlayerActionResult.Fail(m_Tr.Resolve("Insufficient balance.", lang));
             }
 
             try
@@ -149,30 +153,31 @@ namespace well404.Shop
             }
             catch
             {
-                // Refund on failure, mirroring CommandBuy.
                 await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_buy_refund:" + entry.Id);
                 throw;
             }
 
-            return PlayerActionResult.Ok($"已购买 {amount}× {entry.Name}，花费 {m_Economy.CurrencySymbol}{Money(total)}。");
+            return PlayerActionResult.Ok(m_Tr.Format(lang, "Bought {0}× {1} for {2}.",
+                amount, entry.Name, m_Economy.CurrencySymbol + Money(total)));
         }
 
-        private async Task<PlayerActionResult> SellAsync(UnturnedUser user, ShopEntry entry, int amount)
+        private async Task<PlayerActionResult> SellAsync(UnturnedUser user, ShopEntry entry, int amount, string lang)
         {
             if (entry.SellPrice <= 0m)
             {
-                return PlayerActionResult.Fail($"{entry.Name} 不可出售。");
+                return PlayerActionResult.Fail(m_Tr.Format(lang, "{0} is not sellable.", entry.Name));
             }
 
             var took = await m_ShopService.TryTakeAsync(user, entry, amount);
             if (!took)
             {
-                return PlayerActionResult.Fail($"你的背包里没有足够的 {entry.Name}。");
+                return PlayerActionResult.Fail(m_Tr.Format(lang, "You don't have enough {0} in your inventory.", entry.Name));
             }
 
             var total = entry.SellPrice * amount;
             await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_sell:" + entry.Id);
-            return PlayerActionResult.Ok($"已出售 {amount}× {entry.Name}，获得 {m_Economy.CurrencySymbol}{Money(total)}。");
+            return PlayerActionResult.Ok(m_Tr.Format(lang, "Sold {0}× {1} for {2}.",
+                amount, entry.Name, m_Economy.CurrencySymbol + Money(total)));
         }
 
         private async Task<UnturnedUser?> ResolveOnlineAsync(string steamId)

@@ -6,13 +6,17 @@ namespace UnturnedMods.Shared.WebPanel
     /// <summary>The submitted field values for an action invocation.</summary>
     public sealed class WebActionRequest
     {
-        public WebActionRequest(IReadOnlyDictionary<string, string> values)
+        public WebActionRequest(IReadOnlyDictionary<string, string> values, string language = "en")
         {
             Values = values ?? throw new ArgumentNullException(nameof(values));
+            Language = string.IsNullOrWhiteSpace(language) ? "en" : language;
         }
 
         /// <summary>Raw field name → value map (form keys or the search box's <c>query</c>).</summary>
         public IReadOnlyDictionary<string, string> Values { get; }
+
+        /// <summary>The admin's chosen UI language (for localizing any returned messages).</summary>
+        public string Language { get; }
 
         /// <summary>Returns the trimmed value for <paramref name="name"/>, or null if absent/blank.</summary>
         public string? Get(string name)

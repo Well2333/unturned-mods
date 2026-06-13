@@ -58,6 +58,7 @@ namespace well404.Economy
             m_WebPanelRegistry?.UnregisterModule(EconomyWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
             m_PlayerMenuRegistry?.UnregisterMenu(EconomyPlayerMenu.MenuId);
+            LifetimeScope.ResolveOptional<IPlayerCommandRegistry>()?.Unregister("well404.economy");
             m_PlayerMenuRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
@@ -99,13 +100,24 @@ namespace well404.Economy
                 return;
             }
 
+            var translations = LifetimeScope.Resolve<IWebTranslationRegistry>();
+            translations.AddBundle(WebI18n.Zh, WebI18n.ZhTable);
+
             var menu = new EconomyPlayerMenu(
                 LifetimeScope.Resolve<IEconomyProvider>(),
                 LifetimeScope.Resolve<IUserManager>(),
                 LifetimeScope.Resolve<IUnturnedUserDirectory>(),
-                m_Configuration);
+                m_Configuration,
+                translations,
+                m_StringLocalizer);
             registry.RegisterMenu(menu);
             m_PlayerMenuRegistry = registry;
+
+            LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.economy", new[]
+            {
+                new PlayerCommandInfo("/balance", "economy.cmd.balance", "well404.economy:commands.balance", "economy.group"),
+                new PlayerCommandInfo("/pay", "economy.cmd.pay", "well404.economy:commands.pay", "economy.group")
+            });
             m_Logger.LogInformation("Economy: registered the player wallet menu with the web panel.");
         }
     }

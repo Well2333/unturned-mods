@@ -56,6 +56,7 @@ namespace well404.Shop
             m_WebPanelRegistry?.UnregisterModule(ShopWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
             m_PlayerMenuRegistry?.UnregisterMenu(ShopPlayerMenu.MenuId);
+            LifetimeScope.ResolveOptional<IPlayerCommandRegistry>()?.Unregister("well404.shop");
             m_PlayerMenuRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
@@ -99,14 +100,25 @@ namespace well404.Shop
                 return;
             }
 
+            var translations = LifetimeScope.Resolve<IWebTranslationRegistry>();
+            translations.AddBundle(WebI18n.Zh, WebI18n.ZhTable);
+
             var menu = new ShopPlayerMenu(
                 LifetimeScope.Resolve<ShopCatalog>(),
                 LifetimeScope.Resolve<ShopService>(),
                 LifetimeScope.Resolve<DiscountService>(),
                 economy,
-                LifetimeScope.Resolve<IUserManager>());
+                LifetimeScope.Resolve<IUserManager>(),
+                translations);
             registry.RegisterMenu(menu);
             m_PlayerMenuRegistry = registry;
+
+            LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.shop", new[]
+            {
+                new PlayerCommandInfo("/buy", "shop.cmd.buy", "well404.shop:commands.buy", "shop.group"),
+                new PlayerCommandInfo("/sell", "shop.cmd.sell", "well404.shop:commands.sell", "shop.group"),
+                new PlayerCommandInfo("/shop", "shop.cmd.shop", "well404.shop:commands.shop", "shop.group")
+            });
             m_Logger.LogInformation("Shop: registered the player shop menu with the web panel.");
         }
     }

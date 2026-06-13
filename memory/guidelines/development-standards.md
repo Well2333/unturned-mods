@@ -117,3 +117,25 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
 管理面 `token`、`tunnel`、`publicBaseUrl` 等)**不纳入 WebUI 编辑**,只能改 `config.yaml`。
 理由:这些控制「面板自身如何对外暴露与鉴权」,把管理面密钥放进管理面页面里可改既矛盾又
 危险。其中**管理面 `token` 尤其严禁出现在任何 WebUI 表单或接口里**。
+
+## 9. 多语言(i18n,强制)
+
+服务对象不只有简中用户。**默认/首语言为英文**(GitHub 根 `README.md` 例外:中文为主 +
+保留明显英文入口 `README.en.md`);新增任何面向用户的文案都要走 i18n,**至少提供英文**。
+
+- **网页文案(两个面板)**:用「**英文源串即翻译键** + 各语言映射表」。代码里写英文串;
+  每个插件用 `WebI18n.ZhTable`(`Dictionary<英文键, 中文>`)登记中文,加载时
+  `IWebTranslationRegistry.AddBundle("zh", …)`。服务端按客户端 `?lang=` 渲染:
+  - **管理模块**(`WebPanelModule`/`WebPanelAction`/`WebField` 的 title/label/description/
+    placeholder/select 选项)是静态描述符,服务端解析键即可——直接写英文即「已挂键」。
+  - **玩家菜单**(`IPlayerMenu`)是动态文本,在 `RenderAsync/InvokeAsync` 里用
+    `ctx.Language` + `m_Tr.Resolve/Format` 自行解析。
+  - 跨插件**键冲突**:同一英文串在不同插件映射到不同中文会相互覆盖(后注册者胜),
+    起键时避开(如 Shop 字段用 `Contents`、Essentials 礼包用 `Gift contents` 区分)。
+  - 前端(`index.html`/`player.html`)自身 chrome 文案用内置 `STR.{en,zh}` 字典 +
+    语言下拉;请求带 `?lang=`。
+  - **新增语言**:再加一张映射表并 `AddBundle` 即可,无需改框架。
+- **游戏内提示**:走 OpenMod `IStringLocalizer` + `translations.yaml`(**出厂英文**)。
+  服务器管理员整文件翻译/替换即可统一设置游戏内语言;新串一律走 key,不要硬编码。
+- **下拉/Select 选项**若被处理器解析(如开关),用稳定值:优先 `WebFieldType.Boolean`
+  (值恒为 `true`/`false`,显示由前端按语言出 Yes/No),不要用会被本地化的中文/英文选项值。

@@ -11,7 +11,9 @@ using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using OpenMod.API.Permissions;
 using OpenMod.API.Plugins;
+using OpenMod.API.Users;
 using OpenMod.Unturned.Plugins;
 using UnturnedMods.Shared.WebPanel;
 
@@ -73,12 +75,28 @@ namespace well404.WebPanel
 
             var registry = LifetimeScope.Resolve<IWebPanelRegistry>();
             var playerRegistry = LifetimeScope.Resolve<IPlayerMenuRegistry>();
+            var translations = LifetimeScope.Resolve<IWebTranslationRegistry>();
             var sessions = LifetimeScope.Resolve<PlayerWebSessionManager>();
+
+            // Panel content owned by this plugin: the player home/intro tab, its admin editor, and
+            // this plugin's own translations + /menu command help.
+            translations.AddBundle(WebPanelI18n.Zh, WebPanelI18n.ZhTable);
+            var introStore = new IntroStore(WorkingDirectory);
+            var commands = LifetimeScope.Resolve<IPlayerCommandRegistry>();
+            playerRegistry.RegisterMenu(new IntroPlayerMenu(
+                introStore, commands, translations,
+                LifetimeScope.Resolve<IPermissionChecker>(), LifetimeScope.Resolve<IUserManager>()));
+            registry.RegisterModule(WebPanelIntroModule.Create(introStore, translations));
+            commands.Register("well404.webpanel", new[]
+            {
+                new PlayerCommandInfo("/menu", "webpanel.cmd.menu", "well404.webpanel:commands.menu", "webpanel.group")
+            });
+
             var html = LoadResource("index.html");
             var playerHtml = LoadResource("player.html");
 
             var server = new WebPanelHttpServer(
-                registry, playerRegistry, sessions, m_Logger, prefix, token, html, playerHtml);
+                registry, playerRegistry, translations, sessions, m_Logger, prefix, token, html, playerHtml);
             try
             {
                 server.Start();
@@ -121,6 +139,11 @@ namespace well404.WebPanel
             m_Tunnel = null;
             m_Server?.Dispose();
             m_Server = null;
+
+            LifetimeScope.Resolve<IPlayerMenuRegistry>().UnregisterMenu(IntroPlayerMenu.MenuId);
+            LifetimeScope.Resolve<IWebPanelRegistry>().UnregisterModule(WebPanelIntroModule.ModuleId);
+            LifetimeScope.Resolve<IPlayerCommandRegistry>().Unregister("well404.webpanel");
+
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
 

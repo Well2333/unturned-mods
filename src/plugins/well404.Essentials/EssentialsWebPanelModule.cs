@@ -25,25 +25,25 @@ namespace well404.Essentials
         {
             var teleport = new WebPanelAction(
                 id: "teleport",
-                label: "传送设置",
+                label: "Teleport rules",
                 kind: WebActionKind.Settings,
                 handler: request => Task.FromResult(SaveTeleport(store, request)),
                 fields: new[]
                 {
-                    new WebField("warmupSeconds", "预热秒数", WebFieldType.Number, placeholder: "传送前需静止的秒数，0=瞬移"),
-                    new WebField("cancelOnMove", "移动取消", WebFieldType.Select, options: new[] { "开", "关" }),
-                    new WebField("moveThreshold", "移动阈值(米)", WebFieldType.Number),
-                    new WebField("cooldownSeconds", "冷却秒数", WebFieldType.Number, placeholder: "成功传送后的冷却，0=无"),
-                    new WebField("costHome", "home 费用", WebFieldType.Number),
-                    new WebField("costTp", "tp 费用", WebFieldType.Number),
-                    new WebField("costWarp", "warp 费用", WebFieldType.Number),
-                    new WebField("costBack", "back 费用", WebFieldType.Number)
+                    new WebField("warmupSeconds", "Warm-up seconds", WebFieldType.Number, placeholder: "Seconds to stand still before teleporting; 0 = instant"),
+                    new WebField("cancelOnMove", "Cancel on move", WebFieldType.Boolean),
+                    new WebField("moveThreshold", "Move threshold (m)", WebFieldType.Number),
+                    new WebField("cooldownSeconds", "Cooldown seconds", WebFieldType.Number, placeholder: "Cooldown after a successful teleport; 0 = none"),
+                    new WebField("costHome", "home cost", WebFieldType.Number),
+                    new WebField("costTp", "tp cost", WebFieldType.Number),
+                    new WebField("costWarp", "warp cost", WebFieldType.Number),
+                    new WebField("costBack", "back cost", WebFieldType.Number)
                 },
-                description: "所有传送(home/tp/warp/back)共用的规则。费用需安装经济插件(如 well404.Economy)才会扣费，默认 0=免费。",
+                description: "Shared rules for all teleports (home/tp/warp/back). Costs require an economy plugin (e.g. well404.Economy); default 0 = free.",
                 loader: () => Task.FromResult(store.Read(s => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
                 {
                     ["warmupSeconds"] = Int(s.Teleport.WarmupSeconds),
-                    ["cancelOnMove"] = s.Teleport.CancelOnMove ? "开" : "关",
+                    ["cancelOnMove"] = s.Teleport.CancelOnMove ? "true" : "false",
                     ["moveThreshold"] = Num(s.Teleport.MoveThreshold),
                     ["cooldownSeconds"] = Int(s.Teleport.CooldownSeconds),
                     ["costHome"] = Num(s.Teleport.Costs.Home),
@@ -59,74 +59,74 @@ namespace well404.Essentials
                 handler: request => Task.FromResult(SaveRules(store, request)),
                 fields: new[]
                 {
-                    new WebField("tpaExpiration", "tpa 请求有效期(秒)", WebFieldType.Number),
-                    new WebField("partyInviteExpiration", "party 邀请有效期(秒)", WebFieldType.Number),
-                    new WebField("partyMaxMembers", "party 人数上限", WebFieldType.Number, placeholder: "0=不额外限制"),
-                    new WebField("sleepEnabled", "sleep 投票", WebFieldType.Select, options: new[] { "开", "关" }),
-                    new WebField("sleepRatio", "sleep 通过比例", WebFieldType.Number, placeholder: "0.5=半数"),
-                    new WebField("backInvincibility", "back 无敵秒数", WebFieldType.Number)
+                    new WebField("tpaExpiration", "tpa request lifetime (s)", WebFieldType.Number),
+                    new WebField("partyInviteExpiration", "party invite lifetime (s)", WebFieldType.Number),
+                    new WebField("partyMaxMembers", "party max members", WebFieldType.Number, placeholder: "0 = no extra limit"),
+                    new WebField("sleepEnabled", "sleep voting", WebFieldType.Boolean),
+                    new WebField("sleepRatio", "sleep pass ratio", WebFieldType.Number, placeholder: "0.5 = half"),
+                    new WebField("backInvincibility", "back invincibility (s)", WebFieldType.Number)
                 },
-                description: "tpa/party 请求超时、party 人数上限、sleep 投票开关与通过比例(在线玩家的比例)、/back 落地后的无敌秒数(0=无)。",
+                description: "tpa/party request timeouts, party member cap, sleep-vote toggle and pass ratio (of online players), and /back post-landing invincibility seconds (0 = none).",
                 loader: () => Task.FromResult(store.Read(s => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
                 {
                     ["tpaExpiration"] = Int(s.Tpa.ExpirationSeconds),
                     ["partyInviteExpiration"] = Int(s.Party.InviteExpirationSeconds),
                     ["partyMaxMembers"] = Int(s.Party.MaxMembers),
-                    ["sleepEnabled"] = s.Sleep.Enabled ? "开" : "关",
+                    ["sleepEnabled"] = s.Sleep.Enabled ? "true" : "false",
                     ["sleepRatio"] = Num(s.Sleep.RequiredRatio),
                     ["backInvincibility"] = Int(s.Back.InvincibilitySeconds)
                 })));
 
             var warps = new WebPanelAction(
                 id: "warps",
-                label: "传送点",
+                label: "Warps",
                 kind: WebActionKind.Collection,
                 handler: request => Task.FromResult(SaveWarp(store, request)),
                 fields: new[]
                 {
-                    new WebField("name", "名称", WebFieldType.Text, required: true, placeholder: "/warp 用的名称"),
+                    new WebField("name", "Name", WebFieldType.Text, required: true, placeholder: "Name used by /warp"),
                     new WebField("x", "X", WebFieldType.Number, required: true),
                     new WebField("y", "Y", WebFieldType.Number, required: true),
                     new WebField("z", "Z", WebFieldType.Number, required: true),
-                    new WebField("yaw", "朝向(yaw)", WebFieldType.Number),
-                    new WebField("cooldownSeconds", "冷却秒数", WebFieldType.Number, placeholder: "0=用全局冷却")
+                    new WebField("yaw", "Yaw", WebFieldType.Number),
+                    new WebField("cooldownSeconds", "Cooldown seconds", WebFieldType.Number, placeholder: "0 = use global cooldown")
                 },
-                description: "玩家用 /warp <名称> 传送，还需要权限 well404.essentials.warps.<名称>。坐标可在游戏内用 /warp set 采集。",
+                description: "Players teleport with /warp <name> and also need permission well404.essentials.warps.<name>. Capture coordinates in-game with /warp set.",
                 recordsLoader: () => Task.FromResult(LoadWarpRecords(store)),
                 deleteHandler: request => Task.FromResult(RemoveWarp(store, request)),
                 keyField: "name");
 
             var gifts = new WebPanelAction(
                 id: "gifts",
-                label: "礼包",
+                label: "Gift packs",
                 kind: WebActionKind.Collection,
                 handler: request => Task.FromResult(SaveGift(store, request)),
                 fields: new[]
                 {
-                    new WebField("id", "礼包ID", WebFieldType.Text, required: true, placeholder: "/gift 用的唯一ID"),
-                    new WebField("name", "显示名", WebFieldType.Text, required: true),
-                    new WebField("permission", "权限", WebFieldType.Text, placeholder: "留空=所有人；VIP 专属填权限节点"),
-                    new WebField("cron", "刷新(crontab)", WebFieldType.Text, placeholder: "如 0 0 * * * (每天0点)；留空=只能领一次"),
-                    new WebField("items", "物品", WebFieldType.Text, required: true, placeholder: "物品ID×数量，逗号分隔。如 15x2, 81x1")
+                    new WebField("id", "Gift ID", WebFieldType.Text, required: true, placeholder: "Unique ID used by /gift"),
+                    new WebField("name", "Display name", WebFieldType.Text, required: true),
+                    new WebField("permission", "Permission", WebFieldType.Text, placeholder: "Empty = everyone; set a permission node for VIP-only"),
+                    new WebField("cron", "Refresh (crontab)", WebFieldType.Text, placeholder: "e.g. 0 0 * * * (daily at 0:00); empty = one-time only"),
+                    new WebField("items", "Gift contents", WebFieldType.Text, required: true, placeholder: "itemId\u00d7amount, comma-separated. e.g. 15x2, 81x1")
                 },
-                description: "免费礼包。每位玩家在每个 crontab 周期内可领一次。crontab 按服务器本地时间。物品ID 可用下方检索。",
+                description: "Free gift packs. Each player may claim once per crontab period. crontab uses server local time. Look up item IDs with the search below.",
                 recordsLoader: () => LoadGiftRecordsAsync(store, itemDirectory),
                 deleteHandler: request => Task.FromResult(RemoveGift(store, request)),
                 keyField: "id");
 
             var search = new WebPanelAction(
                 id: "search",
-                label: "检索游戏物品",
+                label: "Search game items",
                 kind: WebActionKind.Search,
                 handler: request => SearchAsync(itemDirectory, request),
                 fields: new[]
                 {
-                    new WebField("query", "物品名或ID", WebFieldType.Text, placeholder: "输入关键词或数字ID…")
+                    new WebField("query", "Item name or ID", WebFieldType.Text, placeholder: "Type a keyword or numeric ID\u2026")
                 },
-                description: "在全部游戏物品中按名称或 ID 模糊检索，拿到「物品ID」填到礼包的物品里。");
+                description: "Fuzzy-search all game items by name or ID; take the item ID into the gift contents.");
 
             return new WebPanelModule(
-                ModuleId, "实用功能 / Essentials",
+                ModuleId, "Essentials",
                 new[] { teleport, rules, warps, gifts, search },
                 icon: "🏠");
         }
@@ -139,7 +139,7 @@ namespace well404.Essentials
                 var move = request.Get("cancelOnMove");
                 if (move != null)
                 {
-                    s.Teleport.CancelOnMove = move == "开";
+                    s.Teleport.CancelOnMove = move == "true";
                 }
 
                 s.Teleport.MoveThreshold = request.GetDecimal("moveThreshold") ?? s.Teleport.MoveThreshold;
@@ -150,7 +150,7 @@ namespace well404.Essentials
                 s.Teleport.Costs.Back = request.GetDecimal("costBack") ?? s.Teleport.Costs.Back;
             });
 
-            return WebActionResult.Ok("已保存传送设置。");
+            return WebActionResult.Ok("Saved teleport rules.");
         }
 
         private static WebActionResult SaveRules(EssentialsConfigStore store, WebActionRequest request)
@@ -163,14 +163,14 @@ namespace well404.Essentials
                 var sleep = request.Get("sleepEnabled");
                 if (sleep != null)
                 {
-                    s.Sleep.Enabled = sleep == "开";
+                    s.Sleep.Enabled = sleep == "true";
                 }
 
                 s.Sleep.RequiredRatio = request.GetDecimal("sleepRatio") ?? s.Sleep.RequiredRatio;
                 s.Back.InvincibilitySeconds = ReadInt(request, "backInvincibility", s.Back.InvincibilitySeconds);
             });
 
-            return WebActionResult.Ok("已保存 tpa / sleep / back 设置。");
+            return WebActionResult.Ok("Saved tpa / sleep / back settings.");
         }
 
         private static IReadOnlyList<WebRecord> LoadWarpRecords(EssentialsConfigStore store)
@@ -193,7 +193,7 @@ namespace well404.Essentials
                     new[]
                     {
                         $"({Num(warp.X)}, {Num(warp.Y)}, {Num(warp.Z)})",
-                        warp.CooldownSeconds > 0 ? $"冷却 {warp.CooldownSeconds}s" : "无冷却"
+                        warp.CooldownSeconds > 0 ? $"cooldown {warp.CooldownSeconds}s" : "no cooldown"
                     }));
             }
 
@@ -205,7 +205,7 @@ namespace well404.Essentials
             var name = request.Get("name");
             if (name == null)
             {
-                return WebActionResult.Fail("请填写名称。");
+                return WebActionResult.Fail("Enter a name.");
             }
 
             var x = request.GetDecimal("x");
@@ -213,7 +213,7 @@ namespace well404.Essentials
             var z = request.GetDecimal("z");
             if (x == null || y == null || z == null)
             {
-                return WebActionResult.Fail("请填写 X / Y / Z 坐标。");
+                return WebActionResult.Fail("Enter X / Y / Z coordinates.");
             }
 
             store.UpsertWarp(new WarpEntry
@@ -226,7 +226,7 @@ namespace well404.Essentials
                 CooldownSeconds = ReadInt(request, "cooldownSeconds", 0)
             });
 
-            return WebActionResult.Ok($"已保存传送点 {name}。记得给玩家授予权限 {Warps.WarpService.PermissionFor(name)}。");
+            return WebActionResult.Ok($"Saved warp {name}. Remember to grant players the permission {Warps.WarpService.PermissionFor(name)}.");
         }
 
         private static WebActionResult RemoveWarp(EssentialsConfigStore store, WebActionRequest request)
@@ -234,12 +234,12 @@ namespace well404.Essentials
             var name = request.Get("key");
             if (name == null)
             {
-                return WebActionResult.Fail("缺少名称。");
+                return WebActionResult.Fail("Missing name.");
             }
 
             return store.RemoveWarp(name)
-                ? WebActionResult.Ok($"已删除传送点 {name}。")
-                : WebActionResult.Fail($"未找到传送点 {name}。");
+                ? WebActionResult.Ok($"Deleted warp {name}.")
+                : WebActionResult.Fail($"Warp not found: {name}.");
         }
 
         private static async Task<IReadOnlyList<WebRecord>> LoadGiftRecordsAsync(
@@ -260,10 +260,10 @@ namespace well404.Essentials
 
                 if (!string.IsNullOrWhiteSpace(gift.Permission))
                 {
-                    pills.Add("权限: " + gift.Permission);
+                    pills.Add("perm: " + gift.Permission);
                 }
 
-                pills.Add(string.IsNullOrWhiteSpace(gift.Cron) ? "一次性" : "cron: " + gift.Cron);
+                pills.Add(string.IsNullOrWhiteSpace(gift.Cron) ? "one-time" : "cron: " + gift.Cron);
 
                 records.Add(new WebRecord(
                     gift.Id,
@@ -289,7 +289,7 @@ namespace well404.Essentials
             var itemsRaw = request.Get("items");
             if (id == null || name == null || itemsRaw == null)
             {
-                return WebActionResult.Fail("请填写礼包ID、显示名与物品。");
+                return WebActionResult.Fail("Enter the gift ID, display name and contents.");
             }
 
             var parsed = ParseItems(itemsRaw, out var error);
@@ -300,7 +300,7 @@ namespace well404.Essentials
 
             if (parsed.Count == 0)
             {
-                return WebActionResult.Fail("「物品」不能为空，格式如 15x2, 81x1。");
+                return WebActionResult.Fail("Contents cannot be empty, e.g. 15x2, 81x1.");
             }
 
             store.UpsertGift(new GiftEntry
@@ -312,7 +312,7 @@ namespace well404.Essentials
                 Items = parsed
             });
 
-            return WebActionResult.Ok($"已保存礼包 {id}（{name}），{parsed.Count} 种物品。");
+            return WebActionResult.Ok($"Saved gift {id} ({name}), {parsed.Count} item(s).");
         }
 
         private static WebActionResult RemoveGift(EssentialsConfigStore store, WebActionRequest request)
@@ -320,12 +320,12 @@ namespace well404.Essentials
             var id = request.Get("key");
             if (id == null)
             {
-                return WebActionResult.Fail("缺少礼包 ID。");
+                return WebActionResult.Fail("Missing gift ID.");
             }
 
             return store.RemoveGift(id)
-                ? WebActionResult.Ok($"已删除礼包 {id}。")
-                : WebActionResult.Fail($"未找到礼包 {id}。");
+                ? WebActionResult.Ok($"Deleted gift {id}.")
+                : WebActionResult.Fail($"Gift not found: {id}.");
         }
 
         private static async Task<WebActionResult> SearchAsync(IItemDirectory itemDirectory, WebActionRequest request)
@@ -333,7 +333,7 @@ namespace well404.Essentials
             var query = request.Get("query");
             if (query == null)
             {
-                return WebActionResult.Table(new[] { "物品ID", "名称" }, new List<IReadOnlyList<string>>(), "输入物品名或 ID 检索。");
+                return WebActionResult.Table(new[] { "Item ID", "Name" }, new List<IReadOnlyList<string>>(), "Type an item name or ID to search.");
             }
 
             await UniTask.SwitchToMainThread();
@@ -362,9 +362,9 @@ namespace well404.Essentials
             }
 
             var message = rows.Count == 0
-                ? "没有匹配的物品。"
-                : (truncated ? $"结果过多，仅显示前 {SearchLimit} 条，请细化关键词。" : null);
-            return WebActionResult.Table(new[] { "物品ID", "名称" }, rows, message);
+                ? "No matching items."
+                : (truncated ? $"Too many results; showing the first {SearchLimit}. Refine your keyword." : null);
+            return WebActionResult.Table(new[] { "Item ID", "Name" }, rows, message);
         }
 
         private static async Task<IReadOnlyDictionary<string, string>> BuildNameMapAsync(IItemDirectory itemDirectory)
@@ -417,13 +417,13 @@ namespace well404.Essentials
 
                 if (!ushort.TryParse(idPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId) || itemId == 0)
                 {
-                    error = $"物品ID 无效：{token}";
+                    error = $"Invalid item ID: {token}";
                     return null;
                 }
 
                 if (!int.TryParse(amountPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount) || amount < 1)
                 {
-                    error = $"数量无效：{token}（格式 物品ID×数量，如 15x2）";
+                    error = $"Invalid amount: {token} (format itemId\u00d7amount, e.g. 15x2)";
                     return null;
                 }
 

@@ -29,48 +29,46 @@ namespace well404.Shop
         {
             var items = new WebPanelAction(
                 id: "items",
-                label: "商品",
+                label: "Items",
                 kind: WebActionKind.Collection,
                 handler: request => Task.FromResult(Save(store, request)),
                 fields: new[]
                 {
-                    new WebField("id", "商品ID", WebFieldType.Text, required: true, placeholder: "/buy /sell 用的唯一ID"),
-                    new WebField("name", "显示名", WebFieldType.Text, required: true),
-                    new WebField("items", "物品", WebFieldType.Text, required: true,
-                        placeholder: "物品ID×数量，逗号分隔。单个=物品，多个=礼包。如 15x2 或 15x2, 81x1"),
-                    new WebField("buyPrice", "买价", WebFieldType.Number, required: false, placeholder: "0=不可买"),
-                    new WebField("sellPrice", "卖价", WebFieldType.Number, required: false, placeholder: "0=不可卖")
+                    new WebField("id", "Shop ID", WebFieldType.Text, required: true, placeholder: "Unique ID used by /buy /sell"),
+                    new WebField("name", "Display name", WebFieldType.Text, required: true),
+                    new WebField("items", "Contents", WebFieldType.Text, required: true,
+                        placeholder: "itemId\u00d7amount, comma-separated. One = item, several = bundle. e.g. 15x2 or 15x2, 81x1"),
+                    new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
+                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
                 },
-                description: "点商品编辑，「新增」添加。「物品」填一条=普通物品，多条（逗号分隔）=礼包；"
-                    + "格式 物品ID×数量（只写ID则数量1），如 15x2 或 15x2, 81x1。物品ID 可用下方检索。",
+                description: "Click an item to edit, Add to create. \u00abItems\u00bb: one entry = plain item, several (comma-separated) = bundle; format itemId\u00d7amount (id only = amount 1), e.g. 15x2 or 15x2, 81x1. Look up item IDs with the search below.",
                 recordsLoader: () => LoadItemRecordsAsync(store, itemDirectory),
                 deleteHandler: request => Task.FromResult(Remove(store, request)),
                 keyField: "id");
 
             var search = new WebPanelAction(
                 id: "search",
-                label: "检索游戏物品",
+                label: "Search game items",
                 kind: WebActionKind.Search,
                 handler: request => SearchAsync(itemDirectory, request),
                 fields: new[]
                 {
-                    new WebField("query", "物品名或ID", WebFieldType.Text, placeholder: "输入关键词或数字ID…")
+                    new WebField("query", "Item name or ID", WebFieldType.Text, placeholder: "Type a keyword or numeric ID\u2026")
                 },
-                description: "在全部游戏物品中按名称或 ID 模糊检索，拿到「物品ID」填到上面的表单。");
+                description: "Fuzzy-search all game items by name or ID; take the item ID into the form above.");
 
             var discount = new WebPanelAction(
                 id: "discount",
-                label: "VIP 折扣",
+                label: "VIP discount",
                 kind: WebActionKind.Settings,
                 handler: request => Task.FromResult(SaveDiscount(store, request)),
                 fields: new[]
                 {
-                    new WebField("enabled", "折扣总开关", WebFieldType.Select, options: new[] { "开", "关" }),
-                    new WebField("tiers", "档位", WebFieldType.Text,
-                        placeholder: "权限=倍率，逗号分隔：如 well404.shop.vip=0.9, well404.shop.mvp=0.8")
+                    new WebField("enabled", "Discount master switch", WebFieldType.Boolean),
+                    new WebField("tiers", "Tiers", WebFieldType.Text,
+                        placeholder: "permission=multiplier, comma-separated: e.g. well404.shop.vip=0.9, well404.shop.mvp=0.8")
                 },
-                description: "折扣作用于买价；玩家取其拥有权限中最低(最优)的倍率。"
-                    + "「档位」格式 权限=倍率（0<倍率≤1，逗号分隔）；清空即取消所有档位。",
+                description: "Discounts apply to buy prices; a player gets the lowest (best) multiplier among their granted permissions. Tiers format: permission=multiplier (0<m\u22641, comma-separated); empty clears all tiers.",
                 loader: () => Task.FromResult(store.ReadDiscounts(d =>
                 {
                     var parts = new List<string>();
@@ -81,13 +79,13 @@ namespace well404.Shop
 
                     return (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
                     {
-                        ["enabled"] = d.Enabled ? "开" : "关",
+                        ["enabled"] = d.Enabled ? "true" : "false",
                         ["tiers"] = string.Join(", ", parts)
                     };
                 })));
 
             return new WebPanelModule(
-                ModuleId, "商店 / 商品",
+                ModuleId, "Shop / Items",
                 new[] { items, search, discount },
                 icon: "🛒");
         }
@@ -95,7 +93,7 @@ namespace well404.Shop
         private static WebActionResult SaveDiscount(ShopConfigStore store, WebActionRequest request)
         {
             var enabledRaw = request.Get("enabled");
-            bool? enabled = enabledRaw == "开" ? true : enabledRaw == "关" ? (bool?)false : null;
+            bool? enabled = enabledRaw == "true" ? true : enabledRaw == "false" ? (bool?)false : null;
 
             // Settings form is pre-filled, so the submitted "tiers" value is authoritative:
             // parse it as the full set (empty = clear all tiers).
@@ -115,7 +113,7 @@ namespace well404.Shop
                 d.Tiers = tiers;
             });
 
-            return WebActionResult.Ok("已保存折扣设置。");
+            return WebActionResult.Ok("Saved discount settings.");
         }
 
         /// <summary>Parses "perm=mult, perm:mult" tier text into a map. Returns null + error on a bad entry.</summary>
@@ -136,7 +134,7 @@ namespace well404.Shop
                 var parts = token.Split(new[] { '=', ':' }, 2);
                 if (parts.Length != 2)
                 {
-                    error = $"档位格式错误：{token}（应为 权限=倍率）";
+                    error = $"Bad tier format: {token} (expected permission=multiplier)";
                     return null;
                 }
 
@@ -145,7 +143,7 @@ namespace well404.Shop
                     || !decimal.TryParse(parts[1].Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var mult)
                     || mult <= 0m || mult > 1m)
                 {
-                    error = $"档位倍率无效：{token}（0<倍率≤1）";
+                    error = $"Invalid tier multiplier: {token} (0<m\u22641)";
                     return null;
                 }
 
@@ -234,7 +232,7 @@ namespace well404.Shop
             var itemsRaw = request.Get("items");
             if (id == null || name == null || itemsRaw == null)
             {
-                return WebActionResult.Fail("请填写商品ID、显示名与物品。");
+                return WebActionResult.Fail("Enter the shop ID, display name and items.");
             }
 
             var parsed = ParseItems(itemsRaw, out var error);
@@ -245,7 +243,7 @@ namespace well404.Shop
 
             if (parsed.Count == 0)
             {
-                return WebActionResult.Fail("「物品」不能为空，格式如 15x2 或 15x2, 81x1。");
+                return WebActionResult.Fail("Items cannot be empty, e.g. 15x2 or 15x2, 81x1.");
             }
 
             var buyPrice = request.GetDecimal("buyPrice") ?? 0m;
@@ -266,7 +264,7 @@ namespace well404.Shop
                     BuyPrice = buyPrice,
                     SellPrice = sellPrice
                 };
-                summary = $"物品 {entry.ItemId}×{entry.Amount}";
+                summary = $"item {entry.ItemId}\u00d7{entry.Amount}";
             }
             else
             {
@@ -280,12 +278,12 @@ namespace well404.Shop
                     BuyPrice = buyPrice,
                     SellPrice = sellPrice
                 };
-                summary = $"礼包 {parsed.Count} 种物品";
+                summary = $"bundle of {parsed.Count} item(s)";
             }
 
             store.Upsert(entry);
             return WebActionResult.Ok(
-                $"已保存 {entry.Id}（{entry.Name}）：{summary}，买 {Num(buyPrice)} / 卖 {Num(sellPrice)}。");
+                $"Saved {entry.Id} ({entry.Name}): {summary}, buy {Num(buyPrice)} / sell {Num(sellPrice)}.");
         }
 
         private static WebActionResult Remove(ShopConfigStore store, WebActionRequest request)
@@ -294,12 +292,12 @@ namespace well404.Shop
             var id = request.Get("key");
             if (id == null)
             {
-                return WebActionResult.Fail("缺少商品 ID。");
+                return WebActionResult.Fail("Missing shop ID.");
             }
 
             return store.Remove(id)
-                ? WebActionResult.Ok($"已删除商品 {id}。")
-                : WebActionResult.Fail($"未找到商品 {id}。");
+                ? WebActionResult.Ok($"Deleted item {id}.")
+                : WebActionResult.Fail($"Item not found: {id}.");
         }
 
         private static async Task<WebActionResult> SearchAsync(IItemDirectory itemDirectory, WebActionRequest request)
@@ -307,7 +305,7 @@ namespace well404.Shop
             var query = request.Get("query");
             if (query == null)
             {
-                return WebActionResult.Table(new[] { "物品ID", "名称" }, new List<IReadOnlyList<string>>(), "输入物品名或 ID 检索。");
+                return WebActionResult.Table(new[] { "Item ID", "Name" }, new List<IReadOnlyList<string>>(), "Type an item name or ID to search.");
             }
 
             await UniTask.SwitchToMainThread();
@@ -336,9 +334,9 @@ namespace well404.Shop
             }
 
             var message = rows.Count == 0
-                ? "没有匹配的物品。"
-                : (truncated ? $"结果过多，仅显示前 {SearchLimit} 条，请细化关键词。" : null);
-            return WebActionResult.Table(new[] { "物品ID", "名称" }, rows, message);
+                ? "No matching items."
+                : (truncated ? $"Too many results; showing the first {SearchLimit}. Refine your keyword." : null);
+            return WebActionResult.Table(new[] { "Item ID", "Name" }, rows, message);
         }
 
         /// <summary>
@@ -369,13 +367,13 @@ namespace well404.Shop
 
                 if (!ushort.TryParse(idPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId) || itemId == 0)
                 {
-                    error = $"物品ID 无效：{token}";
+                    error = $"Invalid item ID: {token}";
                     return null;
                 }
 
                 if (!int.TryParse(amountPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount) || amount < 1)
                 {
-                    error = $"数量无效：{token}（格式 物品ID×数量，如 15x2）";
+                    error = $"Invalid amount: {token} (format itemId\u00d7amount, e.g. 15x2)";
                     return null;
                 }
 

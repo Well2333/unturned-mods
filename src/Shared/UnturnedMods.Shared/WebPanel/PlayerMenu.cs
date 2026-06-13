@@ -8,16 +8,23 @@ namespace UnturnedMods.Shared.WebPanel
     /// <summary>Identifies the player a menu is being rendered/invoked for.</summary>
     public sealed class PlayerMenuContext
     {
-        public PlayerMenuContext(string steamId, string displayName)
+        public PlayerMenuContext(string steamId, string displayName, string language = "en")
         {
             SteamId = steamId ?? throw new ArgumentNullException(nameof(steamId));
             DisplayName = displayName ?? string.Empty;
+            Language = string.IsNullOrWhiteSpace(language) ? "en" : language;
         }
 
         /// <summary>The player's Steam ID (matches the economy owner id / OpenMod user id).</summary>
         public string SteamId { get; }
 
         public string DisplayName { get; }
+
+        /// <summary>
+        /// The UI language the player picked in the web client (e.g. <c>en</c>, <c>zh</c>). Menus
+        /// should render their text in this language via <see cref="IWebTranslationRegistry"/>.
+        /// </summary>
+        public string Language { get; }
     }
 
     /// <summary>A clickable button on a <see cref="PlayerCard"/>.</summary>
@@ -84,12 +91,14 @@ namespace UnturnedMods.Shared.WebPanel
             string title,
             string? header,
             IReadOnlyList<PlayerCard> cards,
-            string? message = null)
+            string? message = null,
+            string? bodyMarkdown = null)
         {
             Title = title ?? string.Empty;
             Header = header;
             Cards = cards ?? Array.Empty<PlayerCard>();
             Message = message;
+            BodyMarkdown = bodyMarkdown;
         }
 
         public string Title { get; }
@@ -101,6 +110,12 @@ namespace UnturnedMods.Shared.WebPanel
 
         /// <summary>An optional notice (e.g. "you must be online").</summary>
         public string? Message { get; }
+
+        /// <summary>
+        /// Optional Markdown body rendered above the cards (used by the server-intro page). The
+        /// client renders it; keep it to a safe Markdown subset (headings, lists, links, emphasis).
+        /// </summary>
+        public string? BodyMarkdown { get; }
     }
 
     /// <summary>Outcome of a player button action.</summary>

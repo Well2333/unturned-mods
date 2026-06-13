@@ -76,6 +76,26 @@ namespace well404.Essentials.Tp
             }
         }
 
+        /// <summary>A snapshot of the requester ids with a pending entry to this recipient (oldest first).</summary>
+        public IReadOnlyList<ulong> PendingSenders(ulong recipient)
+        {
+            lock (m_Lock)
+            {
+                if (!m_Requests.TryGetValue(recipient, out var list) || list.Count == 0)
+                {
+                    return Array.Empty<ulong>();
+                }
+
+                var ids = new ulong[list.Count];
+                for (var i = 0; i < list.Count; i++)
+                {
+                    ids[i] = list[i].Requester;
+                }
+
+                return ids;
+            }
+        }
+
         /// <summary>Removes and returns the oldest requester for this recipient, or null if none.</summary>
         public ulong? TakeEarliest(ulong recipient)
         {
