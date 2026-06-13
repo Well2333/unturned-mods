@@ -122,16 +122,16 @@ namespace well404.Essentials
 
             LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.essentials", new[]
             {
-                new PlayerCommandInfo("/home", "essentials.cmd.home", "well404.Essentials:home", "essentials.group"),
-                new PlayerCommandInfo("/back", "essentials.cmd.back", "well404.Essentials:back", "essentials.group"),
-                new PlayerCommandInfo("/tp", "essentials.cmd.tp", "well404.Essentials:tp", "essentials.group"),
-                new PlayerCommandInfo("/tpa", "essentials.cmd.tpa", "well404.Essentials:tpa", "essentials.group"),
-                new PlayerCommandInfo("/tpd", "essentials.cmd.tpd", "well404.Essentials:tpd", "essentials.group"),
-                new PlayerCommandInfo("/party", "essentials.cmd.party", "well404.Essentials:party", "essentials.group"),
-                new PlayerCommandInfo("/warp", "essentials.cmd.warp", "well404.Essentials:warp", "essentials.group"),
-                new PlayerCommandInfo("/warps", "essentials.cmd.warps", "well404.Essentials:warps", "essentials.group"),
-                new PlayerCommandInfo("/gift", "essentials.cmd.gift", "well404.Essentials:gift", "essentials.group"),
-                new PlayerCommandInfo("/sleep", "essentials.cmd.sleep", "well404.Essentials:sleep", "essentials.group")
+                new PlayerCommandInfo("/home", "essentials.cmd.home", "well404.Essentials:commands.home", "essentials.group"),
+                new PlayerCommandInfo("/back", "essentials.cmd.back", "well404.Essentials:commands.back", "essentials.group"),
+                new PlayerCommandInfo("/tp", "essentials.cmd.tp", "well404.Essentials:commands.tp", "essentials.group"),
+                new PlayerCommandInfo("/tpa", "essentials.cmd.tpa", "well404.Essentials:commands.tpa", "essentials.group"),
+                new PlayerCommandInfo("/tpd", "essentials.cmd.tpd", "well404.Essentials:commands.tpd", "essentials.group"),
+                new PlayerCommandInfo("/party", "essentials.cmd.party", "well404.Essentials:commands.party", "essentials.group"),
+                new PlayerCommandInfo("/warp", "essentials.cmd.warp", "well404.Essentials:commands.warp", "essentials.group"),
+                new PlayerCommandInfo("/warps", "essentials.cmd.warps", "well404.Essentials:commands.warps", "essentials.group"),
+                new PlayerCommandInfo("/gift", "essentials.cmd.gift", "well404.Essentials:commands.gift", "essentials.group"),
+                new PlayerCommandInfo("/sleep", "essentials.cmd.sleep", "well404.Essentials:commands.sleep", "essentials.group")
             });
             m_Logger.LogInformation("Essentials: registered the player utilities menu with the web panel.");
         }

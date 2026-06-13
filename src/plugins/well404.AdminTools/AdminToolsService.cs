@@ -7,6 +7,7 @@ using Cysharp.Threading.Tasks;
 using OpenMod.API.Commands;
 using OpenMod.API.Permissions;
 using OpenMod.API.Users;
+using OpenMod.Core.Permissions;
 using OpenMod.Core.Users;
 using OpenMod.Unturned.Users;
 using SDG.Unturned;
@@ -49,6 +50,8 @@ namespace well404.AdminTools
         private IPermissionStore m_Permissions => m_Scope.Resolve<IPermissionStore>();
         private ICommandStore m_Commands => m_Scope.Resolve<ICommandStore>();
         private ICommandPermissionBuilder m_CommandPermission => m_Scope.Resolve<ICommandPermissionBuilder>();
+        // Role permissions are edited via the roles data store (IPermissionStore isn't registered here).
+        private IPermissionRolesDataStore m_RolesData => m_Scope.Resolve<IPermissionRolesDataStore>();
 
         // ----- godmode / kick / ban -----------------------------------------
 
@@ -172,8 +175,8 @@ namespace well404.AdminTools
 
         public async Task<AdminResult> SetRoleCommandAsync(string roleId, string commandOrPermission, bool grant)
         {
-            var role = await m_Roles.GetRoleAsync(roleId);
-            if (role == null)
+            var roleData = await m_RolesData.GetRoleAsync(roleId);
+            if (roleData == null)
             {
                 return AdminResult.Fail($"Role not found: {roleId}");
             }
@@ -184,25 +187,26 @@ namespace well404.AdminTools
                 return AdminResult.Fail($"Unknown command: {commandOrPermission}");
             }
 
+            roleData.Permissions ??= new HashSet<string>();
             if (grant)
             {
-                await m_Permissions.AddGrantedPermissionAsync(role, permission);
-                return AdminResult.Done($"Granted '{permission}' to role '{roleId}'.");
+                roleData.Permissions.Add(permission);
+            }
+            else
+            {
+                roleData.Permissions.Remove(permission);
             }
 
-            await m_Permissions.RemoveGrantedPermissionAsync(role, permission);
-            return AdminResult.Done($"Revoked '{permission}' from role '{roleId}'.");
+            await m_RolesData.SaveChangesAsync();
+            return AdminResult.Done(grant
+                ? $"Granted '{permission}' to role '{roleId}'."
+                : $"Revoked '{permission}' from role '{roleId}'.");
         }
 
         public async Task<IReadOnlyList<string>> GetRolePermissionsAsync(string roleId)
         {
-            var role = await m_Roles.GetRoleAsync(roleId);
-            if (role == null)
-            {
-                return Array.Empty<string>();
-            }
-
-            return (await m_Permissions.GetGrantedPermissionsAsync(role, false)).ToList();
+            var roleData = await m_RolesData.GetRoleAsync(roleId);
+            return roleData?.Permissions?.ToList() ?? (IReadOnlyList<string>)Array.Empty<string>();
         }
 
         // ----- helpers -------------------------------------------------------

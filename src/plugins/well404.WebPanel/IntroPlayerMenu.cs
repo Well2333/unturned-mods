@@ -57,8 +57,7 @@ namespace well404.WebPanel
 
             foreach (var cmd in m_Commands.GetAll())
             {
-                if (cmd.Permission != null && actor != null
-                    && await m_Permissions.CheckPermissionAsync(actor, cmd.Permission) != PermissionGrantResult.Grant)
+                if (cmd.Permission != null && actor != null && !await CanUseAsync(actor, cmd.Permission))
                 {
                     continue;
                 }
@@ -91,5 +90,21 @@ namespace well404.WebPanel
 
         private async Task<IPermissionActor?> ResolveActorAsync(string steamId)
             => await m_UserManager.FindUserAsync(KnownActorTypes.Player, steamId, UserSearchMode.FindById) as UnturnedUser;
+
+        /// <summary>
+        /// True if the player may use the command. OpenMod throws on an unregistered permission, so
+        /// any failure here defaults to showing the command rather than crashing the whole page.
+        /// </summary>
+        private async Task<bool> CanUseAsync(IPermissionActor actor, string permission)
+        {
+            try
+            {
+                return await m_Permissions.CheckPermissionAsync(actor, permission) == PermissionGrantResult.Grant;
+            }
+            catch
+            {
+                return true;
+            }
+        }
     }
 }

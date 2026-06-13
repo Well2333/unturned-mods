@@ -115,8 +115,8 @@ namespace well404.Economy
 
             LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.economy", new[]
             {
-                new PlayerCommandInfo("/balance", "economy.cmd.balance", "well404.economy:commands.balance", "economy.group"),
-                new PlayerCommandInfo("/pay", "economy.cmd.pay", "well404.economy:commands.pay", "economy.group")
+                new PlayerCommandInfo("/balance", "economy.cmd.balance", "well404.Economy:commands.balance", "economy.group"),
+                new PlayerCommandInfo("/pay", "economy.cmd.pay", "well404.Economy:commands.pay", "economy.group")
             });
             m_Logger.LogInformation("Economy: registered the player wallet menu with the web panel.");
         }
