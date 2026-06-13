@@ -49,7 +49,11 @@ namespace well404.WebPanel
         {
             lock (m_Lock)
             {
-                return m_Menus.Values.ToList();
+                // The home/intro tab is always shown first (and is the player panel's landing tab);
+                // the rest keep their registration order. OrderBy is stable, so equal keys are intact.
+                return m_Menus.Values
+                    .OrderByDescending(m => string.Equals(m.Id, IntroPlayerMenu.MenuId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
             }
         }
 

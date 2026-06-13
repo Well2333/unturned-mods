@@ -109,6 +109,7 @@ namespace well404.Shop
                 LifetimeScope.Resolve<DiscountService>(),
                 economy,
                 LifetimeScope.Resolve<IUserManager>(),
+                LifetimeScope.Resolve<IItemDirectory>(),
                 translations);
             registry.RegisterMenu(menu);
             m_PlayerMenuRegistry = registry;

@@ -94,9 +94,11 @@ namespace well404.WebPanel
 
             var html = LoadResource("index.html");
             var playerHtml = LoadResource("player.html");
+            var playerLanguages = new PlayerLanguageStore(WorkingDirectory);
 
             var server = new WebPanelHttpServer(
-                registry, playerRegistry, translations, sessions, m_Logger, prefix, token, html, playerHtml);
+                registry, playerRegistry, translations, sessions, playerLanguages,
+                m_Logger, prefix, token, html, playerHtml);
             try
             {
                 server.Start();

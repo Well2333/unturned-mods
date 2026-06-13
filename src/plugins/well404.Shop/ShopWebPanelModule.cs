@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
@@ -312,11 +313,34 @@ namespace well404.Shop
             var assets = await itemDirectory.GetItemAssetsAsync();
 
             var rows = new List<IReadOnlyList<string>>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             var truncated = false;
+
+            // A pure-number query: surface the item whose ID is exactly that number first, so a
+            // numeric lookup always shows the matching item even when many IDs contain those digits.
+            var trimmed = query.Trim();
+            if (trimmed.Length > 0 && trimmed.All(char.IsDigit))
+            {
+                foreach (var asset in assets)
+                {
+                    if (string.Equals(asset.ItemAssetId, trimmed, StringComparison.Ordinal))
+                    {
+                        rows.Add(new[] { asset.ItemAssetId ?? string.Empty, asset.ItemName ?? string.Empty });
+                        seen.Add(trimmed);
+                        break;
+                    }
+                }
+            }
+
             foreach (var asset in assets)
             {
                 var assetId = asset.ItemAssetId ?? string.Empty;
                 var itemName = asset.ItemName ?? string.Empty;
+                if (seen.Contains(assetId))
+                {
+                    continue;
+                }
+
                 var match = assetId.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0
                     || itemName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
                 if (!match)

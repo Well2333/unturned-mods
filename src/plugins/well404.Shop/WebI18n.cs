@@ -20,6 +20,8 @@ namespace well404.Shop
             ["Quantity to buy"] = "购买数量",
             ["Quantity to sell"] = "出售数量",
             ["Bundle"] = "礼包",
+            ["Bundle — contains:"] = "礼包 —— 包含：",
+            ["Each purchase gives {0}."] = "每次购买获得 {0}。",
             ["You must be online to buy or sell."] = "你需要在线才能购买或出售物品。",
             ["Item not found."] = "找不到该商品。",
             ["Enter a valid quantity."] = "请输入有效的数量。",

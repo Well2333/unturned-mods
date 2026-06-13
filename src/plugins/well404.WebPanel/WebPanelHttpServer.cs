@@ -42,6 +42,7 @@ namespace well404.WebPanel
         private readonly IPlayerMenuRegistry m_PlayerRegistry;
         private readonly IWebTranslationRegistry m_Translations;
         private readonly PlayerWebSessionManager m_Sessions;
+        private readonly PlayerLanguageStore m_PlayerLanguages;
         private readonly ILogger m_Logger;
         private readonly string m_Token;
         private readonly string m_Html;
@@ -54,6 +55,7 @@ namespace well404.WebPanel
             IPlayerMenuRegistry playerRegistry,
             IWebTranslationRegistry translations,
             PlayerWebSessionManager sessions,
+            PlayerLanguageStore playerLanguages,
             ILogger logger,
             string prefix,
             string token,
@@ -64,6 +66,7 @@ namespace well404.WebPanel
             m_PlayerRegistry = playerRegistry;
             m_Translations = translations;
             m_Sessions = sessions;
+            m_PlayerLanguages = playerLanguages;
             m_Logger = logger;
             m_Token = token;
             m_Html = html;
@@ -415,8 +418,31 @@ namespace well404.WebPanel
                 return;
             }
 
-            var ctx = new PlayerMenuContext(session.SteamId, session.DisplayName, LangOf(context.Request));
             var segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // ["api", "p", "lang"] — persist this player's chosen panel language (server-side, per
+            // Steam ID), so it is restored next time they open the panel from any device.
+            if (context.Request.HttpMethod == "POST" && segments.Length == 3 && segments[2] == "lang")
+            {
+                var chosen = context.Request.QueryString["lang"];
+                if (string.IsNullOrWhiteSpace(chosen))
+                {
+                    ParseForm(ReadBody(context.Request)).TryGetValue("lang", out chosen);
+                }
+
+                if (!string.IsNullOrWhiteSpace(chosen))
+                {
+                    m_PlayerLanguages.Set(session.SteamId, chosen!);
+                }
+
+                WriteJson(context.Response, 200, "{\"ok\":true}");
+                return;
+            }
+
+            // The player's saved language wins over the query string, so the panel always opens in
+            // the language they last chose; only an explicit switch (POST /lang) changes it.
+            var lang = m_PlayerLanguages.Get(session.SteamId) ?? LangOf(context.Request);
+            var ctx = new PlayerMenuContext(session.SteamId, session.DisplayName, lang);
 
             // ["api", "p", "view"]
             if (context.Request.HttpMethod == "GET" && segments.Length == 3 && segments[2] == "view")

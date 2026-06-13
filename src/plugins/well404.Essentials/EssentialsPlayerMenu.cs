@@ -100,17 +100,25 @@ namespace well404.Essentials
                 null, homeButtons.ToArray()));
 
             var death = await m_PlayerData.GetLastDeathAsync(context.SteamId);
-            if (death != null)
-            {
-                cards.Add(new PlayerCard("back", "↩ " + L(lang, "Back to death point"), null, null, new[] { new PlayerButton("go", L(lang, "Return")) }));
-            }
+            cards.Add(death != null
+                ? new PlayerCard("back", "↩ " + L(lang, "Back to death point"), null, null, new[] { new PlayerButton("go", L(lang, "Return")) })
+                : new PlayerCard("back", "↩ " + L(lang, "Back to death point"), new[] { L(lang, "No death point yet — it appears after you die.") }));
 
+            // Warps the player may use; show a hint card when they have access to none, so the
+            // feature stays visible instead of the section silently disappearing.
+            var warpCount = 0;
             foreach (var warp in m_Warps.All)
             {
                 if (await m_Warps.HasAccessAsync(me, warp.Name))
                 {
+                    warpCount++;
                     cards.Add(new PlayerCard(WarpPrefix + warp.Name, "📍 " + warp.Name, null, null, new[] { new PlayerButton("go", L(lang, "Teleport")) }));
                 }
+            }
+
+            if (warpCount == 0)
+            {
+                cards.Add(new PlayerCard("warps", "📍 " + L(lang, "Warps"), new[] { L(lang, "No warps are available to you right now.") }));
             }
 
             // --- incoming teleport requests ---
@@ -162,8 +170,14 @@ namespace well404.Essentials
                     }
                 }
             }
+            else
+            {
+                cards.Add(new PlayerCard("party", "👥 " + L(lang, "Party"),
+                    new[] { L(lang, "You're not in a party yet — invite an online player below to start one.") }));
+            }
 
             // --- other online players: request teleport / invite to party ---
+            var otherCount = 0;
             foreach (var other in m_UserDirectory.GetOnlineUsers())
             {
                 if (other.SteamId.m_SteamID == meId)
@@ -171,6 +185,7 @@ namespace well404.Essentials
                     continue;
                 }
 
+                otherCount++;
                 cards.Add(new PlayerCard("p:" + other.SteamId.m_SteamID, "👤 " + other.DisplayName, null, null, new[]
                 {
                     new PlayerButton("tpreq", L(lang, "Request teleport")),
@@ -178,9 +193,17 @@ namespace well404.Essentials
                 }));
             }
 
+            if (otherCount == 0)
+            {
+                cards.Add(new PlayerCard("noplayers", "👤 " + L(lang, "Other players"),
+                    new[] { L(lang, "No other players are online right now.") }));
+            }
+
             // --- gifts ---
+            var giftCount = 0;
             foreach (var gift in await m_Gifts.GetListingsAsync(me))
             {
+                giftCount++;
                 if (gift.Ready)
                 {
                     cards.Add(new PlayerCard("gift:" + gift.Id, "🎁 " + gift.Name, null, null,
@@ -191,6 +214,11 @@ namespace well404.Essentials
                     cards.Add(new PlayerCard("gift:" + gift.Id, "🎁 " + gift.Name,
                         new[] { m_Tr.Format(lang, "Refreshes in {0}", Duration((int)Math.Ceiling(gift.RefreshInSeconds))) }));
                 }
+            }
+
+            if (giftCount == 0)
+            {
+                cards.Add(new PlayerCard("gifts", "🎁 " + L(lang, "Gifts"), new[] { L(lang, "No gift packs are available to you right now.") }));
             }
 
             // --- sleep vote ---

@@ -151,7 +151,14 @@ function buildLangSwitcher() {
   const sel = $("#langSel");
   sel.replaceChildren(...languages.map(l => el("option", { value: l, text: l.toUpperCase() })));
   sel.value = lang;
-  sel.onchange = () => { lang = sel.value; localStorage.setItem("panel_lang", lang); applyChrome(); load(); };
+  sel.onchange = async () => {
+    lang = sel.value;
+    localStorage.setItem("panel_lang", lang);
+    applyChrome();
+    // Persist the choice server-side (per player) before reloading, so it sticks across sessions.
+    try { await api("/api/p/lang", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "_=1" }); } catch (e) {}
+    load();
+  };
   sel.style.display = languages.length > 1 ? "" : "none";
 }
 
@@ -161,7 +168,10 @@ async function load() {
   catch (e) { $("#main").replaceChildren(el("div", { class: "empty", text: e.message })); return; }
 
   languages = data.languages || [];
-  if (!lang) { lang = data.lang || data.defaultLanguage || "en"; localStorage.setItem("panel_lang", lang); }
+  // The server returns the player's saved language (persisted per Steam ID); adopt it so the panel
+  // always opens in the language they last chose, on any device.
+  lang = data.lang || lang || data.defaultLanguage || "en";
+  localStorage.setItem("panel_lang", lang);
   applyChrome();
   buildLangSwitcher();
 

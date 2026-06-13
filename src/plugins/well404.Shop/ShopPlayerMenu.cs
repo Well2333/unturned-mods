@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using OpenMod.API.Users;
 using OpenMod.Core.Users;
 using OpenMod.Extensions.Economy.Abstractions;
+using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Users;
 using UnturnedMods.Shared.WebPanel;
 
@@ -23,6 +26,7 @@ namespace well404.Shop
         private readonly DiscountService m_DiscountService;
         private readonly IEconomyProvider m_Economy;
         private readonly IUserManager m_UserManager;
+        private readonly IItemDirectory m_ItemDirectory;
         private readonly IWebTranslationRegistry m_Tr;
 
         public ShopPlayerMenu(
@@ -31,6 +35,7 @@ namespace well404.Shop
             DiscountService discountService,
             IEconomyProvider economy,
             IUserManager userManager,
+            IItemDirectory itemDirectory,
             IWebTranslationRegistry translations)
         {
             m_Catalog = catalog;
@@ -38,6 +43,7 @@ namespace well404.Shop
             m_DiscountService = discountService;
             m_Economy = economy;
             m_UserManager = userManager;
+            m_ItemDirectory = itemDirectory;
             m_Tr = translations;
         }
 
@@ -54,6 +60,8 @@ namespace well404.Shop
             var user = await ResolveOnlineAsync(context.SteamId);
             var multiplier = user != null ? await m_DiscountService.GetMultiplierAsync(user) : 1m;
             var symbol = m_Economy.CurrencySymbol;
+
+            var names = await BuildNameMapAsync();
 
             var cards = new List<PlayerCard>();
             foreach (var entry in m_Catalog.Items)
@@ -76,18 +84,21 @@ namespace well404.Shop
                     buttons.Add(new PlayerButton("sell", m_Tr.Resolve("Sell", lang), promptLabel: m_Tr.Resolve("Quantity to sell", lang)));
                 }
 
+                // A bundle: show a "contains" note as a line (distinct from the pills), then each
+                // content item as a name×qty pill. A single item: the card title already names it,
+                // so only note the per-purchase quantity when it grants more than one.
                 var tags = new List<string>();
                 if (entry.IsBundle)
                 {
-                    tags.Add(m_Tr.Resolve("Bundle", lang));
+                    lines.Add("🎁 " + m_Tr.Resolve("Bundle — contains:", lang));
                     foreach (var content in entry.Contents)
                     {
-                        tags.Add($"#{content.ItemId}×{content.Amount}");
+                        tags.Add(ItemLabel(content.ItemId, content.Amount, names));
                     }
                 }
-                else
+                else if (entry.Amount > 1)
                 {
-                    tags.Add($"#{entry.ItemId}×{entry.Amount}");
+                    lines.Add(m_Tr.Format(lang, "Each purchase gives {0}.", ItemLabel(entry.ItemId, entry.Amount, names)));
                 }
 
                 cards.Add(new PlayerCard(entry.Id, entry.Name, lines, tags, buttons));
@@ -182,6 +193,32 @@ namespace well404.Shop
 
         private async Task<UnturnedUser?> ResolveOnlineAsync(string steamId)
             => await m_UserManager.FindUserAsync(KnownActorTypes.Player, steamId, UserSearchMode.FindById) as UnturnedUser;
+
+        /// <summary>One item reference for players: the item's display name (× qty when &gt; 1).</summary>
+        private static string ItemLabel(ushort itemId, int amount, IReadOnlyDictionary<string, string> names)
+        {
+            var id = itemId.ToString(CultureInfo.InvariantCulture);
+            var name = names.TryGetValue(id, out var n) && n.Length > 0 ? n : "#" + id;
+            return amount > 1 ? name + " ×" + amount.ToString(CultureInfo.InvariantCulture) : name;
+        }
+
+        /// <summary>Builds a game item-id → display-name lookup from the item directory (main thread).</summary>
+        private async Task<IReadOnlyDictionary<string, string>> BuildNameMapAsync()
+        {
+            await UniTask.SwitchToMainThread();
+            var assets = await m_ItemDirectory.GetItemAssetsAsync();
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var asset in assets)
+            {
+                var assetId = asset.ItemAssetId;
+                if (assetId != null && !names.ContainsKey(assetId))
+                {
+                    names[assetId] = asset.ItemName ?? string.Empty;
+                }
+            }
+
+            return names;
+        }
 
         private static string Money(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
     }
