@@ -18,7 +18,7 @@
   .tabs button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
   main { padding:16px; max-width:720px; margin:0 auto; }
   .note { color:var(--muted); font-size:12px; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .head { font-size:14px; color:var(--muted); margin:0 0 14px; }
+  .head { display:inline-block; font-size:14px; font-weight:600; color:var(--fg); margin:0 0 16px; background:var(--panel2); border:1px solid var(--line); border-radius:999px; padding:7px 16px; }
   .notice { padding:10px 13px; border-radius:8px; font-size:13px; margin:0 0 14px; background:var(--panel2); border:1px solid var(--line); white-space:pre-line; }
   .md { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:4px 16px; margin:0 0 14px; }
   .md h1,.md h2,.md h3 { margin:14px 0 8px; }
@@ -31,13 +31,24 @@
   .cmd code { color:#fff; font-weight:600; flex:0 0 auto; }
   .cmd span { color:var(--muted); font-size:13px; }
   .grouphead { font-size:13px; color:var(--muted); margin:14px 0 6px; font-weight:600; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .cards { display:flex; flex-direction:column; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; transition:border-color .12s, box-shadow .12s, transform .12s; }
+  .card:hover { border-color:#4a4d55; box-shadow:0 4px 14px rgba(0,0,0,.25); }
   .card h3 { margin:0 0 8px; font-size:15px; }
   .card .lines { color:var(--muted); font-size:13px; margin:0 0 8px; }
   .card .lines div { margin:2px 0; }
   .pills { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px; }
-  .pill { display:inline-block; background:var(--bg); border:1px solid var(--line); border-radius:11px; padding:2px 9px; font-size:12px; }
+  .pill { display:inline-block; background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:3px 10px; font-size:12px; color:var(--fg); }
   .btns { display:flex; flex-wrap:wrap; gap:8px; }
+  /* Shop tab: lay items out as responsive product tiles instead of a tall single column. */
+  .cards.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; align-items:stretch; }
+  .cards.grid .card { display:flex; flex-direction:column; margin-bottom:0; }
+  .cards.grid .card h3 { font-size:16px; }
+  .cards.grid .card .lines { font-size:13.5px; }
+  .cards.grid .card .pills { margin-top:2px; }
+  .cards.grid .card .btns { margin-top:auto; padding-top:4px; }
+  .cards.grid .card .btns .act { flex:1; min-width:0; padding:9px 10px; }
+  .cards.grid .card .act.primary { background:var(--ok); border-color:var(--ok); }
   button.act { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:8px 16px; border-radius:7px; cursor:pointer; font-size:14px; }
   button.act:hover { filter:brightness(1.15); }
   button.act:disabled { opacity:.5; cursor:default; }
@@ -210,7 +221,10 @@ function renderView(menu, view) {
     if (!view.message) main.append(el("div", { class: "empty", text: T("empty") }));
     return;
   }
-  for (const card of (view.cards || [])) main.append(buildCard(menu, card));
+  // The shop reads best as a grid of product tiles; other menus stay a single column.
+  const wrap = el("div", { class: "cards" + (menu.id === "shop" ? " grid" : "") });
+  for (const card of (view.cards || [])) wrap.append(buildCard(menu, card));
+  main.append(wrap);
 }
 
 function buildCard(menu, card) {

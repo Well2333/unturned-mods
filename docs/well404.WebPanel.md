@@ -45,10 +45,25 @@ web:
     command: "cloudflared"
   publicBaseUrl: ""          # 玩家 /menu 链接用的公网地址;空=由 bindAddress+port 推导(开了 tunnel 时自动用隧道地址)
   playerSessionMinutes: 5    # 玩家链接有效期下限(分钟);实际不少于 15
+  devPlayer:                 # 开发预览:不进游戏也能以指定账号查看玩家面(默认关,见下)
+    enabled: false
+    steamId: ""              # 要模拟的玩家 Steam ID
+    displayName: "Dev Player"
 ```
 
 > **玩家面要能用,必须让玩家的浏览器能访问到本服务**:要么开 `tunnel`(推荐,见下),
 > 要么手动把 `publicBaseUrl` 设为玩家可达的公网地址。否则 `/menu` 会提示面板不可达。
+
+### 开发者预览(`web.devPlayer`,可选)
+
+调试玩家面(`/p`)时通常得先进游戏发 `/menu` 才能拿到会话。打开本开关后,访问
+`http://host:port/<token>/dev-player` 会为 `steamId` 指定的账号**直接签发一个长效会话并跳转进
+其玩家面板**,无需进游戏即可在浏览器里预览/调试所有玩家菜单(首页、商店、实用工具…)。
+
+- **双重门槛**:既藏在管理面密钥路径 `/<token>/` 之后,又需 `enabled: true`;关闭时该路径同样
+  返回普通 404(无信息泄露)。**这是玩家身份模拟,生产环境请保持关闭。**
+- 仅**预览渲染**:凡需玩家真正在线的动作(买卖、传送)仍会提示「需要在线」。
+- 开启且日志可见时,启动会打印一条 `DEV player preview is ON — …/dev-player` 警告,附带该 URL。
 
 ### 鉴权与安全（路径式 token）
 
@@ -101,6 +116,7 @@ tunnel:
 | GET | `/<token>/api/modules/{module}/{action}/records` | 列出集合动作的记录 |
 | POST | `/<token>/api/modules/{module}/{action}` | 提交动作(表单 / 搜索) |
 | POST | `/<token>/api/modules/{module}/{action}/delete` | 删除集合中的一条记录 |
+| GET | `/<token>/dev-player` | 开发预览:签发 `devPlayer` 会话并 302 跳转 `/p`(仅 `web.devPlayer.enabled` 为真时;否则 404) |
 
 ### 玩家面接口(`/p`,独立鉴权)
 

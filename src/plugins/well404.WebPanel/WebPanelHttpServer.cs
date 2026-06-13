@@ -47,6 +47,7 @@ namespace well404.WebPanel
         private readonly string m_Token;
         private readonly string m_Html;
         private readonly string m_PlayerHtml;
+        private readonly DevPlayerSettings m_DevPlayer;
         private readonly HttpListener m_Listener;
         private CancellationTokenSource? m_Cts;
 
@@ -60,7 +61,8 @@ namespace well404.WebPanel
             string prefix,
             string token,
             string html,
-            string playerHtml)
+            string playerHtml,
+            DevPlayerSettings devPlayer)
         {
             m_Registry = registry;
             m_PlayerRegistry = playerRegistry;
@@ -71,6 +73,7 @@ namespace well404.WebPanel
             m_Token = token;
             m_Html = html;
             m_PlayerHtml = playerHtml;
+            m_DevPlayer = devPlayer ?? new DevPlayerSettings();
             m_Listener = new HttpListener();
             m_Listener.Prefixes.Add(prefix);
         }
@@ -175,6 +178,32 @@ namespace well404.WebPanel
                 if (request.HttpMethod == "GET" && (adminPath == "/" || adminPath == "/index.html"))
                 {
                     WriteText(context.Response, 200, "text/html; charset=utf-8", m_Html);
+                    return;
+                }
+
+                // Developer preview: mint a session for the configured player and redirect into the
+                // player surface, so the /p menus can be inspected without joining the game. Gated by
+                // the admin token (we're already inside its path) AND the devPlayer switch; when off,
+                // it 404s like any other unknown route (no oracle).
+                if (request.HttpMethod == "GET" && adminPath == "/dev-player")
+                {
+                    if (!m_DevPlayer.Enabled)
+                    {
+                        WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                        return;
+                    }
+
+                    var devToken = m_Sessions.CreateDevSession(m_DevPlayer.SteamId, m_DevPlayer.DisplayName);
+                    if (devToken == null)
+                    {
+                        WriteText(context.Response, 200, "text/plain; charset=utf-8",
+                            "devPlayer.enabled is true but devPlayer.steamId is empty — set it in config.yaml.");
+                        return;
+                    }
+
+                    context.Response.Redirect("/p?t=" + devToken);
+                    context.Response.StatusCode = 302;
+                    context.Response.Close();
                     return;
                 }
 

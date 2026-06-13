@@ -55,3 +55,14 @@ web:
 
   # How long a player's /menu link stays valid, in minutes.
   playerSessionMinutes: 5
+
+  # ---- Developer preview (impersonate a fixed player without joining the game) ----
+  # When enabled, opening  http://host:port/<token>/dev-player  mints a long-lived session for the
+  # Steam ID below and drops you straight into that player's /p panel — handy for previewing/debugging
+  # the player menus from a browser without being in-game. Gated behind BOTH the secret admin token
+  # and this switch; keep it OFF in production (it is player impersonation). Actions that need the
+  # player actually online (buy/sell, teleport) still say "must be online"; only the views preview.
+  devPlayer:
+    enabled: false
+    steamId: ""            # e.g. "76561198180246554"
+    displayName: "Dev Player"

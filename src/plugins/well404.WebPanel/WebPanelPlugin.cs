@@ -98,7 +98,7 @@ namespace well404.WebPanel
 
             var server = new WebPanelHttpServer(
                 registry, playerRegistry, translations, sessions, playerLanguages,
-                m_Logger, prefix, token, html, playerHtml);
+                m_Logger, prefix, token, html, playerHtml, web.DevPlayer);
             try
             {
                 server.Start();
@@ -130,6 +130,14 @@ namespace well404.WebPanel
             else
             {
                 m_Logger.LogInformation("WebPanel admin panel at {AdminUrl} — keep this URL secret.", adminUrl);
+            }
+
+            if (web.DevPlayer != null && web.DevPlayer.Enabled && !string.IsNullOrWhiteSpace(web.DevPlayer.SteamId))
+            {
+                m_Logger.LogWarning(
+                    "WebPanel: DEV player preview is ON — {DevUrl} opens the player panel as {SteamId} without "
+                    + "joining the game. Disable web.devPlayer in production.", adminBase + "/" + token + "/dev-player",
+                    web.DevPlayer.SteamId);
             }
         }
 

@@ -104,6 +104,26 @@ namespace well404.WebPanel
         }
 
         /// <summary>
+        /// Mints a long-lived session for a fixed Steam ID and returns its token (not a URL). Used
+        /// only by the admin-gated developer preview (<c>/&lt;token&gt;/dev-player</c>): the long floor
+        /// keeps it valid even though the impersonated player is offline, so the player surface can be
+        /// previewed from a browser. Returns null when no Steam ID is given.
+        /// </summary>
+        public string? CreateDevSession(string steamId, string displayName)
+        {
+            if (string.IsNullOrWhiteSpace(steamId))
+            {
+                return null;
+            }
+
+            var token = NewToken();
+            m_Sessions[token] = new PlayerSession(steamId.Trim(),
+                string.IsNullOrWhiteSpace(displayName) ? "Dev Player" : displayName.Trim(),
+                DateTime.UtcNow.AddDays(1));
+            return token;
+        }
+
+        /// <summary>
         /// Returns the session for a token, or null if unknown/expired. A session is valid for at
         /// least its floor window (≥15 min from creation); after that it stays valid only while the
         /// player is still online, and is dropped the moment they go offline.

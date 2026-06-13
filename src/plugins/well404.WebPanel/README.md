@@ -39,7 +39,15 @@ web:
     command: "cloudflared"
   publicBaseUrl: ""          # 玩家 /menu 链接的公网地址;空=自动推导(开 tunnel 时用隧道地址)
   playerSessionMinutes: 5    # 玩家链接有效期下限;实际不少于 15 分钟
+  devPlayer:                 # 开发预览:不进游戏也能以指定账号查看玩家面(默认关)
+    enabled: false
+    steamId: ""              # 要模拟的玩家 Steam ID
+    displayName: "Dev Player"
 ```
+
+> **开发者预览**:`devPlayer.enabled: true` 后访问 `/<token>/dev-player`,即以 `steamId` 账号
+> 直接进入其玩家面板(`/p`),无需进游戏发 `/menu`——便于在浏览器里调试玩家菜单。藏在管理面密钥
+> 路径之后且默认关闭;**属玩家身份模拟,生产环境请保持关闭**。需玩家在线的动作(买卖/传送)仍提示「需要在线」。
 
 ### 安全说明
 
@@ -63,6 +71,7 @@ web:
 | GET | `/<token>/` | 管理单页应用(API 用相对路径,自动带 token 前缀) |
 | GET | `/<token>/api/modules` | 列出已注册模块及其字段 schema |
 | GET/POST | `/<token>/api/modules/{module}/{action}[/values\|/records\|/delete]` | 预填 / 记录 / 提交 / 删除 |
+| GET | `/<token>/dev-player` | 开发预览:签发 devPlayer 会话并跳转 `/p`(仅 `devPlayer.enabled` 时;否则 404) |
 | GET | `/p` | 玩家单页应用(令牌从 `?t=` 读取) |
 | GET | `/api/p/view` | 玩家的全部菜单(玩家令牌鉴权) |
 | POST | `/api/p/invoke/{menu}` | 以玩家身份执行卡片按钮(玩家令牌鉴权) |

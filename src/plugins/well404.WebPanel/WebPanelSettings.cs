@@ -38,6 +38,29 @@ namespace well404.WebPanel
 
         /// <summary>How long a player web-session link stays valid, in minutes.</summary>
         public int PlayerSessionMinutes { get; set; } = 5;
+
+        /// <summary>Developer-only impersonation of a fixed player (see <see cref="DevPlayerSettings"/>).</summary>
+        public DevPlayerSettings DevPlayer { get; set; } = new DevPlayerSettings();
+    }
+
+    /// <summary>
+    /// A developer convenience for previewing the player surface (<c>/p</c>) without joining the
+    /// game. When enabled, opening <c>/&lt;adminToken&gt;/dev-player</c> mints a long-lived session
+    /// for the configured Steam ID and drops you straight into that player's panel — so menus can be
+    /// inspected/debugged from a browser. It is gated behind the secret admin token AND this switch,
+    /// and defaults off. Actions needing the player online (buy/sell, teleport) still report
+    /// "must be online"; only the rendered views are previewable offline.
+    /// </summary>
+    public class DevPlayerSettings
+    {
+        /// <summary>Master switch. Off by default — this is impersonation, keep it off in production.</summary>
+        public bool Enabled { get; set; } = false;
+
+        /// <summary>The Steam ID to impersonate (the player whose panel you want to preview).</summary>
+        public string SteamId { get; set; } = string.Empty;
+
+        /// <summary>Display name shown in the previewed panel.</summary>
+        public string DisplayName { get; set; } = "Dev Player";
     }
 
     /// <summary>
