@@ -14,14 +14,10 @@ namespace well404.Shop
             ["Balance: {0}{1}"] = "余额：{0}{1}",
             ["Buy"] = "购买",
             ["Sell"] = "出售",
-            ["Buy price: {0}{1} each"] = "买价：{0}{1} / 个",
-            ["Buy price: {0}{1} each (was {0}{2})"] = "买价：{0}{1} / 个（原价 {0}{2}）",
-            ["Sell price: {0}{1} each"] = "卖价：{0}{1} / 个",
             ["Quantity to buy"] = "购买数量",
             ["Quantity to sell"] = "出售数量",
-            ["Bundle"] = "礼包",
-            ["Bundle — contains:"] = "礼包 —— 包含：",
-            ["Each purchase gives {0}."] = "每次购买获得 {0}。",
+            ["Items"] = "单品",
+            ["Bundles"] = "礼包",
             ["You must be online to buy or sell."] = "你需要在线才能购买或出售物品。",
             ["Item not found."] = "找不到该商品。",
             ["Enter a valid quantity."] = "请输入有效的数量。",
@@ -35,25 +31,41 @@ namespace well404.Shop
             ["Sold {0}× {1} for {2}."] = "已出售 {0}× {1}，获得 {2}。",
 
             // ---- admin module chrome ----
-            ["Shop / Items"] = "商店 / 商品",
-            ["Items"] = "商品",
-            ["Shop ID"] = "商品ID",
-            ["Unique ID used by /buy /sell"] = "/buy /sell 用的唯一ID",
-            ["Display name"] = "显示名",
-            ["Contents"] = "物品",
-            ["itemId×amount, comma-separated. One = item, several = bundle. e.g. 15x2 or 15x2, 81x1"]
-                = "物品ID×数量，逗号分隔。单个=物品，多个=礼包。如 15x2 或 15x2, 81x1",
+            // Plain items (referenced by game item id; name auto-resolved)
+            ["Plain items"] = "普通商品",
+            ["Item ID"] = "物品ID",
             ["Buy price"] = "买价",
             ["0 = not buyable"] = "0=不可买",
             ["Sell price"] = "卖价",
             ["0 = not sellable"] = "0=不可卖",
-            ["Click an item to edit, Add to create. «Items»: one entry = plain item, several (comma-separated) = bundle; format itemId×amount (id only = amount 1), e.g. 15x2 or 15x2, 81x1. Look up item IDs with the search below."]
-                = "点商品编辑，「新增」添加。「物品」填一条=普通物品，多条（逗号分隔）=礼包；格式 物品ID×数量（只写ID则数量1），如 15x2 或 15x2, 81x1。物品ID 可用下方检索。",
+            ["Click to edit, Add to create. A plain item is bought and sold by its game item id; its display name comes from the game. Look up ids with the search below."]
+                = "点击编辑，「新增」添加。普通商品按游戏物品 ID 买卖，显示名由游戏自动解析。物品 ID 可用下方检索。",
+            // Bundles (a named pack, referenced by their own id)
+            ["Bundle ID"] = "礼包ID",
+            ["Unique id used by /buy /sell"] = "/buy /sell 用的唯一ID",
+            ["Display name"] = "显示名",
+            ["Contents"] = "内容物",
+            ["itemId×amount, comma-separated, e.g. 15x2, 81x1"] = "物品ID×数量，逗号分隔，如 15x2, 81x1",
+            ["Click a bundle to edit, Add to create. A bundle is a named pack of items; contents format itemId×amount, comma-separated (id only = amount 1), e.g. 15x2, 81x1."]
+                = "点击编辑，「新增」添加。礼包是一组物品的命名组合；内容格式 物品ID×数量，逗号分隔（只写ID则数量为1），如 15x2, 81x1。",
+            // Search + quick-add
             ["Search game items"] = "检索游戏物品",
             ["Item name or ID"] = "物品名或ID",
             ["Type a keyword or numeric ID…"] = "输入关键词或数字ID…",
-            ["Fuzzy-search all game items by name or ID; take the item ID into the form above."]
-                = "在全部游戏物品中按名称或 ID 模糊检索，拿到「物品ID」填到上面的表单。",
+            ["Search any game item by name or ID, then click + to add it to the shop as a plain item (set its prices afterwards)."]
+                = "按名称或 ID 检索任意游戏物品，点「＋」即把它作为普通商品加入商店（之后再填买卖价）。",
+            ["Add to shop"] = "加入商店",
+            ["Added to the shop — set its buy/sell price."] = "已加入商店——请设置它的买/卖价。",
+            ["Already in the shop."] = "已在商店中。",
+            // admin result messages (fixed, arg-free so they localize server-side)
+            ["Saved."] = "已保存。",
+            ["Deleted."] = "已删除。",
+            ["Not found."] = "未找到。",
+            ["Enter a valid item ID."] = "请输入有效的物品 ID。",
+            ["Enter the bundle ID, name and contents."] = "请填写礼包 ID、名称与内容。",
+            ["Contents cannot be empty, e.g. 15x2, 81x1."] = "内容不能为空，如 15x2, 81x1。",
+            ["Saved discount settings."] = "已保存折扣设置。",
+            // Discounts
             ["VIP discount"] = "VIP 折扣",
             ["Discount master switch"] = "折扣总开关",
             ["Tiers"] = "档位",
@@ -64,13 +76,13 @@ namespace well404.Shop
 
             // ---- player command help (intro page); keys are the English descriptions ----
             ["Browse the server shop and see item prices."] = "浏览服务器商店，查看各商品的价格。",
-            ["Buy items or bundles from the shop with your money."] = "用你的金钱从商店购买物品或礼包。",
-            ["Sell items from your inventory back to the shop for money."] = "把背包里的物品卖回商店换取金钱。",
+            ["Buy a plain item by its item id, or a bundle by its id, with your money."] = "用你的金钱按物品 ID 购买单品，或按礼包 ID 购买礼包。",
+            ["Sell a plain item by its item id, or a bundle by its id, back to the shop for money."] = "把单品（按物品 ID）或礼包（按礼包 ID）卖回商店换取金钱。",
 
             // ---- result table column headers / messages (localized server-side) ----
-            ["Item ID"] = "物品ID",
             ["Name"] = "名称",
             ["Type an item name or ID to search."] = "输入物品名称或 ID 进行检索。",
+            ["No matching items."] = "没有匹配的物品。",
         };
     }
 }

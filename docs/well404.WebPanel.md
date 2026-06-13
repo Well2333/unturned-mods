@@ -153,6 +153,11 @@ tunnel:
 | `Settings` | 预填、可编辑的设置组(统一保存按钮) |
 | `Collection` | 记录的增删改列表(支持网格 / 列表布局) |
 
+通用扩展(任意插件可用,**宿主不含任何插件专属逻辑**):
+- `WebPanelAction.Hidden`:只可被 id 调用、不渲染卡片(作为下面行内动作的目标)。
+- `WebActionResult.WithRowAction(actionId, label, rowKeys?)`:给 `Table`/`Search` 结果每行挂一个按钮,
+  点击即以该行 key(缺省取首列)调用本模块的 `actionId`。Shop 的「检索→＋一键加入商品」即用它。
+
 参考实现见 Economy 的 `EconomyWebPanelModule.cs` 与 Shop 的 `ShopWebPanelModule.cs`。
 
 ## 给插件开发者:注册自己的玩家菜单
@@ -164,7 +169,10 @@ tunnel:
 - 处理器运行在 Web 线程,触碰 Unturned API 前先 `await UniTask.SwitchToMainThread()`;
 - `PlayerMenuContext` 给出玩家 Steam ID 与显示名,据此用 `IUserManager` 解析在线玩家;
 - 按钮可带 `promptLabel`,客户端会先弹窗让玩家输入一个数字(如数量/金额)再提交;
-- `PlayerActionResult.Refresh` 控制动作后是否重新渲染该菜单(默认 `true`)。
+- `PlayerActionResult.Refresh` 控制动作后是否重新渲染该菜单(默认 `true`);
+- **样式/布局全走通用字段**(宿主不认识具体含义):`PlayerMenuView.Layout`(`"list"`/默认卡片)、
+  `PlayerCard.Group`(分区标题,按顺序分组)、`PlayerCard.Badge`(前置短徽章)、`PlayerCard.Tags`(胶囊)、
+  `PlayerButton.Style`(`primary`/`success`/`danger`)。动态文本(价格等)由插件本地化后拼进按钮 `Label`。
 
 若插件还想给玩家一条进入入口,可在某个命令里注入 `IPlayerWebSessionService`,用
 `CreateLink(steamId, displayName, menuId)` 生成链接并 `Player.sendBrowserRequest` 发给玩家

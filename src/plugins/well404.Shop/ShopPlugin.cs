@@ -43,8 +43,8 @@ namespace well404.Shop
 
             var settings = m_Configuration.Get<ShopSettings>() ?? new ShopSettings();
             m_Logger.LogInformation(
-                "Shop loaded with {Count} item(s); discounts {State}.",
-                settings.Items.Count, settings.Discounts.Enabled ? "enabled" : "disabled");
+                "Shop loaded with {Items} item(s) and {Bundles} bundle(s); discounts {State}.",
+                settings.Items.Count, settings.Bundles.Count, settings.Discounts.Enabled ? "enabled" : "disabled");
 
             RegisterWebPanel();
             RegisterPlayerMenu();
@@ -117,8 +117,8 @@ namespace well404.Shop
             LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.shop", new[]
             {
                 new PlayerCommandInfo("/shop", "Browse the server shop and see item prices.", "well404.Shop:commands.shop", "Shop"),
-                new PlayerCommandInfo("/buy <item> [amount]", "Buy items or bundles from the shop with your money.", "well404.Shop:commands.buy", "Shop"),
-                new PlayerCommandInfo("/sell <item> [amount]", "Sell items from your inventory back to the shop for money.", "well404.Shop:commands.sell", "Shop")
+                new PlayerCommandInfo("/buy <id> [amount]", "Buy a plain item by its item id, or a bundle by its id, with your money.", "well404.Shop:commands.buy", "Shop"),
+                new PlayerCommandInfo("/sell <id> [amount]", "Sell a plain item by its item id, or a bundle by its id, back to the shop for money.", "well404.Shop:commands.sell", "Shop")
             });
             m_Logger.LogInformation("Shop: registered the player shop menu with the web panel.");
         }

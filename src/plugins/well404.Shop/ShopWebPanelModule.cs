@@ -11,40 +11,54 @@ using UnturnedMods.Shared.WebPanel;
 namespace well404.Shop
 {
     /// <summary>
-    /// Builds the shop's <see cref="WebPanelModule"/>: list the catalog, add/edit an entry,
-    /// remove an entry, and search the game's item assets (id + name) to fill in an item id.
-    /// <para>
-    /// A single entry form handles both kinds: enter one <c>itemId×amount</c> and it saves a
-    /// plain <c>item</c>; enter several (comma-separated) and it saves a <c>bundle</c> whose
-    /// contents are those items. Catalog edits are written back to <c>config.yaml</c> via
-    /// <see cref="ShopConfigStore"/>. The search runs on the main thread.
-    /// </para>
+    /// Builds the shop's <see cref="WebPanelModule"/>. Plain items and bundles are managed in two
+    /// separate collections so each stays as simple as it can be: a plain item is just an item id
+    /// plus a price pair (its name comes from the game); a bundle adds an id, name and contents. A
+    /// game-item search lets the admin look up ids and one-click "quick add" any item as a plain
+    /// item. Catalog edits are written back to <c>config.yaml</c> via <see cref="ShopConfigStore"/>.
     /// </summary>
     internal static class ShopWebPanelModule
     {
         public const string ModuleId = "well404.shop";
 
         private const int SearchLimit = 100;
+        private const string QuickAddActionId = "additem";
 
         public static WebPanelModule Create(ShopConfigStore store, IItemDirectory itemDirectory)
         {
             var items = new WebPanelAction(
                 id: "items",
-                label: "Items",
+                label: "Plain items",
                 kind: WebActionKind.Collection,
-                handler: request => Task.FromResult(Save(store, request)),
+                handler: request => Task.FromResult(SaveItem(store, request)),
                 fields: new[]
                 {
-                    new WebField("id", "Shop ID", WebFieldType.Text, required: true, placeholder: "Unique ID used by /buy /sell"),
-                    new WebField("name", "Display name", WebFieldType.Text, required: true),
-                    new WebField("items", "Contents", WebFieldType.Text, required: true,
-                        placeholder: "itemId\u00d7amount, comma-separated. One = item, several = bundle. e.g. 15x2 or 15x2, 81x1"),
+                    new WebField("itemId", "Item ID", WebFieldType.Number, required: true),
                     new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
                     new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
                 },
-                description: "Click an item to edit, Add to create. \u00abItems\u00bb: one entry = plain item, several (comma-separated) = bundle; format itemId\u00d7amount (id only = amount 1), e.g. 15x2 or 15x2, 81x1. Look up item IDs with the search below.",
+                description: "Click to edit, Add to create. A plain item is bought and sold by its game item id; its display name comes from the game. Look up ids with the search below.",
                 recordsLoader: () => LoadItemRecordsAsync(store, itemDirectory),
-                deleteHandler: request => Task.FromResult(Remove(store, request)),
+                deleteHandler: request => Task.FromResult(RemoveItem(store, request)),
+                keyField: "itemId");
+
+            var bundles = new WebPanelAction(
+                id: "bundles",
+                label: "Bundles",
+                kind: WebActionKind.Collection,
+                handler: request => Task.FromResult(SaveBundle(store, request)),
+                fields: new[]
+                {
+                    new WebField("id", "Bundle ID", WebFieldType.Text, required: true, placeholder: "Unique id used by /buy /sell"),
+                    new WebField("name", "Display name", WebFieldType.Text, required: true),
+                    new WebField("contents", "Contents", WebFieldType.Text, required: true,
+                        placeholder: "itemId×amount, comma-separated, e.g. 15x2, 81x1"),
+                    new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
+                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
+                },
+                description: "Click a bundle to edit, Add to create. A bundle is a named pack of items; contents format itemId×amount, comma-separated (id only = amount 1), e.g. 15x2, 81x1.",
+                recordsLoader: () => LoadBundleRecordsAsync(store, itemDirectory),
+                deleteHandler: request => Task.FromResult(RemoveBundle(store, request)),
                 keyField: "id");
 
             var search = new WebPanelAction(
@@ -54,9 +68,18 @@ namespace well404.Shop
                 handler: request => SearchAsync(itemDirectory, request),
                 fields: new[]
                 {
-                    new WebField("query", "Item name or ID", WebFieldType.Text, placeholder: "Type a keyword or numeric ID\u2026")
+                    new WebField("query", "Item name or ID", WebFieldType.Text, placeholder: "Type a keyword or numeric ID…")
                 },
-                description: "Fuzzy-search all game items by name or ID; take the item ID into the form above.");
+                description: "Search any game item by name or ID, then click + to add it to the shop as a plain item (set its prices afterwards).");
+
+            // Invoke-only target of the search's per-row "+" button: quick-adds the clicked item id
+            // as a draft plain item (zero prices, ready to edit). Hidden so it has no card of its own.
+            var quickAdd = new WebPanelAction(
+                id: QuickAddActionId,
+                label: "Add to shop",
+                kind: WebActionKind.Form,
+                handler: request => Task.FromResult(QuickAddItem(store, request)),
+                hidden: true);
 
             var discount = new WebPanelAction(
                 id: "discount",
@@ -69,7 +92,7 @@ namespace well404.Shop
                     new WebField("tiers", "Tiers", WebFieldType.Text,
                         placeholder: "permission=multiplier, comma-separated: e.g. well404.shop.vip=0.9, well404.shop.mvp=0.8")
                 },
-                description: "Discounts apply to buy prices; a player gets the lowest (best) multiplier among their granted permissions. Tiers format: permission=multiplier (0<m\u22641, comma-separated); empty clears all tiers.",
+                description: "Discounts apply to buy prices; a player gets the lowest (best) multiplier among their granted permissions. Tiers format: permission=multiplier (0<m≤1, comma-separated); empty clears all tiers.",
                 loader: () => Task.FromResult(store.ReadDiscounts(d =>
                 {
                     var parts = new List<string>();
@@ -86,10 +109,161 @@ namespace well404.Shop
                 })));
 
             return new WebPanelModule(
-                ModuleId, "Shop / Items",
-                new[] { items, search, discount },
+                ModuleId, "Shop",
+                new[] { items, bundles, search, quickAdd, discount },
                 icon: "🛒");
         }
+
+        // ----- plain items -----
+
+        private static async Task<IReadOnlyList<WebRecord>> LoadItemRecordsAsync(ShopConfigStore store, IItemDirectory itemDirectory)
+        {
+            var names = await ShopNames.BuildMapAsync(itemDirectory);
+            var records = new List<WebRecord>();
+            foreach (var item in store.Items)
+            {
+                var id = item.ItemId.ToString(CultureInfo.InvariantCulture);
+                records.Add(new WebRecord(
+                    id,
+                    ShopNames.NameOf(item.ItemId, names),
+                    new Dictionary<string, string>
+                    {
+                        ["itemId"] = id,
+                        ["buyPrice"] = Num(item.BuyPrice),
+                        ["sellPrice"] = Num(item.SellPrice)
+                    },
+                    new[] { "#" + id }));
+            }
+
+            return records;
+        }
+
+        private static WebActionResult SaveItem(ShopConfigStore store, WebActionRequest request)
+        {
+            var idRaw = request.Get("itemId");
+            if (idRaw == null
+                || !ushort.TryParse(idRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId)
+                || itemId == 0)
+            {
+                return WebActionResult.Fail("Enter a valid item ID.");
+            }
+
+            store.UpsertItem(new ShopItemConfig
+            {
+                ItemId = itemId,
+                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
+                SellPrice = request.GetDecimal("sellPrice") ?? 0m
+            });
+            return WebActionResult.Ok("Saved.");
+        }
+
+        private static WebActionResult RemoveItem(ShopConfigStore store, WebActionRequest request)
+        {
+            var key = request.Get("key");
+            if (key == null)
+            {
+                return WebActionResult.Fail("Enter a valid item ID.");
+            }
+
+            return store.RemoveItem(key) ? WebActionResult.Ok("Deleted.") : WebActionResult.Fail("Not found.");
+        }
+
+        private static WebActionResult QuickAddItem(ShopConfigStore store, WebActionRequest request)
+        {
+            var key = request.Get("key");
+            if (key == null
+                || !ushort.TryParse(key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId)
+                || itemId == 0)
+            {
+                return WebActionResult.Fail("Enter a valid item ID.");
+            }
+
+            if (store.Items.Any(x => x.ItemId == itemId))
+            {
+                return WebActionResult.Fail("Already in the shop.");
+            }
+
+            store.UpsertItem(new ShopItemConfig { ItemId = itemId, BuyPrice = 0m, SellPrice = 0m });
+            return WebActionResult.Ok("Added to the shop — set its buy/sell price.");
+        }
+
+        // ----- bundles -----
+
+        private static async Task<IReadOnlyList<WebRecord>> LoadBundleRecordsAsync(ShopConfigStore store, IItemDirectory itemDirectory)
+        {
+            var names = await ShopNames.BuildMapAsync(itemDirectory);
+            var records = new List<WebRecord>();
+            foreach (var bundle in store.Bundles)
+            {
+                var rawParts = new List<string>();
+                var prettyParts = new List<string>();
+                foreach (var content in bundle.Contents)
+                {
+                    rawParts.Add(Raw(content.ItemId, content.Amount));
+                    prettyParts.Add(ShopNames.Label(content.ItemId, content.Amount, names));
+                }
+
+                records.Add(new WebRecord(
+                    bundle.Id,
+                    bundle.Name,
+                    new Dictionary<string, string>
+                    {
+                        ["id"] = bundle.Id,
+                        ["name"] = bundle.Name,
+                        ["contents"] = string.Join(", ", rawParts),
+                        ["buyPrice"] = Num(bundle.BuyPrice),
+                        ["sellPrice"] = Num(bundle.SellPrice)
+                    },
+                    prettyParts));
+            }
+
+            return records;
+        }
+
+        private static WebActionResult SaveBundle(ShopConfigStore store, WebActionRequest request)
+        {
+            var id = request.Get("id");
+            var name = request.Get("name");
+            var contentsRaw = request.Get("contents");
+            if (id == null || name == null || contentsRaw == null)
+            {
+                return WebActionResult.Fail("Enter the bundle ID, name and contents.");
+            }
+
+            var parsed = ParseItems(contentsRaw, out var error);
+            if (parsed == null)
+            {
+                return WebActionResult.Fail(error!);
+            }
+
+            if (parsed.Count == 0)
+            {
+                return WebActionResult.Fail("Contents cannot be empty, e.g. 15x2, 81x1.");
+            }
+
+            store.UpsertBundle(new ShopBundleConfig
+            {
+                Id = id,
+                Name = name,
+                Contents = parsed,
+                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
+                SellPrice = request.GetDecimal("sellPrice") ?? 0m
+            });
+            return WebActionResult.Ok("Saved.");
+        }
+
+        private static WebActionResult RemoveBundle(ShopConfigStore store, WebActionRequest request)
+        {
+            var id = request.Get("key");
+            if (id == null)
+            {
+                return WebActionResult.Fail("Not found.");
+            }
+
+            return store.RemoveBundle(id) ? WebActionResult.Ok("Deleted.") : WebActionResult.Fail("Not found.");
+        }
+
+        // ----- discounts -----
 
         private static WebActionResult SaveDiscount(ShopConfigStore store, WebActionRequest request)
         {
@@ -144,7 +318,7 @@ namespace well404.Shop
                     || !decimal.TryParse(parts[1].Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var mult)
                     || mult <= 0m || mult > 1m)
                 {
-                    error = $"Invalid tier multiplier: {token} (0<m\u22641)";
+                    error = $"Invalid tier multiplier: {token} (0<m≤1)";
                     return null;
                 }
 
@@ -154,152 +328,7 @@ namespace well404.Shop
             return result;
         }
 
-        private static async Task<IReadOnlyList<WebRecord>> LoadItemRecordsAsync(ShopConfigStore store, IItemDirectory itemDirectory)
-        {
-            var names = await BuildNameMapAsync(itemDirectory);
-
-            var records = new List<WebRecord>();
-            foreach (var entry in store.Items)
-            {
-                var rawParts = new List<string>();
-                var prettyParts = new List<string>();
-                if (entry.IsBundle)
-                {
-                    foreach (var content in entry.Contents)
-                    {
-                        rawParts.Add(Raw(content.ItemId, content.Amount));
-                        prettyParts.Add(FormatItem(content.ItemId, content.Amount, names));
-                    }
-                }
-                else
-                {
-                    rawParts.Add(Raw(entry.ItemId, entry.Amount));
-                    prettyParts.Add(FormatItem(entry.ItemId, entry.Amount, names));
-                }
-
-                records.Add(new WebRecord(
-                    entry.Id,
-                    entry.Name,
-                    new Dictionary<string, string>
-                    {
-                        ["id"] = entry.Id,
-                        ["name"] = entry.Name,
-                        ["items"] = string.Join(", ", rawParts),
-                        ["buyPrice"] = Num(entry.BuyPrice),
-                        ["sellPrice"] = Num(entry.SellPrice)
-                    },
-                    prettyParts));
-            }
-
-            return records;
-        }
-
-        /// <summary>The raw editable form of an item ref, e.g. <c>81x3</c>.</summary>
-        private static string Raw(ushort itemId, int amount)
-            => itemId.ToString(CultureInfo.InvariantCulture) + "x" + amount.ToString(CultureInfo.InvariantCulture);
-
-        /// <summary>Formats one item ref for display as <c>Name(id)*amount</c> (or <c>id*amount</c> if name unknown).</summary>
-        private static string FormatItem(ushort itemId, int amount, IReadOnlyDictionary<string, string> names)
-        {
-            var id = itemId.ToString(CultureInfo.InvariantCulture);
-            var qty = amount.ToString(CultureInfo.InvariantCulture);
-            return names.TryGetValue(id, out var name) && name.Length > 0
-                ? $"{name}({id})*{qty}"
-                : $"{id}*{qty}";
-        }
-
-        /// <summary>Builds a game item-id → name lookup from the item directory (main thread).</summary>
-        private static async Task<IReadOnlyDictionary<string, string>> BuildNameMapAsync(IItemDirectory itemDirectory)
-        {
-            await UniTask.SwitchToMainThread();
-            var assets = await itemDirectory.GetItemAssetsAsync();
-            var names = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var asset in assets)
-            {
-                var assetId = asset.ItemAssetId;
-                if (assetId != null && !names.ContainsKey(assetId))
-                {
-                    names[assetId] = asset.ItemName ?? string.Empty;
-                }
-            }
-
-            return names;
-        }
-
-        private static WebActionResult Save(ShopConfigStore store, WebActionRequest request)
-        {
-            var id = request.Get("id");
-            var name = request.Get("name");
-            var itemsRaw = request.Get("items");
-            if (id == null || name == null || itemsRaw == null)
-            {
-                return WebActionResult.Fail("Enter the shop ID, display name and items.");
-            }
-
-            var parsed = ParseItems(itemsRaw, out var error);
-            if (parsed == null)
-            {
-                return WebActionResult.Fail(error!);
-            }
-
-            if (parsed.Count == 0)
-            {
-                return WebActionResult.Fail("Items cannot be empty, e.g. 15x2 or 15x2, 81x1.");
-            }
-
-            var buyPrice = request.GetDecimal("buyPrice") ?? 0m;
-            var sellPrice = request.GetDecimal("sellPrice") ?? 0m;
-
-            ShopEntry entry;
-            string summary;
-            if (parsed.Count == 1)
-            {
-                // A single item -> a plain "item" entry.
-                entry = new ShopEntry
-                {
-                    Id = id,
-                    Name = name,
-                    Type = "item",
-                    ItemId = parsed[0].ItemId,
-                    Amount = parsed[0].Amount,
-                    BuyPrice = buyPrice,
-                    SellPrice = sellPrice
-                };
-                summary = $"item {entry.ItemId}\u00d7{entry.Amount}";
-            }
-            else
-            {
-                // Multiple items -> a "bundle" entry.
-                entry = new ShopEntry
-                {
-                    Id = id,
-                    Name = name,
-                    Type = "bundle",
-                    Contents = parsed,
-                    BuyPrice = buyPrice,
-                    SellPrice = sellPrice
-                };
-                summary = $"bundle of {parsed.Count} item(s)";
-            }
-
-            store.Upsert(entry);
-            return WebActionResult.Ok(
-                $"Saved {entry.Id} ({entry.Name}): {summary}, buy {Num(buyPrice)} / sell {Num(sellPrice)}.");
-        }
-
-        private static WebActionResult Remove(ShopConfigStore store, WebActionRequest request)
-        {
-            // The collection delete endpoint sends the record key as "key".
-            var id = request.Get("key");
-            if (id == null)
-            {
-                return WebActionResult.Fail("Missing shop ID.");
-            }
-
-            return store.Remove(id)
-                ? WebActionResult.Ok($"Deleted item {id}.")
-                : WebActionResult.Fail($"Item not found: {id}.");
-        }
+        // ----- game item search (with per-row quick-add) -----
 
         private static async Task<WebActionResult> SearchAsync(IItemDirectory itemDirectory, WebActionRequest request)
         {
@@ -360,11 +389,19 @@ namespace well404.Shop
             var message = rows.Count == 0
                 ? "No matching items."
                 : (truncated ? $"Too many results; showing the first {SearchLimit}. Refine your keyword." : null);
-            return WebActionResult.Table(new[] { "Item ID", "Name" }, rows, message);
+            // The "Item ID" cell (first column) is each row's key, so the quick-add button passes it.
+            return WebActionResult.Table(new[] { "Item ID", "Name" }, rows, message)
+                .WithRowAction(QuickAddActionId, "Add to shop");
         }
 
+        // ----- helpers -----
+
+        /// <summary>The raw editable form of an item ref, e.g. <c>81x3</c>.</summary>
+        private static string Raw(ushort itemId, int amount)
+            => itemId.ToString(CultureInfo.InvariantCulture) + "x" + amount.ToString(CultureInfo.InvariantCulture);
+
         /// <summary>
-        /// Parses an "items" string into item/amount pairs. Entries are comma/semicolon/newline
+        /// Parses a "contents" string into item/amount pairs. Entries are comma/semicolon/newline
         /// separated; each is <c>itemId</c> or <c>itemId×amount</c> (× may be <c>x</c>, <c>X</c>,
         /// <c>×</c> or <c>*</c>; amount defaults to 1). Returns null with <paramref name="error"/>
         /// set on a malformed entry.
@@ -397,7 +434,7 @@ namespace well404.Shop
 
                 if (!int.TryParse(amountPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount) || amount < 1)
                 {
-                    error = $"Invalid amount: {token} (format itemId\u00d7amount, e.g. 15x2)";
+                    error = $"Invalid amount: {token} (format itemId×amount, e.g. 15x2)";
                     return null;
                 }
 

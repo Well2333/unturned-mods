@@ -76,7 +76,8 @@ namespace UnturnedMods.Shared.WebPanel
             Func<Task<IReadOnlyList<WebRecord>>>? recordsLoader = null,
             Func<WebActionRequest, Task<WebActionResult>>? deleteHandler = null,
             string? keyField = null,
-            string? layout = null)
+            string? layout = null,
+            bool hidden = false)
         {
             Id = id ?? throw new ArgumentNullException(nameof(id));
             Label = label ?? throw new ArgumentNullException(nameof(label));
@@ -89,7 +90,14 @@ namespace UnturnedMods.Shared.WebPanel
             DeleteHandler = deleteHandler;
             KeyField = keyField;
             Layout = layout;
+            Hidden = hidden;
         }
+
+        /// <summary>
+        /// When true the panel does not render a card for this action, but it stays invokable by id
+        /// (e.g. the target of a table's per-row action). Generic helper for "invoke-only" actions.
+        /// </summary>
+        public bool Hidden { get; }
 
         /// <summary>Stable, unique-within-module action id. Used for routing.</summary>
         public string Id { get; }

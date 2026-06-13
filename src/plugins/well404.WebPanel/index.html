@@ -181,6 +181,7 @@ function render() {
 
   const settings = []; // {action, inputs} groups saved together by the page button
   for (const action of module.actions) {
+    if (action.hidden) continue;   // invoke-only actions (e.g. a table's per-row action target)
     const built = buildCard(module, action);
     main.append(built.card);
     if (action.kind === "settings") settings.push({ action, inputs: built.inputs });
@@ -204,7 +205,7 @@ function buildCard(module, action) {
 
   if (action.kind === "table") {
     card.append(out, msg);
-    invoke(module, action).then(r => showResult(r, msg, out)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+    invoke(module, action).then(r => showResult(r, msg, out, module)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
   } else if (action.kind === "settings") {
     const row = el("div", { class:"row" });
     for (const f of action.fields) row.append(fieldNode(f, inputs));
@@ -228,7 +229,7 @@ function buildCard(module, action) {
       clearTimeout(timer);
       timer = setTimeout(() => {
         msg.className = "msg";
-        invoke(module, action, collect(inputs)).then(r => showResult(r, msg, out)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+        invoke(module, action, collect(inputs)).then(r => showResult(r, msg, out, module)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
       }, 250);
     });
   } else if (action.kind === "collection") {
@@ -352,7 +353,7 @@ async function submitForm(module, action, inputs, btn, msg, out) {
   btn.disabled = true;
   msg.className = "msg";
   try {
-    showResult(await invoke(module, action, collect(inputs)), msg, out);
+    showResult(await invoke(module, action, collect(inputs)), msg, out, module);
   } catch (e) {
     msg.className = "msg err"; msg.textContent = e.message;
   } finally {
@@ -378,7 +379,7 @@ async function saveAll(module, settings, btn) {
   }
 }
 
-function showResult(result, msg, out) {
+function showResult(result, msg, out, module) {
   out.replaceChildren();
   if (result.message) {
     msg.className = "msg " + (result.success ? "ok" : "err");
@@ -387,11 +388,37 @@ function showResult(result, msg, out) {
     msg.className = "msg";
   }
   if (result.columns && result.rows) {
-    const thead = el("thead", {}, el("tr", {}, ...result.columns.map(c => el("th", { text: c }))));
-    const tbody = el("tbody", {}, ...result.rows.map(r => el("tr", {}, ...r.map(c => el("td", { text: c })))));
+    // Optional per-row action (generic): a button that invokes module/<rowActionId> with the row key.
+    const hasRowAction = result.rowActionId && module;
+    const headCells = result.columns.map(c => el("th", { text: c }));
+    if (hasRowAction) headCells.push(el("th", { text: "" }));
+    const thead = el("thead", {}, el("tr", {}, ...headCells));
+    const tbody = el("tbody", {}, ...result.rows.map((r, i) => {
+      const cells = r.map(c => el("td", { text: c }));
+      if (hasRowAction) {
+        const key = (result.rowKeys && result.rowKeys[i] != null) ? result.rowKeys[i] : r[0];
+        const btn = el("button", { class:"act", text: result.rowActionLabel || "+",
+          onclick: () => rowAction(module, result.rowActionId, key, btn, msg) });
+        cells.push(el("td", {}, btn));
+      }
+      return el("tr", {}, ...cells);
+    }));
     out.append(el("table", {}, thead, tbody));
     out.append(el("div", { class:"count", text: `${result.rows.length} ${T("rows")}` }));
   }
+}
+
+// Invokes a table row's action (e.g. shop quick-add). On success re-renders the module so any
+// collection that gained a record reflects it; on failure surfaces the message.
+async function rowAction(module, actionId, key, btn, msg) {
+  btn.disabled = true;
+  const body = new URLSearchParams(); body.set("key", key);
+  try {
+    const r = await api(`api/modules/${enc(module.id)}/${enc(actionId)}`, {
+      method:"POST", headers: headers({ "Content-Type":"application/x-www-form-urlencoded" }), body: body.toString() });
+    if (r.success) { flash = { ok:true, text: r.message }; render(); }
+    else { msg.className = "msg err"; msg.textContent = r.message || T("saveFail"); btn.disabled = false; }
+  } catch (e) { msg.className = "msg err"; msg.textContent = e.message; btn.disabled = false; }
 }
 
 loadModules();

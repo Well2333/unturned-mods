@@ -43,7 +43,7 @@ namespace UnturnedMods.Shared.WebPanel
 
         public string Label { get; }
 
-        /// <summary>Optional visual hint: <c>primary</c>, <c>danger</c>, or null (default).</summary>
+        /// <summary>Optional visual hint: <c>primary</c>, <c>success</c>, <c>danger</c>, or null (default).</summary>
         public string? Style { get; }
 
         /// <summary>
@@ -62,18 +62,17 @@ namespace UnturnedMods.Shared.WebPanel
             IReadOnlyList<string>? lines = null,
             IReadOnlyList<string>? tags = null,
             IReadOnlyList<PlayerButton>? buttons = null,
-            IReadOnlyDictionary<string, string>? meta = null)
+            string? group = null,
+            string? badge = null)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
             Label = label ?? throw new ArgumentNullException(nameof(label));
             Lines = lines ?? Array.Empty<string>();
             Tags = tags ?? Array.Empty<string>();
             Buttons = buttons ?? Array.Empty<PlayerButton>();
-            Meta = meta ?? EmptyMeta;
+            Group = group;
+            Badge = badge;
         }
-
-        private static readonly IReadOnlyDictionary<string, string> EmptyMeta =
-            new Dictionary<string, string>(0);
 
         /// <summary>Identifies the entry; passed back as the <c>cardKey</c> on a button action.</summary>
         public string Key { get; }
@@ -89,12 +88,17 @@ namespace UnturnedMods.Shared.WebPanel
         public IReadOnlyList<PlayerButton> Buttons { get; }
 
         /// <summary>
-        /// Optional structured key/value hints a menu can attach for richer client rendering (e.g.
-        /// the shop sets <c>kind</c>=item|bundle, <c>itemId</c>, formatted <c>buy</c>/<c>sell</c>
-        /// prices) so the page can offer card/list layouts. Values are pre-formatted strings; the
-        /// generic renderer ignores keys it doesn't know.
+        /// Optional section heading this card belongs to. When cards carry groups, the client
+        /// renders a heading per group (cards are grouped in their given order). Null = ungrouped.
+        /// A generic UI hint — the renderer has no knowledge of what the groups mean.
         /// </summary>
-        public IReadOnlyDictionary<string, string> Meta { get; }
+        public string? Group { get; }
+
+        /// <summary>
+        /// Optional short leading badge (e.g. an id) shown before the label in compact layouts.
+        /// Null = none. Generic; the renderer does not interpret it.
+        /// </summary>
+        public string? Badge { get; }
     }
 
     /// <summary>The rendered state of a player menu (one tab).</summary>
@@ -105,13 +109,15 @@ namespace UnturnedMods.Shared.WebPanel
             string? header,
             IReadOnlyList<PlayerCard> cards,
             string? message = null,
-            string? bodyMarkdown = null)
+            string? bodyMarkdown = null,
+            string? layout = null)
         {
             Title = title ?? string.Empty;
             Header = header;
             Cards = cards ?? Array.Empty<PlayerCard>();
             Message = message;
             BodyMarkdown = bodyMarkdown;
+            Layout = layout;
         }
 
         public string Title { get; }
@@ -120,6 +126,13 @@ namespace UnturnedMods.Shared.WebPanel
         public string? Header { get; }
 
         public IReadOnlyList<PlayerCard> Cards { get; }
+
+        /// <summary>
+        /// Optional layout hint for the cards: <c>"list"</c> renders compact rows (id/label/buttons),
+        /// anything else (default/null) renders full cards. A generic presentation choice the menu
+        /// makes; the host renders it uniformly for every menu.
+        /// </summary>
+        public string? Layout { get; }
 
         /// <summary>An optional notice (e.g. "you must be online").</summary>
         public string? Message { get; }

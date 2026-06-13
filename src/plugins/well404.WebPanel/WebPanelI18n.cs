@@ -26,6 +26,9 @@ namespace well404.WebPanel
                 = "玩家在面板首页看到的欢迎文案（所有语言共用一份）。",
             ["Saved."] = "已保存。",
 
+            // generic admin errors surfaced by the host
+            ["Delete is not supported here."] = "此处不支持删除。",
+
             // player command help (the /menu command itself); keys are the English descriptions
             ["Web Panel"] = "网页面板",
             ["Open your personal web panel link in a browser to manage things from a page."]

@@ -365,7 +365,8 @@ namespace well404.WebPanel
             var action = FindAction(moduleId, actionId);
             if (action?.DeleteHandler == null)
             {
-                WriteJson(context.Response, 404, "{\"success\":false,\"message\":\"不支持删除\"}");
+                WriteJson(context.Response, 404,
+                    "{\"success\":false,\"message\":" + Json.Encode(Tr("Delete is not supported here.", LangOf(context.Request))) + "}");
                 return;
             }
 
@@ -590,6 +591,7 @@ namespace well404.WebPanel
                 .Append("\"header\":").Append(Json.Encode(view.Header)).Append(',')
                 .Append("\"message\":").Append(Json.Encode(view.Message)).Append(',')
                 .Append("\"bodyMarkdown\":").Append(Json.Encode(view.BodyMarkdown)).Append(',')
+                .Append("\"layout\":").Append(Json.Encode(view.Layout)).Append(',')
                 .Append("\"cards\":[");
 
             for (var i = 0; i < view.Cards.Count; i++)
@@ -603,12 +605,12 @@ namespace well404.WebPanel
                 sb.Append('{')
                     .Append("\"key\":").Append(Json.Encode(card.Key)).Append(',')
                     .Append("\"label\":").Append(Json.Encode(card.Label)).Append(',')
+                    .Append("\"group\":").Append(Json.Encode(card.Group)).Append(',')
+                    .Append("\"badge\":").Append(Json.Encode(card.Badge)).Append(',')
                     .Append("\"lines\":");
                 AppendStringArray(sb, card.Lines);
                 sb.Append(",\"tags\":");
                 AppendStringArray(sb, card.Tags);
-                sb.Append(",\"meta\":");
-                AppendStringMap(sb, card.Meta);
                 sb.Append(",\"buttons\":[");
 
                 for (var j = 0; j < card.Buttons.Count; j++)
@@ -686,6 +688,7 @@ namespace well404.WebPanel
                         .Append("\"hasDelete\":").Append(Json.Bool(action.DeleteHandler != null)).Append(',')
                         .Append("\"keyField\":").Append(Json.Encode(action.KeyField)).Append(',')
                         .Append("\"layout\":").Append(Json.Encode(action.Layout)).Append(',')
+                        .Append("\"hidden\":").Append(Json.Bool(action.Hidden)).Append(',')
                         .Append("\"description\":").Append(Json.Encode(Tr(action.Description, lang))).Append(',')
                         .Append("\"fields\":[");
 
@@ -729,7 +732,11 @@ namespace well404.WebPanel
             sb.Append('{')
                 .Append("\"success\":").Append(Json.Bool(result.Success)).Append(',')
                 .Append("\"message\":").Append(Json.Encode(result.Message == null ? null : Tr(result.Message, lang))).Append(',')
-                .Append("\"columns\":");
+                .Append("\"rowActionId\":").Append(Json.Encode(result.RowActionId)).Append(',')
+                .Append("\"rowActionLabel\":").Append(Json.Encode(result.RowActionLabel == null ? null : Tr(result.RowActionLabel, lang))).Append(',')
+                .Append("\"rowKeys\":");
+            AppendStringArray(sb, result.RowKeys);
+            sb.Append(",\"columns\":");
             AppendLocalizedStringArray(sb, result.Columns, lang);
             sb.Append(",\"rows\":");
 
@@ -755,27 +762,6 @@ namespace well404.WebPanel
 
             sb.Append('}');
             return sb.ToString();
-        }
-
-        private static void AppendStringMap(StringBuilder sb, IReadOnlyDictionary<string, string>? map)
-        {
-            sb.Append('{');
-            if (map != null)
-            {
-                var first = true;
-                foreach (var pair in map)
-                {
-                    if (!first)
-                    {
-                        sb.Append(',');
-                    }
-
-                    first = false;
-                    sb.Append(Json.Encode(pair.Key)).Append(':').Append(Json.Encode(pair.Value));
-                }
-            }
-
-            sb.Append('}');
         }
 
         private static void AppendStringArray(StringBuilder sb, IReadOnlyList<string>? items)

@@ -90,6 +90,28 @@ namespace UnturnedMods.Shared.WebPanel
 
         public IReadOnlyList<IReadOnlyList<string>>? Rows { get; set; }
 
+        /// <summary>
+        /// Optional per-row action: when set, the panel renders a button (labelled
+        /// <see cref="RowActionLabel"/>, an i18n key) on every row that invokes the module action
+        /// <see cref="RowActionId"/> with that row's key (from <see cref="RowKeys"/> when given,
+        /// else the row's first cell). Generic — the host doesn't interpret the action.
+        /// </summary>
+        public string? RowActionId { get; set; }
+
+        public string? RowActionLabel { get; set; }
+
+        /// <summary>Per-row keys parallel to <see cref="Rows"/>; null = use each row's first cell.</summary>
+        public IReadOnlyList<string>? RowKeys { get; set; }
+
+        /// <summary>Attaches a per-row action button to a table result (see <see cref="RowActionId"/>).</summary>
+        public WebActionResult WithRowAction(string actionId, string label, IReadOnlyList<string>? rowKeys = null)
+        {
+            RowActionId = actionId;
+            RowActionLabel = label;
+            RowKeys = rowKeys;
+            return this;
+        }
+
         public static WebActionResult Ok(string? message = null)
             => new WebActionResult { Success = true, Message = message };
 

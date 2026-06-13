@@ -22,20 +22,46 @@ namespace well404.Shop
 
         public DiscountSettings Discounts => Settings.Discounts;
 
-        public IReadOnlyList<ShopEntry> Items => Settings.Items;
+        /// <summary>All purchasable entries — plain items first, then bundles — as a uniform list.</summary>
+        public IReadOnlyList<ShopEntry> Entries
+        {
+            get
+            {
+                var settings = Settings;
+                var list = new List<ShopEntry>(settings.Items.Count + settings.Bundles.Count);
+                foreach (var item in settings.Items)
+                {
+                    list.Add(ShopEntry.FromItem(item));
+                }
 
-        /// <summary>Finds an entry by its id (case-insensitive), or null.</summary>
+                foreach (var bundle in settings.Bundles)
+                {
+                    list.Add(ShopEntry.FromBundle(bundle));
+                }
+
+                return list;
+            }
+        }
+
+        /// <summary>
+        /// Finds an entry by reference id: a numeric id matching a plain item's game item id wins,
+        /// otherwise a bundle whose id matches (case-insensitive). Returns null if neither matches.
+        /// </summary>
         public ShopEntry? Find(string id)
         {
-            foreach (var entry in Settings.Items)
+            var settings = Settings;
+
+            if (ushort.TryParse(id, out var itemId))
             {
-                if (string.Equals(entry.Id, id, StringComparison.OrdinalIgnoreCase))
+                var item = settings.Items.Find(x => x.ItemId == itemId);
+                if (item != null)
                 {
-                    return entry;
+                    return ShopEntry.FromItem(item);
                 }
             }
 
-            return null;
+            var bundle = settings.Bundles.Find(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+            return bundle != null ? ShopEntry.FromBundle(bundle) : null;
         }
     }
 }

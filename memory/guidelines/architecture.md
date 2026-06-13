@@ -106,6 +106,26 @@ unturned-mods/
   没装 WebPanel 时返回 null、插件照常工作；拿到则 `RegisterModule(...)`，`OnUnloadAsync`
   里 `UnregisterModule(...)`。注册表是全局单例，与插件加载顺序无关。
 
+**铁律：宿主（well404.WebPanel）绝不内含任何具体插件的业务逻辑或 id 判断。** 两个内嵌
+SPA（`index.html` 管理面、`player.html` 玩家面）只按**通用描述符字段**渲染，**不得**出现
+`menu.id === "shop"` 这类对某插件的特判。任何插件想要的样式/布局都必须经由通用字段表达，
+由该插件**注册数据**驱动，从而保证「不同人不同插件的任意组合都不会让面板出问题」。曾经把
+商店专属渲染写进 `player.html` 是反面教材，已重构为下述通用能力：
+
+- **玩家菜单渲染模型（`IPlayerMenu` → `PlayerMenuView`/`PlayerCard`）**，全部为通用 UI 语义：
+  - `PlayerMenuView.Layout`：`"list"`（紧凑行）或 null（默认卡片）。任何插件可选。
+  - `PlayerCard.Group`：分区标题；宿主按卡片给出的 group **顺序**分组、加小标题+计数。
+    分区文案由插件用 `m_Tr.Resolve` 自行本地化后填入（宿主不认识其含义）。
+  - `PlayerCard.Badge`：紧凑布局下的前置短徽章（如物品 id）。
+  - `PlayerCard.Tags`：胶囊徽章（如礼包内容）；列表行有 tags 时整行占满宽度。
+  - `PlayerButton.Style`：`primary`/`success`/`danger`/null —— 通用配色，价格等动态文本由插件
+    拼进按钮 `Label`（玩家菜单按钮的 Label 是已本地化文本，不是键）。
+- **通用管理面扩展**（供任意插件复用，非商店专属）：
+  - `WebPanelAction.Hidden`：只可被 id 调用、不渲染自己的卡片（如表格行内动作的目标）。
+  - `WebActionResult.WithRowAction(actionId, label, rowKeys?)`：给 `Table`/`Search` 结果的每行
+    挂一个按钮，点击即以该行 key（缺省取首列）调用本模块的 `actionId`。商店「检索→＋快速加入
+    商品」即用它把搜索结果行接到隐藏的 `additem` 动作。
+
 宿主技术决策：用 BCL `System.Net.HttpListener` + 手写极简 JSON，**零额外 NuGet 依赖**
 （避免 `build.sh` 漏拷第三方包的传递子依赖，也规避 Mono 兼容风险）。监听/鉴权：
 `bindAddress` 非回环时**强制 token**（缺 token 自动降级回 `127.0.0.1`），
