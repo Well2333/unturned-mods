@@ -36,7 +36,7 @@ openmod reload
 ```yaml
 web:
   bindAddress: "127.0.0.1"   # 监听地址:127.0.0.1(仅本机)| 0.0.0.0(全部网卡)| 指定 IP
-  port: 8080                 # 监听端口
+  port: 27020                 # 监听端口
   token: ""                  # 管理面密钥;留空=首次启动随机生成 12 位并写回本文件
   tunnel:                    # 可选:内置反代,把面板安全地暴露到公网(见下)
     enabled: false

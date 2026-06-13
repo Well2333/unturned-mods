@@ -11,7 +11,9 @@ web:
   #   192.168.x  -> a specific NIC address
   bindAddress: "127.0.0.1"
 
-  port: 8080
+  # Panel port. Kept near the Unturned server ports (27015–27017) and clear of them, so it is easy
+  # to forward alongside the game and avoids the common, often-occupied 8080.
+  port: 27020
 
   # Secret admin token. The admin panel is ALWAYS served behind it as a path prefix:
   #   http://host:port/<token>/
@@ -45,7 +47,7 @@ web:
 
   # ---- Player surface (the /p page players open in-game via /menu) ----
 
-  # Public base URL handed to players in their /menu link, e.g. "http://your-ip:8080".
+  # Public base URL handed to players in their /menu link, e.g. "http://your-ip:27020".
   # Must be reachable from players' browsers. Leave empty to derive it from bindAddress
   # + port (only works when bindAddress is a routable address, not 127.0.0.1 / 0.0.0.0).
   # When no usable URL is available, /menu tells the player the panel isn't reachable.

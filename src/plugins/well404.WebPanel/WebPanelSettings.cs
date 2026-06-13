@@ -14,7 +14,7 @@ namespace well404.WebPanel
         /// </summary>
         public string BindAddress { get; set; } = "127.0.0.1";
 
-        public int Port { get; set; } = 8080;
+        public int Port { get; set; } = 27020;
 
         /// <summary>
         /// Secret admin token. The admin panel is always served under this token as a path
@@ -29,7 +29,7 @@ namespace well404.WebPanel
 
         /// <summary>
         /// Public base URL given to players in the in-game shop/gift links (the player surface
-        /// at <c>/p</c>), e.g. <c>http://your-server-ip:8080</c>. Must be reachable from players'
+        /// at <c>/p</c>), e.g. <c>http://your-server-ip:27020</c>. Must be reachable from players'
         /// browsers. Empty = derive from <see cref="BindAddress"/> + <see cref="Port"/> (only
         /// works when the bind address is a routable address, not 127.0.0.1 / 0.0.0.0). When no
         /// usable base URL is available, the player-link feature is simply disabled.
