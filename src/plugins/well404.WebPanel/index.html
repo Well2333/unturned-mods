@@ -86,11 +86,11 @@ const STR = {
   en: { loading:"Loading…", unauthorized:"Unauthorized: the token in the link is invalid or changed — ask an admin for the current link.",
         reqFailed:"Request failed", noModules:"No modules registered yet. They appear here once a WebPanel-aware plugin is installed and loaded.",
         save:"Save", add:"＋ Add", del:"Delete", saveOk:"Saved", search:"Search", enterKeyword:"Enter a keyword…",
-        none:"(no entries — click ＋ Add)", saveFail:"Save failed", delFail:"Delete failed", edit:"Edit: ", addItem:"New entry", cancel:"Cancel" },
+        none:"(no entries — click ＋ Add)", saveFail:"Save failed", delFail:"Delete failed", edit:"Edit: ", addItem:"New entry", cancel:"Cancel", rows:"rows" },
   zh: { loading:"加载中…", unauthorized:"未授权：访问链接中的 token 无效或已变更，请向管理员索取最新链接。",
         reqFailed:"请求失败", noModules:"暂无已注册的模块。安装并加载支持 WebPanel 的插件后会出现在这里。",
         save:"保存", add:"＋ 新增", del:"删除", saveOk:"保存成功", search:"搜索", enterKeyword:"输入关键词…",
-        none:"（暂无条目，点「＋ 新增」添加）", saveFail:"保存失败", delFail:"删除失败", edit:"编辑：", addItem:"新增条目", cancel:"取消" }
+        none:"（暂无条目，点「＋ 新增」添加）", saveFail:"保存失败", delFail:"删除失败", edit:"编辑：", addItem:"新增条目", cancel:"取消", rows:"行" }
 };
 function T(k){ return (STR[lang] && STR[lang][k]) || STR.en[k] || k; }
 function langQS(){ return lang ? ("lang=" + enc(lang)) : ""; }
@@ -390,7 +390,7 @@ function showResult(result, msg, out) {
     const thead = el("thead", {}, el("tr", {}, ...result.columns.map(c => el("th", { text: c }))));
     const tbody = el("tbody", {}, ...result.rows.map(r => el("tr", {}, ...r.map(c => el("td", { text: c })))));
     out.append(el("table", {}, thead, tbody));
-    out.append(el("div", { class:"count", text: `${result.rows.length} 行` }));
+    out.append(el("div", { class:"count", text: `${result.rows.length} ${T("rows")}` }));
   }
 }
 

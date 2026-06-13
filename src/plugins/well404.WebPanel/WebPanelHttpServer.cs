@@ -259,7 +259,7 @@ namespace well404.WebPanel
                 result = WebActionResult.Fail(ex.Message);
             }
 
-            WriteJson(context.Response, 200, BuildResultJson(result));
+            WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
         }
 
         private async Task LoadValuesAsync(HttpListenerContext context, string moduleId, string actionId)
@@ -349,7 +349,7 @@ namespace well404.WebPanel
                 result = WebActionResult.Fail(ex.Message);
             }
 
-            WriteJson(context.Response, 200, BuildResultJson(result));
+            WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
         }
 
         private WebPanelAction? FindAction(string moduleId, string actionId)
@@ -661,14 +661,19 @@ namespace well404.WebPanel
             return sb.ToString();
         }
 
-        private static string BuildResultJson(WebActionResult result)
+        /// <summary>
+        /// Serializes an action result, localizing the message and the table column headers to
+        /// <paramref name="lang"/> (both are i18n keys). Row cells are dynamic data (names, ids) and
+        /// are emitted verbatim.
+        /// </summary>
+        private string BuildResultJson(WebActionResult result, string lang)
         {
             var sb = new StringBuilder();
             sb.Append('{')
                 .Append("\"success\":").Append(Json.Bool(result.Success)).Append(',')
-                .Append("\"message\":").Append(Json.Encode(result.Message)).Append(',')
+                .Append("\"message\":").Append(Json.Encode(result.Message == null ? null : Tr(result.Message, lang))).Append(',')
                 .Append("\"columns\":");
-            AppendStringArray(sb, result.Columns);
+            AppendLocalizedStringArray(sb, result.Columns, lang);
             sb.Append(",\"rows\":");
 
             if (result.Rows == null)

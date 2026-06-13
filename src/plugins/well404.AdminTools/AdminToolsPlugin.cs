@@ -66,7 +66,7 @@ namespace well404.AdminTools
             var translations = LifetimeScope.Resolve<IWebTranslationRegistry>();
             translations.AddBundle(WebI18n.Zh, WebI18n.ZhTable);
 
-            registry.RegisterModule(AdminToolsWebPanelModule.Create(LifetimeScope.Resolve<AdminToolsService>()));
+            registry.RegisterModule(AdminToolsWebPanelModule.Create(LifetimeScope.Resolve<AdminToolsService>(), translations));
             m_WebPanelRegistry = registry;
             m_Logger.LogInformation("AdminTools: registered the admin module with the web panel.");
         }

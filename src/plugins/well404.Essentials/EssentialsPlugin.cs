@@ -120,18 +120,21 @@ namespace well404.Essentials
             registry.RegisterMenu(menu);
             m_PlayerMenuRegistry = registry;
 
+            // Descriptions and the group heading are English source strings (the i18n key convention
+            // used across the panel); Chinese comes from WebI18n.ZhTable, English falls back to the key.
             LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.essentials", new[]
             {
-                new PlayerCommandInfo("/home", "essentials.cmd.home", "well404.Essentials:commands.home", "essentials.group"),
-                new PlayerCommandInfo("/back", "essentials.cmd.back", "well404.Essentials:commands.back", "essentials.group"),
-                new PlayerCommandInfo("/tp", "essentials.cmd.tp", "well404.Essentials:commands.tp", "essentials.group"),
-                new PlayerCommandInfo("/tpa", "essentials.cmd.tpa", "well404.Essentials:commands.tpa", "essentials.group"),
-                new PlayerCommandInfo("/tpd", "essentials.cmd.tpd", "well404.Essentials:commands.tpd", "essentials.group"),
-                new PlayerCommandInfo("/party", "essentials.cmd.party", "well404.Essentials:commands.party", "essentials.group"),
-                new PlayerCommandInfo("/warp", "essentials.cmd.warp", "well404.Essentials:commands.warp", "essentials.group"),
-                new PlayerCommandInfo("/warps", "essentials.cmd.warps", "well404.Essentials:commands.warps", "essentials.group"),
-                new PlayerCommandInfo("/gift", "essentials.cmd.gift", "well404.Essentials:commands.gift", "essentials.group"),
-                new PlayerCommandInfo("/sleep", "essentials.cmd.sleep", "well404.Essentials:commands.sleep", "essentials.group")
+                new PlayerCommandInfo("/home", "Teleport back to the home you saved. After a short warm-up you return to that spot.", "well404.Essentials:commands.home", "Utilities"),
+                new PlayerCommandInfo("/home set", "Save your current position as your home, so /home brings you back here.", "well404.Essentials:commands.home", "Utilities"),
+                new PlayerCommandInfo("/back", "Return to the place where you last died (available for a short while after death).", "well404.Essentials:commands.back", "Utilities"),
+                new PlayerCommandInfo("/tp <player>", "Ask another online player for permission to teleport to them.", "well404.Essentials:commands.tp", "Utilities"),
+                new PlayerCommandInfo("/tpa", "Accept the most recent teleport request someone sent you.", "well404.Essentials:commands.tpa", "Utilities"),
+                new PlayerCommandInfo("/tpd", "Decline the most recent teleport request someone sent you.", "well404.Essentials:commands.tpd", "Utilities"),
+                new PlayerCommandInfo("/party", "Create or manage a party — invite, accept, leave, kick. Party members can teleport to each other.", "well404.Essentials:commands.party", "Utilities"),
+                new PlayerCommandInfo("/warp <name>", "Teleport to a named warp point you have access to.", "well404.Essentials:commands.warp", "Utilities"),
+                new PlayerCommandInfo("/warps", "List every warp point you are allowed to teleport to.", "well404.Essentials:commands.warps", "Utilities"),
+                new PlayerCommandInfo("/gift", "Claim the free gift packs available to you (some refresh on a schedule).", "well404.Essentials:commands.gift", "Utilities"),
+                new PlayerCommandInfo("/sleep", "Vote to skip the night; once enough online players vote, the time changes to morning.", "well404.Essentials:commands.sleep", "Utilities")
             });
             m_Logger.LogInformation("Essentials: registered the player utilities menu with the web panel.");
         }

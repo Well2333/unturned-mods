@@ -56,10 +56,10 @@ namespace well404.Economy
             ["Tax (%)"] = "税率(%)",
             ["The /pay toggle, minimum amount and tax percentage."] = "玩家 /pay 转账的开关、最小额与税率比例。",
 
-            // ---- player command help (intro page) ----
-            ["economy.group"] = "经济",
-            ["economy.cmd.balance"] = "查看你的余额",
-            ["economy.cmd.pay"] = "向其他玩家转账",
+            // ---- player command help (intro page); keys are the English descriptions ----
+            ["Economy"] = "经济",
+            ["Check your current account balance."] = "查询你当前的账户余额。",
+            ["Transfer money from your account to another online player."] = "从你的账户向另一名在线玩家转账。",
         };
     }
 }

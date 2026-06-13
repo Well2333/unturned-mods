@@ -89,7 +89,7 @@ namespace well404.WebPanel
             registry.RegisterModule(WebPanelIntroModule.Create(introStore, translations));
             commands.Register("well404.webpanel", new[]
             {
-                new PlayerCommandInfo("/menu", "webpanel.cmd.menu", "well404.WebPanel:commands.menu", "webpanel.group")
+                new PlayerCommandInfo("/menu", "Open your personal web panel link in a browser to manage things from a page.", "well404.WebPanel:commands.menu", "Web Panel")
             });
 
             var html = LoadResource("index.html");

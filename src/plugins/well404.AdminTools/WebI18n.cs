@@ -9,8 +9,11 @@ namespace well404.AdminTools
 
         public static readonly IReadOnlyDictionary<string, string> ZhTable = new Dictionary<string, string>
         {
+            // ---- module chrome ----
             ["Admin tools"] = "管理员工具",
             ["Online players"] = "在线玩家",
+            ["Name"] = "名字",
+            ["SteamID"] = "SteamID",
             ["Godmode"] = "无敌",
             ["Player"] = "玩家",
             ["Name or SteamID"] = "名字或 SteamID",
@@ -24,27 +27,21 @@ namespace well404.AdminTools
             ["Empty = permanent"] = "留空=永久",
             ["Ban a player. Leave minutes empty for a permanent ban."] = "封禁玩家。分钟留空即永久封禁。",
             ["Unban"] = "解封",
-            ["SteamID"] = "SteamID",
             ["Lift a ban by SteamID."] = "按 SteamID 解除封禁。",
-            ["Roles"] = "权限组",
-            ["Player roles"] = "玩家权限组",
-            ["Role ID"] = "权限组ID",
-            ["Name or SteamID (17 digits for offline)"] = "名字或 SteamID（离线用17位 SteamID）",
-            ["see the Roles table (e.g. vip)"] = "见上方权限组表（如 vip）",
-            ["Action"] = "操作",
-            ["Add or remove a permission role (e.g. VIP) for a player."] = "为玩家添加或移除权限组（如 VIP）。",
-            ["Find commands"] = "查找指令",
-            ["Command name or ID"] = "指令名或ID",
-            ["Type to filter; empty lists all"] = "输入以筛选；留空列出全部",
-            ["Look up a command's permission node to grant it to a role below."] = "查出某指令的权限节点，便于下面授予给权限组。",
-            ["Role commands"] = "权限组指令",
-            ["Command or permission"] = "指令或权限节点",
-            ["command id (e.g. buy) or a permission node"] = "指令ID（如 buy）或权限节点",
-            ["Grant"] = "授予",
-            ["Grant (or revoke) a command for a role. Use «Find commands» to look up names."] = "为权限组授予（或撤销）某指令。用「查找指令」查名称。",
-            ["A role's commands"] = "权限组已有指令",
-            ["e.g. vip"] = "如 vip",
-            ["List the permissions (including commands) currently granted to a role."] = "列出某权限组当前已授予的权限（含指令）。",
+
+            // ---- result messages (localized from the AdminResult template) ----
+            ["Enter a player."] = "请输入玩家。",
+            ["Enter a SteamID."] = "请输入 SteamID。",
+            ["Player not online: {0}"] = "玩家不在线：{0}",
+            ["Player not found: {0}"] = "找不到玩家：{0}",
+            ["Godmode ON for {0}."] = "已为 {0} 开启无敌。",
+            ["Godmode OFF for {0}."] = "已为 {0} 关闭无敌。",
+            ["Kicked {0}."] = "已踢出 {0}。",
+            ["Banned {0} for {1} min."] = "已封禁 {0} {1} 分钟。",
+            ["Banned {0} permanently."] = "已永久封禁 {0}。",
+            ["Unbanned {0}."] = "已解封 {0}。",
+            ["{0} was not banned."] = "{0} 并未被封禁。",
+            ["Invalid SteamID: {0}"] = "无效的 SteamID：{0}",
         };
     }
 }

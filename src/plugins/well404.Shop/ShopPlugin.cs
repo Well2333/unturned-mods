@@ -115,9 +115,9 @@ namespace well404.Shop
 
             LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.shop", new[]
             {
-                new PlayerCommandInfo("/buy", "shop.cmd.buy", "well404.Shop:commands.buy", "shop.group"),
-                new PlayerCommandInfo("/sell", "shop.cmd.sell", "well404.Shop:commands.sell", "shop.group"),
-                new PlayerCommandInfo("/shop", "shop.cmd.shop", "well404.Shop:commands.shop", "shop.group")
+                new PlayerCommandInfo("/shop", "Browse the server shop and see item prices.", "well404.Shop:commands.shop", "Shop"),
+                new PlayerCommandInfo("/buy <item> [amount]", "Buy items or bundles from the shop with your money.", "well404.Shop:commands.buy", "Shop"),
+                new PlayerCommandInfo("/sell <item> [amount]", "Sell items from your inventory back to the shop for money.", "well404.Shop:commands.sell", "Shop")
             });
             m_Logger.LogInformation("Shop: registered the player shop menu with the web panel.");
         }

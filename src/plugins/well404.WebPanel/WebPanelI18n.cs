@@ -26,9 +26,10 @@ namespace well404.WebPanel
                 = "玩家在面板首页看到的欢迎文案（所有语言共用一份）。",
             ["Saved."] = "已保存。",
 
-            // player command help (the /menu command itself)
-            ["webpanel.cmd.menu"] = "打开你的网页面板",
-            ["webpanel.group"] = "面板",
+            // player command help (the /menu command itself); keys are the English descriptions
+            ["Web Panel"] = "网页面板",
+            ["Open your personal web panel link in a browser to manage things from a page."]
+                = "在浏览器中打开你的专属网页面板链接，用网页来管理各项功能。",
         };
     }
 }

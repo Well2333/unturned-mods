@@ -14,7 +14,9 @@ namespace well404.Essentials
             ["You must be online to use these tools."] = "你需要在线才能使用这些工具。",
             ["Home"] = "家",
             ["Go home"] = "回家",
-            ["No home set — use /sethome."] = "尚未设置家——用 /sethome 设置。",
+            ["Set home here"] = "把家设在这里",
+            ["No home set yet — tap “Set home here”."] = "尚未设置家——点「把家设在这里」即可设置。",
+            ["Home set to your current location."] = "已把家设在你当前的位置。",
             ["Back to death point"] = "返回死亡点",
             ["Return"] = "返回",
             ["Teleport"] = "传送",
@@ -25,6 +27,11 @@ namespace well404.Essentials
             ["Party"] = "队伍",
             ["{0} (leader)"] = "{0}（队长）",
             ["Leave party"] = "退出队伍",
+            ["Kick from party"] = "踢出队伍",
+            ["Kicked {0} from the party."] = "已把 {0} 踢出队伍。",
+            ["Only the party leader can kick members."] = "只有队长才能踢出队员。",
+            ["You can't kick yourself."] = "你不能把自己踢出队伍。",
+            ["That player is not in your party."] = "该玩家不在你的队伍中。",
             ["Request teleport"] = "请求传送",
             ["Invite to party"] = "邀请组队",
             ["Claim"] = "领取",
@@ -90,6 +97,8 @@ namespace well404.Essentials
             ["back invincibility (s)"] = "back 无敌秒数",
             ["tpa/party request timeouts, party member cap, sleep-vote toggle and pass ratio (of online players), and /back post-landing invincibility seconds (0 = none)."]
                 = "tpa/party 请求超时、party 人数上限、sleep 投票开关与通过比例(在线玩家的比例)、/back 落地后的无敌秒数(0=无)。",
+            ["tpa / sleep / back"] = "tpa / sleep / back（其它规则）",
+            ["Saved tpa / sleep / back settings."] = "已保存 tpa / sleep / back 设置。",
             ["Warps"] = "传送点",
             ["Name"] = "名称",
             ["Name used by /warp"] = "/warp 用的名称",
@@ -99,6 +108,7 @@ namespace well404.Essentials
                 = "玩家用 /warp <名称> 传送，还需要权限 well404.essentials.warps.<名称>。坐标可在游戏内用 /warp set 采集。",
             ["Gift packs"] = "礼包",
             ["Gift ID"] = "礼包ID",
+            ["Unique ID used by /gift"] = "/gift 用的唯一ID",
             ["Display name"] = "显示名",
             ["Permission"] = "权限",
             ["Empty = everyone; set a permission node for VIP-only"] = "留空=所有人；VIP 专属填权限节点",
@@ -113,19 +123,32 @@ namespace well404.Essentials
             ["Type a keyword or numeric ID…"] = "输入关键词或数字ID…",
             ["Fuzzy-search all game items by name or ID; take the item ID into the gift contents."]
                 = "在全部游戏物品中按名称或 ID 模糊检索，拿到「物品ID」填到礼包的物品里。",
+            ["Item ID"] = "物品ID",
+            ["Type an item name or ID to search."] = "输入物品名称或 ID 进行检索。",
 
-            // ---- player command help (intro page) ----
-            ["essentials.group"] = "实用功能",
-            ["essentials.cmd.home"] = "传送回家（/home set 设置家）",
-            ["essentials.cmd.back"] = "回到上次死亡的地点",
-            ["essentials.cmd.tp"] = "请求传送到某玩家",
-            ["essentials.cmd.tpa"] = "接受传送请求",
-            ["essentials.cmd.tpd"] = "拒绝传送请求",
-            ["essentials.cmd.party"] = "组队：邀请 / 接受 / 退出",
-            ["essentials.cmd.warp"] = "传送到传送点",
-            ["essentials.cmd.warps"] = "列出你能用的传送点",
-            ["essentials.cmd.gift"] = "领取免费礼包",
-            ["essentials.cmd.sleep"] = "投票切换昼夜",
+            // ---- player command help (intro page); keys are the English descriptions ----
+            ["Teleport back to the home you saved. After a short warm-up you return to that spot."]
+                = "传送回你保存的家：短暂读条后回到那个位置。",
+            ["Save your current position as your home, so /home brings you back here."]
+                = "把你当前的位置保存为家，之后用 /home 就能传送回这里。",
+            ["Return to the place where you last died (available for a short while after death)."]
+                = "返回你上次死亡的地点（死亡后的一小段时间内可用）。",
+            ["Ask another online player for permission to teleport to them."]
+                = "向另一名在线玩家请求传送到对方身边（需对方同意）。",
+            ["Accept the most recent teleport request someone sent you."]
+                = "接受别人最近发给你的一条传送请求。",
+            ["Decline the most recent teleport request someone sent you."]
+                = "拒绝别人最近发给你的一条传送请求。",
+            ["Create or manage a party — invite, accept, leave, kick. Party members can teleport to each other."]
+                = "创建或管理队伍——邀请、接受、退出、踢人；队员之间可以互相传送。",
+            ["Teleport to a named warp point you have access to."]
+                = "传送到你有权限使用的某个命名传送点。",
+            ["List every warp point you are allowed to teleport to."]
+                = "列出所有你被允许传送的传送点。",
+            ["Claim the free gift packs available to you (some refresh on a schedule)."]
+                = "领取向你开放的免费礼包（部分礼包会按计划定时刷新）。",
+            ["Vote to skip the night; once enough online players vote, the time changes to morning."]
+                = "投票跳过夜晚；当足够多的在线玩家投票后，时间会切换到白天。",
         };
     }
 }

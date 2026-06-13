@@ -60,11 +60,15 @@ namespace well404.Shop
             ["Discounts apply to buy prices; a player gets the lowest (best) multiplier among their granted permissions. Tiers format: permission=multiplier (0<m≤1, comma-separated); empty clears all tiers."]
                 = "折扣作用于买价；玩家取其拥有权限中最低(最优)的倍率。「档位」格式 权限=倍率（0<倍率≤1，逗号分隔）；清空即取消所有档位。",
 
-            // ---- player command help (intro page) ----
-            ["shop.group"] = "商店",
-            ["shop.cmd.buy"] = "从商店购买物品 / 礼包",
-            ["shop.cmd.sell"] = "把物品 / 礼包卖给商店",
-            ["shop.cmd.shop"] = "查看商店在售商品",
+            // ---- player command help (intro page); keys are the English descriptions ----
+            ["Browse the server shop and see item prices."] = "浏览服务器商店，查看各商品的价格。",
+            ["Buy items or bundles from the shop with your money."] = "用你的金钱从商店购买物品或礼包。",
+            ["Sell items from your inventory back to the shop for money."] = "把背包里的物品卖回商店换取金钱。",
+
+            // ---- result table column headers / messages (localized server-side) ----
+            ["Item ID"] = "物品ID",
+            ["Name"] = "名称",
+            ["Type an item name or ID to search."] = "输入物品名称或 ID 进行检索。",
         };
     }
 }

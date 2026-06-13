@@ -88,9 +88,16 @@ namespace well404.Essentials
 
             // --- home / back / warps ---
             var home = await m_PlayerData.GetHomeAsync(context.SteamId);
-            cards.Add(home != null
-                ? new PlayerCard("home", "🏠 " + L(lang, "Home"), null, null, new[] { new PlayerButton("go", L(lang, "Go home"), "primary") })
-                : new PlayerCard("home", "🏠 " + L(lang, "Home"), new[] { L(lang, "No home set — use /sethome.") }));
+            var homeButtons = new List<PlayerButton>();
+            if (home != null)
+            {
+                homeButtons.Add(new PlayerButton("go", L(lang, "Go home"), "primary"));
+            }
+
+            homeButtons.Add(new PlayerButton("sethome", L(lang, "Set home here")));
+            cards.Add(new PlayerCard("home", "🏠 " + L(lang, "Home"),
+                home != null ? null : new[] { L(lang, "No home set yet — tap “Set home here”.") },
+                null, homeButtons.ToArray()));
 
             var death = await m_PlayerData.GetLastDeathAsync(context.SteamId);
             if (death != null)
@@ -128,17 +135,32 @@ namespace well404.Essentials
                 }));
             }
 
-            // --- my party ---
+            // --- my party (summary + per-member kick when I'm the leader) ---
             if (m_Party.IsInParty(me))
             {
+                var members = m_Party.GetMembers(me);
                 var lines = new List<string>();
-                foreach (var member in m_Party.GetMembers(me))
+                foreach (var member in members)
                 {
                     lines.Add(member.IsLeader ? m_Tr.Format(lang, "{0} (leader)", member.DisplayName) : member.DisplayName);
                 }
 
                 cards.Add(new PlayerCard("party", "👥 " + (m_Party.GetPartyName(me) ?? L(lang, "Party")), lines, null,
                     new[] { new PlayerButton("pleave", L(lang, "Leave party"), "danger") }));
+
+                if (m_Party.IsLeader(me))
+                {
+                    foreach (var member in members)
+                    {
+                        if (member.SteamId == meId)
+                        {
+                            continue;
+                        }
+
+                        cards.Add(new PlayerCard("pmember:" + member.SteamId, "👥 " + member.DisplayName, null, null,
+                            new[] { new PlayerButton("pkick", L(lang, "Kick from party"), "danger") }));
+                    }
+                }
             }
 
             // --- other online players: request teleport / invite to party ---
@@ -196,6 +218,13 @@ namespace well404.Essentials
             {
                 case "go":
                     return await TeleportToAsync(me, cardKey, lang);
+
+                case "sethome":
+                {
+                    var location = LocationHelper.FromPlayer(me.Player);
+                    await m_PlayerData.SetHomeAsync(me.Id, location);
+                    return PlayerActionResult.Ok(L(lang, "Home set to your current location."));
+                }
 
                 case "tpreq":
                 {
@@ -261,6 +290,21 @@ namespace well404.Essentials
 
                 case "pleave":
                     return PlayerActionResult.Ok(m_Party.Leave(me) ? L(lang, "You left the party.") : L(lang, "You are not in a party."));
+
+                case "pkick":
+                {
+                    var targetId = ParseId(cardKey, "pmember:");
+                    var target = m_UserDirectory.FindUser(new CSteamID(targetId));
+                    if (target == null) return PlayerActionResult.Fail(L(lang, "That player is no longer online."));
+                    switch (m_Party.Kick(me, target))
+                    {
+                        case PartyKickStatus.Kicked: return PlayerActionResult.Ok(m_Tr.Format(lang, "Kicked {0} from the party.", target.DisplayName));
+                        case PartyKickStatus.NotLeader: return PlayerActionResult.Fail(L(lang, "Only the party leader can kick members."));
+                        case PartyKickStatus.NotInParty: return PlayerActionResult.Fail(L(lang, "You are not in a party."));
+                        case PartyKickStatus.CannotKickSelf: return PlayerActionResult.Fail(L(lang, "You can't kick yourself."));
+                        default: return PlayerActionResult.Fail(L(lang, "That player is not in your party."));
+                    }
+                }
 
                 case "giftclaim":
                 {

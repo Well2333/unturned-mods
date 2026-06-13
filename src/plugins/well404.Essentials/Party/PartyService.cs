@@ -22,15 +22,17 @@ namespace well404.Essentials.Party
         CannotKickSelf
     }
 
-    /// <summary>A party member's display name and whether they lead the party.</summary>
+    /// <summary>A party member's Steam ID, display name and whether they lead the party.</summary>
     public sealed class PartyMember
     {
-        public PartyMember(string displayName, bool isLeader)
+        public PartyMember(ulong steamId, string displayName, bool isLeader)
         {
+            SteamId = steamId;
             DisplayName = displayName;
             IsLeader = isLeader;
         }
 
+        public ulong SteamId { get; }
         public string DisplayName { get; }
         public bool IsLeader { get; }
     }
@@ -56,6 +58,13 @@ namespace well404.Essentials.Party
             (m_Configuration.Get<EssentialsSettings>() ?? new EssentialsSettings()).Party.MaxMembers;
 
         public bool IsInParty(UnturnedUser user) => GroupExists(user.Player.Player.quests.groupID);
+
+        /// <summary>True when the user is in a party and holds its leader (ADMIN) rank.</summary>
+        public bool IsLeader(UnturnedUser user)
+        {
+            var quests = user.Player.Player.quests;
+            return GroupExists(quests.groupID) && quests.groupRank == EPlayerGroupRank.ADMIN;
+        }
 
         public bool SameParty(UnturnedUser a, UnturnedUser b)
         {
@@ -153,7 +162,7 @@ namespace well404.Essentials.Party
                 var quests = online.Player.Player.quests;
                 if (quests.groupID == groupId)
                 {
-                    result.Add(new PartyMember(online.DisplayName, quests.groupRank == EPlayerGroupRank.ADMIN));
+                    result.Add(new PartyMember(online.SteamId.m_SteamID, online.DisplayName, quests.groupRank == EPlayerGroupRank.ADMIN));
                 }
             }
 
