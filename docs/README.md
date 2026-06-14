@@ -9,6 +9,7 @@
 | `well404.WebPanel` | [Web 管理面板](well404.WebPanel.md) — 通用可视化管理面板(供各插件挂载模块)+ 面向玩家的网页界面(`/menu`:服务器介绍、商店买卖、钱包转账、实用工具);路径式 token 鉴权 + 可选内置反代(cloudflared/ngrok);**网页中英双语可切换** |
 | `well404.Essentials` | [实用功能](well404.Essentials.md) — 面向玩家的 home/tp/warp/gift/sleep/back/party，统一传送规则，经济收费可选;玩家网页「实用工具」 |
 | `well404.AdminTools` | [管理员工具](well404.AdminTools.md) — 无敌、踢出、临时封禁/解封;命令 + 管理面板 |
+| `well404.Vault` | [私人仓库](well404.Vault.md) — 玩家存取背包物品(完整保真,按背包格子计容量);命令 + 玩家网页仓库 |
 
 > `well404.Shop` **硬依赖** `well404.Economy`(由它提供 `IEconomyProvider` 结算交易)。
 > 该依赖已写入 Shop 的 NuGet 包,`openmod install well404.Shop` 会自动一并安装 Economy。

@@ -1,0 +1,26 @@
+# Translations for Personal Vault (factory English; server admins may translate freely).
+# Keys are referenced via IStringLocalizer, e.g. m_StringLocalizer["plugin_events:plugin_start"].
+plugin_events:
+  plugin_start: "Personal Vault has been loaded."
+  plugin_stop: "Personal Vault has been unloaded."
+
+errors:
+  invalid_item: "Enter a valid item id."
+  invalid_amount: "Enter a valid amount."
+
+vault:
+  help: "Personal vault: /vault store <itemId> [amount], /vault take <itemId> [amount], /vault list. Or use /menu vault for the web UI."
+
+store:
+  done: "Stored {amount}x {name} in your vault."
+  none: "You don't have any {name} in your backpack."
+  full: "Your vault is full."
+
+take:
+  done: "Took {amount}x {name} from your vault."
+  none: "You have no {name} in your vault."
+
+list:
+  header: "Vault: {used} / {max} grid cells used."
+  empty: "Your vault is empty."
+  line: "{name} (#{id}) x{amount} — {slots} cells"

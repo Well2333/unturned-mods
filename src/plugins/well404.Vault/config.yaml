@@ -1,0 +1,7 @@
+# Configuration for Personal Vault.
+# Embedded as a resource; users can override it in the plugin's data directory.
+
+# Total vault capacity in inventory grid cells. Each stored item costs its grid footprint
+# (size_x × size_y, e.g. a 2×2 ammo box = 4 cells); an item's internal stack/ammo count never
+# counts. Editable in the web panel when well404.WebPanel is installed.
+maxSlots: 200
