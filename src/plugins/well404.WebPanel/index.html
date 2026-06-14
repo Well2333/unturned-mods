@@ -145,7 +145,14 @@ function buildLangSwitcher() {
   sel.replaceChildren(...languages.map(l => el("option", { value: l, text: l.toUpperCase() })));
   sel.value = lang;
   sel.style.display = languages.length > 1 ? "" : "none";
-  sel.onchange = () => { lang = sel.value; localStorage.setItem("adminpanel_lang", lang); document.documentElement.lang = lang; loadModules(); };
+  sel.onchange = async () => {
+    lang = sel.value;
+    localStorage.setItem("adminpanel_lang", lang);
+    document.documentElement.lang = lang;
+    // Persist server-side so the choice survives the admin URL (tunnel domain) changing.
+    try { await api("api/lang", { method:"POST", headers: headers({ "Content-Type":"application/x-www-form-urlencoded" }), body: "lang=" + enc(lang) }); } catch (e) {}
+    loadModules();
+  };
 }
 
 async function loadModules() {
@@ -160,7 +167,10 @@ async function loadModules() {
     return;
   }
   languages = data.languages || [];
-  if (!lang) { lang = data.lang || data.defaultLanguage || "en"; localStorage.setItem("adminpanel_lang", lang); }
+  // The server returns the saved admin language (persisted in its data dir); adopt it so the panel
+  // always opens in the language last chosen, even on a brand-new admin URL where localStorage is empty.
+  lang = data.lang || lang || data.defaultLanguage || "en";
+  localStorage.setItem("adminpanel_lang", lang);
   document.documentElement.lang = lang;
   buildLangSwitcher();
   if (!modules.length) {

@@ -43,6 +43,7 @@ namespace well404.WebPanel
         private readonly IWebTranslationRegistry m_Translations;
         private readonly PlayerWebSessionManager m_Sessions;
         private readonly PlayerLanguageStore m_PlayerLanguages;
+        private readonly AdminLanguageStore m_AdminLanguage;
         private readonly ILogger m_Logger;
         private readonly string m_Token;
         private readonly string m_Html;
@@ -57,6 +58,7 @@ namespace well404.WebPanel
             IWebTranslationRegistry translations,
             PlayerWebSessionManager sessions,
             PlayerLanguageStore playerLanguages,
+            AdminLanguageStore adminLanguage,
             ILogger logger,
             string prefix,
             string token,
@@ -69,6 +71,7 @@ namespace well404.WebPanel
             m_Translations = translations;
             m_Sessions = sessions;
             m_PlayerLanguages = playerLanguages;
+            m_AdminLanguage = adminLanguage;
             m_Logger = logger;
             m_Token = token;
             m_Html = html;
@@ -213,9 +216,31 @@ namespace well404.WebPanel
                     return;
                 }
 
+                // Persist the admin UI language server-side so it survives the admin URL changing
+                // (browser localStorage is per-origin and would be lost on a new tunnel domain).
+                if (request.HttpMethod == "POST" && adminPath == "/api/lang")
+                {
+                    var chosen = request.QueryString["lang"];
+                    if (string.IsNullOrWhiteSpace(chosen))
+                    {
+                        ParseForm(ReadBody(request)).TryGetValue("lang", out chosen);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(chosen))
+                    {
+                        m_AdminLanguage.Set(chosen!);
+                    }
+
+                    WriteJson(context.Response, 200, "{\"ok\":true}");
+                    return;
+                }
+
                 if (request.HttpMethod == "GET" && adminPath == "/api/modules")
                 {
-                    WriteJson(context.Response, 200, BuildModulesJson(LangOf(request)));
+                    // The saved admin language wins over the query string, so the panel always opens
+                    // in the language last chosen; the client adopts the returned "lang".
+                    var lang = m_AdminLanguage.Get() ?? LangOf(request);
+                    WriteJson(context.Response, 200, BuildModulesJson(lang));
                     return;
                 }
 
