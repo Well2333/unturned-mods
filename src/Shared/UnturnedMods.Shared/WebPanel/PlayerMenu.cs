@@ -67,7 +67,8 @@ namespace UnturnedMods.Shared.WebPanel
             IReadOnlyList<string>? tags = null,
             IReadOnlyList<PlayerButton>? buttons = null,
             string? group = null,
-            string? badge = null)
+            string? badge = null,
+            IReadOnlyList<PlayerCard>? children = null)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
             Label = label ?? throw new ArgumentNullException(nameof(label));
@@ -76,6 +77,7 @@ namespace UnturnedMods.Shared.WebPanel
             Buttons = buttons ?? Array.Empty<PlayerButton>();
             Group = group;
             Badge = badge;
+            Children = children ?? Array.Empty<PlayerCard>();
         }
 
         /// <summary>Identifies the entry; passed back as the <c>cardKey</c> on a button action.</summary>
@@ -97,6 +99,14 @@ namespace UnturnedMods.Shared.WebPanel
         /// A generic UI hint — the renderer has no knowledge of what the groups mean.
         /// </summary>
         public string? Group { get; }
+
+        /// <summary>
+        /// Optional nested cards shown inline when this card is expanded (a collapsible card). Lets a
+        /// menu fold detail under a parent without hiding the rest of the page. The client renders an
+        /// expand/collapse toggle and the children indented beneath. Generic — the host doesn't
+        /// interpret what the children mean.
+        /// </summary>
+        public IReadOnlyList<PlayerCard> Children { get; }
 
         /// <summary>
         /// Optional short leading badge (e.g. an id) shown before the label in compact layouts.

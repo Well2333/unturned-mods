@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -13,24 +13,20 @@ namespace well404.Vault
 {
     /// <summary>
     /// The player-facing vault surface for the web panel: a compact list with two sections — the
-    /// player's current backpack (a Store button per item) and the vault contents (Take / Details per
-    /// item). Clicking <i>Details</i> on a stacked vault entry drills into a sub-view that lists each
-    /// stored copy individually with its specifics (amount/rounds, durability, whether it carries
-    /// state) so the player can withdraw a particular one. Driven by the generic player-menu model.
+    /// player's backpack (store) and the vault contents (take). Copies that are identical (same id +
+    /// amount + quality + state) are merged into one entry. An item that has several distinct variants
+    /// (e.g. shell boxes with different round counts) becomes a collapsible card whose children list
+    /// each variant with its specifics, so the player can act on a particular one. Every entry offers
+    /// All / a typed amount / One. Driven entirely by the generic player-menu model.
     /// </summary>
     public sealed class VaultPlayerMenu : IPlayerMenu
     {
         public const string MenuId = "vault";
 
-        private const string DetailPrefix = "uid:";
-
         private readonly VaultService m_Vault;
         private readonly IUserManager m_UserManager;
         private readonly IItemDirectory m_ItemDirectory;
         private readonly IWebTranslationRegistry m_Tr;
-
-        // Per-player drill-down state: the item id whose per-copy detail view the player is viewing.
-        private readonly ConcurrentDictionary<string, ushort> m_Detail = new ConcurrentDictionary<string, ushort>();
 
         public VaultPlayerMenu(VaultService vault, IUserManager userManager, IItemDirectory itemDirectory, IWebTranslationRegistry translations)
         {
@@ -54,218 +50,227 @@ namespace well404.Vault
 
             var max = user != null ? await m_Vault.GetMaxSlotsAsync(user) : m_Vault.OverrideOrBase(steamId);
             var header = m_Tr.Format(lang, "Vault: {0} / {1} slots", m_Vault.UsedSlots(steamId), max);
-            // The vault contents are viewable even offline (read-only); only storing/withdrawing needs
-            // a live inventory. So offline shows the stored items + a notice, not a blank page.
+            // Contents are viewable read-only offline; only store/withdraw needs a live inventory.
             var message = user == null ? m_Tr.Resolve("You must be online to store or withdraw.", lang) : null;
             var names = await VaultNames.BuildMapAsync(m_ItemDirectory);
 
-            // Drill-down: a per-copy detail view for one item id (pure navigation — works offline too).
-            if (m_Detail.TryGetValue(steamId, out var detailId))
+            var cards = new List<PlayerCard>();
+            if (user != null)
             {
-                var copies = m_Vault.Get(steamId).Where(x => x.ItemId == detailId).ToList();
-                if (copies.Count > 0)
-                {
-                    return new PlayerMenuView(m_Tr.Resolve("Vault", lang), header, BuildDetailCards(lang, detailId, copies, names), message, null, "list");
-                }
-
-                m_Detail.TryRemove(steamId, out _);   // nothing left to detail — fall back to the top view
+                var backpack = await m_Vault.BackpackVariantsAsync(user);
+                cards.AddRange(BuildItemCards(backpack, "store", m_Tr.Resolve("Backpack", lang), names, lang));
             }
 
-            return new PlayerMenuView(m_Tr.Resolve("Vault", lang), header, await BuildTopCardsAsync(lang, steamId, user, names), message, null, "list");
+            cards.AddRange(BuildItemCards(m_Vault.VaultVariants(steamId), "take", m_Tr.Resolve("Vault", lang), names, lang));
+
+            return new PlayerMenuView(m_Tr.Resolve("Vault", lang), header, cards, message, null, "list");
         }
 
-        private async Task<List<PlayerCard>> BuildTopCardsAsync(string lang, string steamId, UnturnedUser? user, IReadOnlyDictionary<string, string> names)
+        // Builds one card per item id (merging identical copies). A single-variant id is a plain card;
+        // a multi-variant id is a collapsible parent whose children are the variants.
+        private List<PlayerCard> BuildItemCards(IReadOnlyList<ItemVariant> variants, string mode, string group, IReadOnlyDictionary<string, string> names, string lang)
         {
-            var backpackGroup = m_Tr.Resolve("Backpack", lang);
-            var vaultGroup = m_Tr.Resolve("Vault", lang);
             var cards = new List<PlayerCard>();
-
-            // Backpack: a Store button per distinct item (prompt defaults to all you carry). Online only.
-            var backpack = user != null ? await m_Vault.ListBackpackAsync(user) : (IReadOnlyList<BackpackEntry>)new List<BackpackEntry>();
-            foreach (var entry in backpack.OrderBy(e => VaultNames.NameOf(e.ItemId, names)))
+            foreach (var byId in variants.GroupBy(v => v.ItemId).OrderBy(g => VaultNames.NameOf(g.Key, names)))
             {
-                var count = entry.Count.ToString(CultureInfo.InvariantCulture);
-                cards.Add(new PlayerCard(
-                    entry.ItemId.ToString(CultureInfo.InvariantCulture),
-                    VaultNames.NameOf(entry.ItemId, names),
-                    null,
-                    new[] { "×" + count },
-                    new[] { new PlayerButton("store", m_Tr.Resolve("Store", lang), "primary", m_Tr.Resolve("Amount to store", lang), count) },
-                    backpackGroup,
-                    "#" + entry.ItemId.ToString(CultureInfo.InvariantCulture)));
-            }
+                var idStr = byId.Key.ToString(CultureInfo.InvariantCulture);
+                var name = VaultNames.NameOf(byId.Key, names);
+                var list = byId.ToList();
+                var totalCount = list.Sum(v => v.Count);
+                var totalSlots = list.Sum(v => v.Count * v.SlotCost);
 
-            // Vault: Take (prompt defaults to all of that id), plus Details when there is more than one copy.
-            foreach (var group in m_Vault.Get(steamId).GroupBy(x => x.ItemId).OrderBy(g => VaultNames.NameOf(g.Key, names)))
-            {
-                var count = group.Count();
-                var slots = group.Sum(x => x.SlotCost);
-                var idStr = group.Key.ToString(CultureInfo.InvariantCulture);
-                var buttons = new List<PlayerButton>
+                if (list.Count == 1)
                 {
-                    new PlayerButton("take", m_Tr.Resolve("Take", lang), "success", m_Tr.Resolve("Amount to take", lang),
-                        count.ToString(CultureInfo.InvariantCulture))
-                };
-                if (count > 1)
+                    var v = list[0];
+                    cards.Add(new PlayerCard(VariantKey(v), name, null,
+                        VariantTags(v, true, lang), OpsButtons(mode, VariantKey(v), v.Count, lang), group, "#" + idStr));
+                    continue;
+                }
+
+                // Multiple variants → a collapsible parent ("All" of the whole item) with variant children.
+                var children = new List<PlayerCard>();
+                foreach (var v in list.OrderByDescending(x => x.Amount).ThenByDescending(x => x.Quality))
                 {
-                    buttons.Add(new PlayerButton("details", m_Tr.Resolve("Details", lang)));
+                    children.Add(new PlayerCard(VariantKey(v), name, null,
+                        VariantTags(v, false, lang), OpsButtons(mode, VariantKey(v), v.Count, lang), group));
                 }
 
                 cards.Add(new PlayerCard(
-                    idStr,
-                    VaultNames.NameOf(group.Key, names),
-                    null,
-                    new[] { "×" + count.ToString(CultureInfo.InvariantCulture), m_Tr.Format(lang, "{0} slots", slots) },
-                    buttons,
-                    vaultGroup,
-                    "#" + idStr));
+                    idStr, name, null,
+                    new[] { "×" + totalCount.ToString(CultureInfo.InvariantCulture), m_Tr.Format(lang, "{0} slots", totalSlots) },
+                    new[] { OpButton(mode, "all", idStr, totalCount, lang) },
+                    group, "#" + idStr, children));
             }
 
             return cards;
         }
 
-        private List<PlayerCard> BuildDetailCards(string lang, ushort itemId, List<StoredItem> copies, IReadOnlyDictionary<string, string> names)
+        private List<string> VariantTags(ItemVariant v, bool includeSlots, string lang)
         {
-            var name = VaultNames.NameOf(itemId, names);
-            var group = m_Tr.Format(lang, "{0} — copies", name);
-            var cards = new List<PlayerCard>
+            var tags = new List<string> { "×" + v.Count.ToString(CultureInfo.InvariantCulture) };
+            if (v.Amount > 1)
             {
-                // A back entry (just the button) to return to the top view.
-                new PlayerCard("__back", string.Empty, null, null,
-                    new[] { new PlayerButton("back", "← " + m_Tr.Resolve("Back", lang)) }, group)
+                tags.Add(m_Tr.Format(lang, "Amount {0}", v.Amount));
+            }
+
+            if (v.Quality < 100)
+            {
+                tags.Add(m_Tr.Format(lang, "Durability {0}%", v.Quality));
+            }
+
+            if (!string.IsNullOrEmpty(v.State))
+            {
+                tags.Add("🔧");
+            }
+
+            if (includeSlots)
+            {
+                tags.Add(m_Tr.Format(lang, "{0} slots", v.Count * v.SlotCost));
+            }
+
+            return tags;
+        }
+
+        // All / a typed amount / One.
+        private PlayerButton[] OpsButtons(string mode, string cardKey, int count, string lang)
+            => new[]
+            {
+                OpButton(mode, "all", cardKey, count, lang),
+                OpButton(mode, "some", cardKey, count, lang),
+                OpButton(mode, "one", cardKey, count, lang)
             };
 
-            var ordinal = 1;
-            foreach (var copy in copies)
+        private PlayerButton OpButton(string mode, string op, string cardKey, int count, string lang)
+        {
+            var style = mode == "store" ? "primary" : "success";
+            switch (op)
             {
-                var tags = new List<string>();
-                if (copy.Amount > 1)
-                {
-                    tags.Add("×" + copy.Amount.ToString(CultureInfo.InvariantCulture));
-                }
-
-                if (copy.Quality < 100)
-                {
-                    tags.Add(m_Tr.Format(lang, "Durability {0}%", copy.Quality));
-                }
-
-                if (!string.IsNullOrEmpty(copy.State))
-                {
-                    tags.Add("🔧");   // carries internal config (attachments / firemode / etc.)
-                }
-
-                cards.Add(new PlayerCard(
-                    DetailPrefix + copy.Uid,
-                    name,
-                    null,
-                    tags,
-                    new[] { new PlayerButton("takeuid", m_Tr.Resolve("Take", lang), "success") },
-                    group,
-                    "#" + ordinal.ToString(CultureInfo.InvariantCulture)));
-                ordinal++;
+                case "all":
+                    return new PlayerButton(mode + "_all", m_Tr.Resolve("All", lang), style);
+                case "some":
+                    return new PlayerButton(mode + "_some", m_Tr.Resolve("Amount", lang), style,
+                        m_Tr.Resolve(mode == "store" ? "Amount to store" : "Amount to take", lang),
+                        count.ToString(CultureInfo.InvariantCulture));
+                default:
+                    return new PlayerButton(mode + "_one", m_Tr.Resolve("One", lang), style);
             }
-
-            return cards;
         }
 
         public async Task<PlayerActionResult> InvokeAsync(
             PlayerMenuContext context, string actionId, string cardKey, string? value)
         {
             var lang = context.Language;
-            var steamId = context.SteamId;
-
-            // Pure navigation — works offline (read-only browsing).
-            if (actionId == "back")
-            {
-                m_Detail.TryRemove(steamId, out _);
-                return PlayerActionResult.Ok();
-            }
-
-            if (actionId == "details")
-            {
-                if (!ushort.TryParse(cardKey, NumberStyles.Integer, CultureInfo.InvariantCulture, out var detailId) || detailId == 0)
-                {
-                    return PlayerActionResult.Fail(m_Tr.Resolve("Item not found.", lang));
-                }
-
-                m_Detail[steamId] = detailId;
-                return PlayerActionResult.Ok();
-            }
-
-            var user = await ResolveOnlineAsync(steamId);
+            var user = await ResolveOnlineAsync(context.SteamId);
             if (user == null)
             {
                 return PlayerActionResult.Fail(m_Tr.Resolve("You must be online to store or withdraw.", lang));
             }
 
-            var names = await VaultNames.BuildMapAsync(m_ItemDirectory);
-
-            if (actionId == "takeuid")
+            // op = all | some | one; amount derived from it.
+            var underscore = actionId.LastIndexOf('_');
+            if (underscore <= 0)
             {
-                var uid = cardKey.StartsWith(DetailPrefix) ? cardKey.Substring(DetailPrefix.Length) : cardKey;
-                var copy = m_Vault.Get(steamId).FirstOrDefault(x => x.Uid == uid);
-                var ok = await m_Vault.TakeByUidAsync(user, uid);
-                if (!ok)
-                {
-                    return PlayerActionResult.Fail(m_Tr.Resolve("That copy is no longer in the vault.", lang));
-                }
-
-                // Leave the detail view automatically once the last copy of this id is gone.
-                if (copy != null && !m_Vault.Get(steamId).Any(x => x.ItemId == copy.ItemId))
-                {
-                    m_Detail.TryRemove(steamId, out _);
-                }
-
-                var takenName = copy != null ? VaultNames.NameOf(copy.ItemId, names) : m_Tr.Resolve("Vault", lang);
-                return PlayerActionResult.Ok(m_Tr.Format(lang, "Took {0} from your vault.", takenName));
+                return PlayerActionResult.Fail(m_Tr.Resolve("Unknown action.", lang));
             }
 
-            if (!ushort.TryParse(cardKey, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId) || itemId == 0)
+            var mode = actionId.Substring(0, underscore);   // store | take
+            var op = actionId.Substring(underscore + 1);    // all | some | one
+            int amount;
+            if (op == "all")
             {
-                return PlayerActionResult.Fail(m_Tr.Resolve("Item not found.", lang));
+                amount = int.MaxValue;
             }
-
-            var amount = 1;
-            if (!string.IsNullOrEmpty(value)
-                && (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out amount) || amount <= 0))
+            else if (op == "one")
+            {
+                amount = 1;
+            }
+            else if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out amount) || amount <= 0)
             {
                 return PlayerActionResult.Fail(m_Tr.Resolve("Enter a valid quantity.", lang));
             }
 
-            var name = VaultNames.NameOf(itemId, names);
-            switch (actionId)
+            var names = await VaultNames.BuildMapAsync(m_ItemDirectory);
+            var variant = ParseVariant(cardKey);
+            var itemId = variant?.itemId ?? ParseItemId(cardKey);
+            if (itemId == 0)
             {
-                case "store":
-                {
-                    var result = await m_Vault.StoreAsync(user, itemId, amount);
-                    if (result.Stored == 0)
-                    {
-                        return PlayerActionResult.Fail(result.CapacityReached
-                            ? m_Tr.Resolve("Vault is full.", lang)
-                            : m_Tr.Format(lang, "You don't have {0} in your backpack.", name));
-                    }
-
-                    var msg = m_Tr.Format(lang, "Stored {0}× {1}.", result.Stored, name);
-                    if (result.CapacityReached)
-                    {
-                        msg += " " + m_Tr.Resolve("Vault is full.", lang);
-                    }
-
-                    return PlayerActionResult.Ok(msg);
-                }
-
-                case "take":
-                {
-                    var taken = await m_Vault.TakeAsync(user, itemId, amount);
-                    return taken == 0
-                        ? PlayerActionResult.Fail(m_Tr.Format(lang, "You have no {0} in the vault.", name))
-                        : PlayerActionResult.Ok(m_Tr.Format(lang, "Took {0}× {1}.", taken, name));
-                }
-
-                default:
-                    return PlayerActionResult.Fail(m_Tr.Resolve("Unknown action.", lang));
+                return PlayerActionResult.Fail(m_Tr.Resolve("Item not found.", lang));
             }
+
+            var name = VaultNames.NameOf(itemId, names);
+
+            if (mode == "store")
+            {
+                var result = variant.HasValue
+                    ? await m_Vault.StoreVariantAsync(user, itemId, variant.Value.amount, variant.Value.quality, variant.Value.state, amount)
+                    : await m_Vault.StoreAsync(user, itemId, amount);
+                if (result.Stored == 0)
+                {
+                    return PlayerActionResult.Fail(result.CapacityReached
+                        ? m_Tr.Resolve("Vault is full.", lang)
+                        : m_Tr.Format(lang, "You don't have {0} in your backpack.", name));
+                }
+
+                var msg = m_Tr.Format(lang, "Stored {0}× {1}.", result.Stored, name);
+                if (result.CapacityReached)
+                {
+                    msg += " " + m_Tr.Resolve("Vault is full.", lang);
+                }
+
+                return PlayerActionResult.Ok(msg);
+            }
+
+            if (mode == "take")
+            {
+                var taken = variant.HasValue
+                    ? await m_Vault.TakeVariantAsync(user, itemId, variant.Value.amount, variant.Value.quality, variant.Value.stateBase64, amount)
+                    : await m_Vault.TakeAsync(user, itemId, amount);
+                return taken == 0
+                    ? PlayerActionResult.Fail(m_Tr.Format(lang, "You have no {0} in the vault.", name))
+                    : PlayerActionResult.Ok(m_Tr.Format(lang, "Took {0}× {1}.", taken, name));
+            }
+
+            return PlayerActionResult.Fail(m_Tr.Resolve("Unknown action.", lang));
         }
+
+        // ----- variant key encoding ("id|amount|quality|base64state") -----
+
+        private static string VariantKey(ItemVariant v)
+            => v.ItemId.ToString(CultureInfo.InvariantCulture) + "|" + ((int)v.Amount).ToString(CultureInfo.InvariantCulture)
+               + "|" + ((int)v.Quality).ToString(CultureInfo.InvariantCulture) + "|" + v.State;
+
+        private static (ushort itemId, byte amount, byte quality, string stateBase64, byte[] state)? ParseVariant(string cardKey)
+        {
+            if (cardKey.IndexOf('|') < 0)
+            {
+                return null;
+            }
+
+            var parts = cardKey.Split('|');
+            if (parts.Length < 4
+                || !ushort.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
+                || !byte.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount)
+                || !byte.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var quality))
+            {
+                return null;
+            }
+
+            var stateBase64 = parts[3];
+            byte[] state;
+            try
+            {
+                state = string.IsNullOrEmpty(stateBase64) ? Array.Empty<byte>() : Convert.FromBase64String(stateBase64);
+            }
+            catch
+            {
+                state = Array.Empty<byte>();
+            }
+
+            return (id, amount, quality, stateBase64, state);
+        }
+
+        private static ushort ParseItemId(string cardKey)
+            => ushort.TryParse(cardKey, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) ? id : (ushort)0;
 
         private async Task<UnturnedUser?> ResolveOnlineAsync(string steamId)
             => await m_UserManager.FindUserAsync(KnownActorTypes.Player, steamId, UserSearchMode.FindById) as UnturnedUser;

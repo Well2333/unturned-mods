@@ -617,16 +617,22 @@ namespace well404.WebPanel
                 .Append("\"message\":").Append(Json.Encode(view.Message)).Append(',')
                 .Append("\"bodyMarkdown\":").Append(Json.Encode(view.BodyMarkdown)).Append(',')
                 .Append("\"layout\":").Append(Json.Encode(view.Layout)).Append(',')
-                .Append("\"cards\":[");
+                .Append("\"cards\":");
+            AppendPlayerCards(sb, view.Cards);
+            sb.Append('}');
+        }
 
-            for (var i = 0; i < view.Cards.Count; i++)
+        private static void AppendPlayerCards(StringBuilder sb, IReadOnlyList<PlayerCard> cards)
+        {
+            sb.Append('[');
+            for (var i = 0; i < cards.Count; i++)
             {
                 if (i > 0)
                 {
                     sb.Append(',');
                 }
 
-                var card = view.Cards[i];
+                var card = cards[i];
                 sb.Append('{')
                     .Append("\"key\":").Append(Json.Encode(card.Key)).Append(',')
                     .Append("\"label\":").Append(Json.Encode(card.Label)).Append(',')
@@ -655,10 +661,12 @@ namespace well404.WebPanel
                         .Append('}');
                 }
 
-                sb.Append("]}");
+                sb.Append("],\"children\":");
+                AppendPlayerCards(sb, card.Children);
+                sb.Append('}');
             }
 
-            sb.Append("]}");
+            sb.Append(']');
         }
 
         private static string? GetPlayerToken(HttpListenerRequest request)

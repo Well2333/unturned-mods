@@ -13,20 +13,36 @@ using UnityEngine;
 
 namespace well404.Vault
 {
-    /// <summary>One distinct item id present in a player's backpack, with how many copies.</summary>
-    public readonly struct BackpackEntry
-    {
-        public BackpackEntry(ushort itemId, int count) { ItemId = itemId; Count = count; }
-        public ushort ItemId { get; }
-        public int Count { get; }
-    }
-
     /// <summary>Outcome of a store request: how many were stored, and whether capacity ran out.</summary>
     public readonly struct StoreResult
     {
         public StoreResult(int stored, bool capacityReached) { Stored = stored; CapacityReached = capacityReached; }
         public int Stored { get; }
         public bool CapacityReached { get; }
+    }
+
+    /// <summary>
+    /// A distinct item variant (a group of copies with identical id + amount + quality + state) and
+    /// how many copies of it there are. <see cref="State"/> is the base64 of the raw item state.
+    /// </summary>
+    public readonly struct ItemVariant
+    {
+        public ItemVariant(ushort itemId, byte amount, byte quality, string state, int count, int slotCost)
+        {
+            ItemId = itemId;
+            Amount = amount;
+            Quality = quality;
+            State = state;
+            Count = count;
+            SlotCost = slotCost;
+        }
+
+        public ushort ItemId { get; }
+        public byte Amount { get; }
+        public byte Quality { get; }
+        public string State { get; }
+        public int Count { get; }
+        public int SlotCost { get; }
     }
 
     /// <summary>
@@ -152,12 +168,34 @@ namespace well404.Vault
             return asset == null ? 1 : Math.Max(1, asset.size_x * asset.size_y);
         }
 
-        /// <summary>Groups a player's carried items by id (skips equipment slots and any open storage).</summary>
-        public async Task<IReadOnlyList<BackpackEntry>> ListBackpackAsync(UnturnedUser user)
+        // ----- variants (copies with identical id+amount+quality+state are one variant) -----
+
+        /// <summary>The vault's contents collapsed into distinct variants (merging identical copies).</summary>
+        public IReadOnlyList<ItemVariant> VaultVariants(string steamId)
+        {
+            var result = new List<ItemVariant>();
+            if (!m_Data.Players.TryGetValue(steamId, out var list))
+            {
+                return result;
+            }
+
+            foreach (var group in list
+                .GroupBy(x => (x.ItemId, x.Amount, x.Quality, x.State))
+                .OrderBy(g => g.Key.ItemId))
+            {
+                var first = group.First();
+                result.Add(new ItemVariant(first.ItemId, first.Amount, first.Quality, first.State, group.Count(), first.SlotCost));
+            }
+
+            return result;
+        }
+
+        /// <summary>The player's carried items collapsed into distinct variants.</summary>
+        public async Task<IReadOnlyList<ItemVariant>> BackpackVariantsAsync(UnturnedUser user)
         {
             await UniTask.SwitchToMainThread();
             var inventory = user.Player.Player.inventory;
-            var counts = new Dictionary<ushort, int>();
+            var map = new Dictionary<(ushort, byte, byte, string), int>();
             for (byte page = PlayerInventory.SLOTS; page < PlayerInventory.STORAGE; page++)
             {
                 var count = inventory.getItemCount(page);
@@ -169,22 +207,28 @@ namespace well404.Vault
                         continue;
                     }
 
-                    counts.TryGetValue(jar.item.id, out var existing);
-                    counts[jar.item.id] = existing + 1;
+                    var item = jar.item;
+                    var state = item.state != null && item.state.Length > 0 ? Convert.ToBase64String(item.state) : string.Empty;
+                    var key = (item.id, item.amount, item.quality, state);
+                    map.TryGetValue(key, out var existing);
+                    map[key] = existing + 1;
                 }
             }
 
-            return counts.Select(kv => new BackpackEntry(kv.Key, kv.Value)).ToList();
+            return map.Select(kv => new ItemVariant(kv.Key.Item1, kv.Key.Item2, kv.Key.Item3, kv.Key.Item4, kv.Value, SlotCostOf(kv.Key.Item1))).ToList();
         }
 
-        // ----- store / take -----
+        // ----- store -----
 
-        /// <summary>
-        /// Moves up to <paramref name="amount"/> copies of <paramref name="itemId"/> from the player's
-        /// backpack into the vault, preserving each item's full state. Stops early when capacity is
-        /// reached. Returns how many were stored and whether the cap was hit.
-        /// </summary>
-        public async Task<StoreResult> StoreAsync(UnturnedUser user, ushort itemId, int amount)
+        /// <summary>Stores up to <paramref name="amount"/> copies of <paramref name="itemId"/> (any variant).</summary>
+        public Task<StoreResult> StoreAsync(UnturnedUser user, ushort itemId, int amount)
+            => StoreMatchingAsync(user, itemId, _ => true, amount);
+
+        /// <summary>Stores up to <paramref name="count"/> copies matching an exact variant.</summary>
+        public Task<StoreResult> StoreVariantAsync(UnturnedUser user, ushort itemId, byte amount, byte quality, byte[] state, int count)
+            => StoreMatchingAsync(user, itemId, it => it.amount == amount && it.quality == quality && BytesEqual(it.state, state), count);
+
+        private async Task<StoreResult> StoreMatchingAsync(UnturnedUser user, ushort itemId, Func<Item, bool> matches, int amount)
         {
             await UniTask.SwitchToMainThread();
             var inventory = user.Player.Player.inventory;
@@ -197,7 +241,7 @@ namespace well404.Vault
                 for (byte i = 0; i < count && targets.Count < amount; i++)
                 {
                     var jar = inventory.getItem(page, i);
-                    if (jar?.item != null && jar.item.id == itemId)
+                    if (jar?.item != null && jar.item.id == itemId && matches(jar.item))
                     {
                         targets.Add((page, jar));
                     }
@@ -244,12 +288,18 @@ namespace well404.Vault
             return new StoreResult(stored, capacityReached);
         }
 
-        /// <summary>
-        /// Moves up to <paramref name="amount"/> copies of <paramref name="itemId"/> from the vault
-        /// back into the backpack (dropping at the player's feet if full), restoring full state.
-        /// Returns how many were taken. Takes the earliest-stored copies first.
-        /// </summary>
-        public async Task<int> TakeAsync(UnturnedUser user, ushort itemId, int amount)
+        // ----- take -----
+
+        /// <summary>Withdraws up to <paramref name="amount"/> copies of <paramref name="itemId"/> (any variant).</summary>
+        public Task<int> TakeAsync(UnturnedUser user, ushort itemId, int amount)
+            => TakeMatchingAsync(user, x => x.ItemId == itemId, amount);
+
+        /// <summary>Withdraws up to <paramref name="count"/> copies matching an exact variant.</summary>
+        public Task<int> TakeVariantAsync(UnturnedUser user, ushort itemId, byte amount, byte quality, string state, int count)
+            => TakeMatchingAsync(user, x => x.ItemId == itemId && x.Amount == amount && x.Quality == quality
+                && string.Equals(x.State, state, StringComparison.Ordinal), count);
+
+        private async Task<int> TakeMatchingAsync(UnturnedUser user, Func<StoredItem, bool> matches, int amount)
         {
             await UniTask.SwitchToMainThread();
             var player = user.Player.Player;
@@ -258,7 +308,7 @@ namespace well404.Vault
 
             for (var n = 0; n < amount; n++)
             {
-                var idx = list.FindIndex(x => x.ItemId == itemId);
+                var idx = list.FindIndex(x => matches(x));
                 if (idx < 0)
                 {
                     break;
@@ -277,20 +327,23 @@ namespace well404.Vault
             return taken;
         }
 
-        /// <summary>Withdraws exactly one stored copy by its <see cref="StoredItem.Uid"/>. Returns false if absent.</summary>
-        public async Task<bool> TakeByUidAsync(UnturnedUser user, string uid)
+        private static bool BytesEqual(byte[]? a, byte[]? b)
         {
-            await UniTask.SwitchToMainThread();
-            var list = ListFor(user.Id);
-            var idx = list.FindIndex(x => x.Uid == uid);
-            if (idx < 0)
+            var x = a ?? Array.Empty<byte>();
+            var y = b ?? Array.Empty<byte>();
+            if (x.Length != y.Length)
             {
                 return false;
             }
 
-            GiveBack(user.Player.Player, list[idx]);
-            list.RemoveAt(idx);
-            await SaveAsync();
+            for (var i = 0; i < x.Length; i++)
+            {
+                if (x[i] != y[i])
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 

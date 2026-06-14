@@ -52,7 +52,11 @@
   .prow .badge { font-size:11px; color:var(--muted); background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:2px 6px; flex:0 0 auto; font-variant-numeric:tabular-nums; }
   .prow .nm { font-weight:600; font-size:14px; flex:0 0 auto; max-width:46%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .prow .mid { flex:1 1 auto; min-width:0; display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
-  .prow .rowbtns { display:flex; gap:6px; flex:0 0 auto; margin-left:auto; }
+  .prow .rowbtns { display:flex; gap:6px; flex:0 0 auto; margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
+  /* collapsible card: a parent row + its indented children */
+  .prowwrap { grid-column:1/-1; display:flex; flex-direction:column; gap:6px; }
+  .prowwrap > .children { display:flex; flex-direction:column; gap:6px; margin:0 0 0 16px; padding-left:10px; border-left:2px solid var(--line); }
+  button.act.sm.toggle { background:var(--bg); }
   button.act { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:8px 16px; border-radius:7px; cursor:pointer; font-size:14px; }
   button.act:hover { filter:brightness(1.15); }
   button.act:disabled { opacity:.5; cursor:default; }
@@ -84,6 +88,7 @@ const enc = encodeURIComponent;
 
 const TOKEN = new URLSearchParams(location.search).get("t") || "";
 let lang = localStorage.getItem("panel_lang") || "";   // resolved from server default on first load
+const expandedRows = new Set();   // collapsible-card keys kept open across re-renders
 let menus = [];
 let languages = [];
 let activeId = decodeURIComponent((location.hash || "").replace(/^#/, "")) || null;
@@ -94,12 +99,12 @@ const STR = {
         empty:"(nothing here)", noToken:"Missing session token. Type /menu in-game to reopen the panel.",
         sessionEnded:"Session expired — reopen the panel in-game with /menu.",
         staleNote:"This page does not refresh on its own — tap ↻ to get the latest data.",
-        refresh:"Refresh", reqFailed:"Request failed" },
+        refresh:"Refresh", reqFailed:"Request failed", details:"Details" },
   zh: { title:"🎮 玩家面板", loading:"加载中…", noFeatures:"暂时没有可用的功能。",
         empty:"（暂无内容）", noToken:"缺少会话令牌。请在游戏内输入 /menu 重新打开面板。",
         sessionEnded:"会话已过期，请在游戏内用 /menu 重新打开面板。",
         staleNote:"本页不会自动刷新——点 ↻ 获取最新数据。",
-        refresh:"刷新", reqFailed:"请求失败" }
+        refresh:"刷新", reqFailed:"请求失败", details:"详情" }
 };
 function T(k){ return (STR[lang] && STR[lang][k]) || STR.en[k] || k; }
 
@@ -256,24 +261,39 @@ function renderView(menu, view) {
 }
 
 // Compact one-line row for the "list" layout: optional leading badge, label, any pill tags,
-// then the card's buttons. A row with tags spans full width so the pills have room.
+// then the card's buttons. A row with tags (or children) spans full width. A card with children
+// gets an inline expand/collapse toggle; the children render indented beneath it.
 function buildRow(menu, card) {
   const hasTags = card.tags && card.tags.length;
-  const row = el("div", { class: "prow" + (hasTags ? " wide" : "") });
+  const hasKids = card.children && card.children.length;
+  const row = el("div", { class: "prow" + (hasTags || hasKids ? " wide" : "") });
   if (card.badge) row.append(el("span", { class: "badge", text: card.badge }));
-  row.append(el("span", { class: "nm", text: card.label }));
+  if (card.label) row.append(el("span", { class: "nm", text: card.label }));
   const mid = el("div", { class: "mid" });
   if (hasTags) for (const t of card.tags) mid.append(el("span", { class: "pill", text: t }));
   row.append(mid);
-  if (card.buttons && card.buttons.length) {
-    const bb = el("div", { class: "rowbtns" });
-    for (const b of card.buttons) {
-      const btn = el("button", { class: "act sm " + (b.style || ""), text: b.label, onclick: () => invoke(menu, card, b, btn) });
-      bb.append(btn);
-    }
-    row.append(bb);
+  const bb = el("div", { class: "rowbtns" });
+  if (card.buttons) for (const b of card.buttons) {
+    const btn = el("button", { class: "act sm " + (b.style || ""), text: b.label, onclick: () => invoke(menu, card, b, btn) });
+    bb.append(btn);
   }
-  return row;
+
+  if (!hasKids) {
+    if (bb.children.length) row.append(bb);
+    return row;
+  }
+
+  const kids = el("div", { class: "children" });
+  for (const ch of card.children) kids.append(buildRow(menu, ch));
+  const sync = () => { const open = expandedRows.has(card.key); kids.style.display = open ? "" : "none"; toggle.textContent = (open ? "▾ " : "▸ ") + T("details"); };
+  const toggle = el("button", { class: "act sm toggle", onclick: () => {
+    if (expandedRows.has(card.key)) expandedRows.delete(card.key); else expandedRows.add(card.key);
+    sync();
+  } });
+  bb.append(toggle);
+  row.append(bb);
+  sync();
+  return el("div", { class: "prowwrap" }, row, kids);
 }
 
 function buildCard(menu, card) {
