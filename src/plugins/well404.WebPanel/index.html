@@ -54,6 +54,10 @@
   .pills { display:flex; flex-wrap:wrap; gap:5px; }
   .lrow .pills { flex:1; }
   .pill { display:inline-block; background:var(--bg); border:1px solid var(--line); border-radius:11px; padding:2px 9px; font-size:12px; }
+  .pill.kv { background:var(--panel); color:var(--muted); }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; min-width:280px; max-width:92%; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .modal .edittitle { font-size:15px; color:var(--fg); margin-bottom:12px; }
   .slot-x { position:absolute; top:6px; right:9px; color:var(--muted); cursor:pointer; font-size:15px; line-height:1; }
   .lrow .slot-x { position:static; margin-left:auto; }
   .tile .slot-x:hover, .lrow .slot-x:hover { color:var(--err); }
@@ -86,11 +90,11 @@ const STR = {
   en: { loading:"Loading…", unauthorized:"Unauthorized: the token in the link is invalid or changed — ask an admin for the current link.",
         reqFailed:"Request failed", noModules:"No modules registered yet. They appear here once a WebPanel-aware plugin is installed and loaded.",
         save:"Save", add:"＋ Add", del:"Delete", saveOk:"Saved", search:"Search", enterKeyword:"Enter a keyword…",
-        none:"(no entries — click ＋ Add)", saveFail:"Save failed", delFail:"Delete failed", edit:"Edit: ", addItem:"New entry", cancel:"Cancel", rows:"rows" },
+        none:"(no entries — click ＋ Add)", saveFail:"Save failed", delFail:"Delete failed", edit:"Edit: ", addItem:"New entry", cancel:"Cancel", confirm:"Confirm", rows:"rows" },
   zh: { loading:"加载中…", unauthorized:"未授权：访问链接中的 token 无效或已变更，请向管理员索取最新链接。",
         reqFailed:"请求失败", noModules:"暂无已注册的模块。安装并加载支持 WebPanel 的插件后会出现在这里。",
         save:"保存", add:"＋ 新增", del:"删除", saveOk:"保存成功", search:"搜索", enterKeyword:"输入关键词…",
-        none:"（暂无条目，点「＋ 新增」添加）", saveFail:"保存失败", delFail:"删除失败", edit:"编辑：", addItem:"新增条目", cancel:"取消", rows:"行" }
+        none:"（暂无条目，点「＋ 新增」添加）", saveFail:"保存失败", delFail:"删除失败", edit:"编辑：", addItem:"新增条目", cancel:"取消", confirm:"确认", rows:"行" }
 };
 function T(k){ return (STR[lang] && STR[lang][k]) || STR.en[k] || k; }
 function langQS(){ return lang ? ("lang=" + enc(lang)) : ""; }
@@ -263,7 +267,15 @@ function buildCollection(module, action, card, msg) {
     }
     container.replaceChildren(...records.map(rec => {
       const title = el("div", { class:"slot-title", text: rec.label });
-      const pillbox = el("div", { class:"pills" }, ...(rec.tags || []).map(t => el("span", { class:"pill", text: t })));
+      const tagPills = (rec.tags || []).map(t => el("span", { class:"pill", text: t }));
+      // Summary pills: selected field values shown as "<label>: <value>" using localized field labels.
+      const sumPills = (action.summaryFields || []).map(name => {
+        const v = rec.values ? rec.values[name] : undefined;
+        if (v === undefined || v === "") return null;
+        const f = (action.fields || []).find(x => x.name === name);
+        return el("span", { class:"pill kv", text: (f ? f.label : name) + ": " + v });
+      }).filter(Boolean);
+      const pillbox = el("div", { class:"pills" }, ...tagPills, ...sumPills);
       const x = action.hasDelete
         ? el("span", { class:"slot-x", text:"×", title:T("del"), onclick: (e) => { e.stopPropagation(); del(rec); } })
         : null;
@@ -398,7 +410,7 @@ function showResult(result, msg, out, module) {
       if (hasRowAction) {
         const key = (result.rowKeys && result.rowKeys[i] != null) ? result.rowKeys[i] : r[0];
         const btn = el("button", { class:"act", text: result.rowActionLabel || "+",
-          onclick: () => rowAction(module, result.rowActionId, key, btn, msg) });
+          onclick: () => rowAction(module, result.rowActionId, key, btn, msg, result.rowActionFields, result.rowActionLabel) });
         cells.push(el("td", {}, btn));
       }
       return el("tr", {}, ...cells);
@@ -408,17 +420,43 @@ function showResult(result, msg, out, module) {
   }
 }
 
-// Invokes a table row's action (e.g. shop quick-add). On success re-renders the module so any
-// collection that gained a record reflects it; on failure surfaces the message.
-async function rowAction(module, actionId, key, btn, msg) {
+// Invokes a table row's action (e.g. shop quick-add). If the action declares input fields, a popup
+// collects them first (so e.g. the admin must set the prices). On success re-renders the module so
+// any collection that gained a record reflects it; on failure surfaces the message.
+async function rowAction(module, actionId, key, btn, msg, fields, title) {
+  let extra = {};
+  if (fields && fields.length) {
+    extra = await showModal(title || "", fields);
+    if (extra === null) return;   // cancelled
+  }
   btn.disabled = true;
   const body = new URLSearchParams(); body.set("key", key);
+  for (const k in extra) body.set(k, extra[k]);
   try {
     const r = await api(`api/modules/${enc(module.id)}/${enc(actionId)}`, {
       method:"POST", headers: headers({ "Content-Type":"application/x-www-form-urlencoded" }), body: body.toString() });
     if (r.success) { flash = { ok:true, text: r.message }; render(); }
     else { msg.className = "msg err"; msg.textContent = r.message || T("saveFail"); btn.disabled = false; }
   } catch (e) { msg.className = "msg err"; msg.textContent = e.message; btn.disabled = false; }
+}
+
+// A small modal that collects the given fields and resolves to their values (or null if cancelled).
+function showModal(title, fields) {
+  return new Promise(resolve => {
+    const inputs = {};
+    const row = el("div", { class:"row" });
+    for (const f of fields) row.append(fieldNode(f, inputs));
+    const overlay = el("div", { class:"modal-overlay" });
+    const done = (val) => { overlay.remove(); resolve(val); };
+    const ok = el("button", { class:"act", text:T("confirm"), onclick: () => done(collect(inputs)) });
+    const cancel = el("button", { class:"act ghost", text:T("cancel"), onclick: () => done(null) });
+    overlay.append(el("div", { class:"modal" },
+      el("div", { class:"edittitle", text: title }), row,
+      el("div", { class:"row", style:"margin-top:12px" }, ok, cancel)));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) done(null); });
+    document.body.append(overlay);
+    const first = fields[0] && inputs[fields[0].name]; if (first) first.focus();
+  });
 }
 
 loadModules();

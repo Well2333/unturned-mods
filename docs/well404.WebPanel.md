@@ -154,9 +154,12 @@ tunnel:
 | `Collection` | 记录的增删改列表(支持网格 / 列表布局) |
 
 通用扩展(任意插件可用,**宿主不含任何插件专属逻辑**):
+- `WebPanelAction.SummaryFields`:`Collection` 的每条记录在瓦片上额外用「字段标签: 值」胶囊显示选定字段
+  (用已本地化的字段标签),让关键数据(如商品买/卖价)不必打开编辑器即可见。
 - `WebPanelAction.Hidden`:只可被 id 调用、不渲染卡片(作为下面行内动作的目标)。
-- `WebActionResult.WithRowAction(actionId, label, rowKeys?)`:给 `Table`/`Search` 结果每行挂一个按钮,
-  点击即以该行 key(缺省取首列)调用本模块的 `actionId`。Shop 的「检索→＋一键加入商品」即用它。
+- `WebActionResult.WithRowAction(actionId, label, rowKeys?, fields?)`:给 `Table`/`Search` 结果每行挂一个
+  按钮,点击即以该行 key(缺省取首列)调用本模块的 `actionId`;若给了 `fields` 则**先弹窗收集这些输入**
+  一并提交。Shop 的「检索→＋(弹窗填买卖价)一键加入商品」即用它。
 
 参考实现见 Economy 的 `EconomyWebPanelModule.cs` 与 Shop 的 `ShopWebPanelModule.cs`。
 

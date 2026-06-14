@@ -55,7 +55,7 @@ namespace well404.Shop
             ["Search any game item by name or ID, then click + to add it to the shop as a plain item (set its prices afterwards)."]
                 = "按名称或 ID 检索任意游戏物品，点「＋」即把它作为普通商品加入商店（之后再填买卖价）。",
             ["Add to shop"] = "加入商店",
-            ["Added to the shop — set its buy/sell price."] = "已加入商店——请设置它的买/卖价。",
+            ["Added to the shop."] = "已加入商店。",
             ["Already in the shop."] = "已在商店中。",
             // admin result messages (fixed, arg-free so they localize server-side)
             ["Saved."] = "已保存。",

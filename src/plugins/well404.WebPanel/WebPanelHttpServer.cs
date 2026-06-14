@@ -690,28 +690,11 @@ namespace well404.WebPanel
                         .Append("\"layout\":").Append(Json.Encode(action.Layout)).Append(',')
                         .Append("\"hidden\":").Append(Json.Bool(action.Hidden)).Append(',')
                         .Append("\"description\":").Append(Json.Encode(Tr(action.Description, lang))).Append(',')
-                        .Append("\"fields\":[");
-
-                    for (var k = 0; k < action.Fields.Count; k++)
-                    {
-                        var field = action.Fields[k];
-                        if (k > 0)
-                        {
-                            sb.Append(',');
-                        }
-
-                        sb.Append('{')
-                            .Append("\"name\":").Append(Json.Encode(field.Name)).Append(',')
-                            .Append("\"label\":").Append(Json.Encode(Tr(field.Label, lang))).Append(',')
-                            .Append("\"type\":").Append(Json.Encode(field.Type.ToString().ToLowerInvariant())).Append(',')
-                            .Append("\"required\":").Append(Json.Bool(field.Required)).Append(',')
-                            .Append("\"placeholder\":").Append(Json.Encode(field.Placeholder == null ? null : Tr(field.Placeholder, lang))).Append(',')
-                            .Append("\"options\":");
-                        AppendLocalizedStringArray(sb, field.Options, lang);
-                        sb.Append('}');
-                    }
-
-                    sb.Append("]}");
+                        .Append("\"summaryFields\":");
+                    AppendStringArray(sb, action.SummaryFields);
+                    sb.Append(",\"fields\":");
+                    AppendFieldsJson(sb, action.Fields, lang);
+                    sb.Append('}');
                 }
 
                 sb.Append("]}");
@@ -734,7 +717,9 @@ namespace well404.WebPanel
                 .Append("\"message\":").Append(Json.Encode(result.Message == null ? null : Tr(result.Message, lang))).Append(',')
                 .Append("\"rowActionId\":").Append(Json.Encode(result.RowActionId)).Append(',')
                 .Append("\"rowActionLabel\":").Append(Json.Encode(result.RowActionLabel == null ? null : Tr(result.RowActionLabel, lang))).Append(',')
-                .Append("\"rowKeys\":");
+                .Append("\"rowActionFields\":");
+            AppendFieldsJson(sb, result.RowActionFields, lang);
+            sb.Append(",\"rowKeys\":");
             AppendStringArray(sb, result.RowKeys);
             sb.Append(",\"columns\":");
             AppendLocalizedStringArray(sb, result.Columns, lang);
@@ -762,6 +747,35 @@ namespace well404.WebPanel
 
             sb.Append('}');
             return sb.ToString();
+        }
+
+        /// <summary>Serializes a field list (name/label/type/required/placeholder/options), localizing labels.</summary>
+        private void AppendFieldsJson(StringBuilder sb, IReadOnlyList<WebField>? fields, string lang)
+        {
+            sb.Append('[');
+            if (fields != null)
+            {
+                for (var k = 0; k < fields.Count; k++)
+                {
+                    var field = fields[k];
+                    if (k > 0)
+                    {
+                        sb.Append(',');
+                    }
+
+                    sb.Append('{')
+                        .Append("\"name\":").Append(Json.Encode(field.Name)).Append(',')
+                        .Append("\"label\":").Append(Json.Encode(Tr(field.Label, lang))).Append(',')
+                        .Append("\"type\":").Append(Json.Encode(field.Type.ToString().ToLowerInvariant())).Append(',')
+                        .Append("\"required\":").Append(Json.Bool(field.Required)).Append(',')
+                        .Append("\"placeholder\":").Append(Json.Encode(field.Placeholder == null ? null : Tr(field.Placeholder, lang))).Append(',')
+                        .Append("\"options\":");
+                    AppendLocalizedStringArray(sb, field.Options, lang);
+                    sb.Append('}');
+                }
+            }
+
+            sb.Append(']');
         }
 
         private static void AppendStringArray(StringBuilder sb, IReadOnlyList<string>? items)

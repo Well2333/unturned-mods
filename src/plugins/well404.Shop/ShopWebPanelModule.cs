@@ -40,7 +40,8 @@ namespace well404.Shop
                 description: "Click to edit, Add to create. A plain item is bought and sold by its game item id; its display name comes from the game. Look up ids with the search below.",
                 recordsLoader: () => LoadItemRecordsAsync(store, itemDirectory),
                 deleteHandler: request => Task.FromResult(RemoveItem(store, request)),
-                keyField: "itemId");
+                keyField: "itemId",
+                summaryFields: new[] { "buyPrice", "sellPrice" });
 
             var bundles = new WebPanelAction(
                 id: "bundles",
@@ -59,7 +60,8 @@ namespace well404.Shop
                 description: "Click a bundle to edit, Add to create. A bundle is a named pack of items; contents format itemId×amount, comma-separated (id only = amount 1), e.g. 15x2, 81x1.",
                 recordsLoader: () => LoadBundleRecordsAsync(store, itemDirectory),
                 deleteHandler: request => Task.FromResult(RemoveBundle(store, request)),
-                keyField: "id");
+                keyField: "id",
+                summaryFields: new[] { "buyPrice", "sellPrice" });
 
             var search = new WebPanelAction(
                 id: "search",
@@ -183,8 +185,13 @@ namespace well404.Shop
                 return WebActionResult.Fail("Already in the shop.");
             }
 
-            store.UpsertItem(new ShopItemConfig { ItemId = itemId, BuyPrice = 0m, SellPrice = 0m });
-            return WebActionResult.Ok("Added to the shop — set its buy/sell price.");
+            store.UpsertItem(new ShopItemConfig
+            {
+                ItemId = itemId,
+                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
+                SellPrice = request.GetDecimal("sellPrice") ?? 0m
+            });
+            return WebActionResult.Ok("Added to the shop.");
         }
 
         // ----- bundles -----
@@ -390,8 +397,13 @@ namespace well404.Shop
                 ? "No matching items."
                 : (truncated ? $"Too many results; showing the first {SearchLimit}. Refine your keyword." : null);
             // The "Item ID" cell (first column) is each row's key, so the quick-add button passes it.
+            // The popup makes the admin set the prices up front (no silent zero-price drafts).
             return WebActionResult.Table(new[] { "Item ID", "Name" }, rows, message)
-                .WithRowAction(QuickAddActionId, "Add to shop");
+                .WithRowAction(QuickAddActionId, "Add to shop", null, new[]
+                {
+                    new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
+                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
+                });
         }
 
         // ----- helpers -----

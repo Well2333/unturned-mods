@@ -103,12 +103,23 @@ namespace UnturnedMods.Shared.WebPanel
         /// <summary>Per-row keys parallel to <see cref="Rows"/>; null = use each row's first cell.</summary>
         public IReadOnlyList<string>? RowKeys { get; set; }
 
+        /// <summary>
+        /// Optional input fields prompted (in a popup) before the row action runs; their values are
+        /// posted alongside the row key. Null/empty = invoke immediately. Lets a row action collect
+        /// data (e.g. the shop quick-add asking for buy/sell prices).
+        /// </summary>
+        public IReadOnlyList<WebField>? RowActionFields { get; set; }
+
         /// <summary>Attaches a per-row action button to a table result (see <see cref="RowActionId"/>).</summary>
-        public WebActionResult WithRowAction(string actionId, string label, IReadOnlyList<string>? rowKeys = null)
+        public WebActionResult WithRowAction(
+            string actionId, string label,
+            IReadOnlyList<string>? rowKeys = null,
+            IReadOnlyList<WebField>? fields = null)
         {
             RowActionId = actionId;
             RowActionLabel = label;
             RowKeys = rowKeys;
+            RowActionFields = fields;
             return this;
         }
 

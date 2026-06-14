@@ -77,7 +77,8 @@ namespace UnturnedMods.Shared.WebPanel
             Func<WebActionRequest, Task<WebActionResult>>? deleteHandler = null,
             string? keyField = null,
             string? layout = null,
-            bool hidden = false)
+            bool hidden = false,
+            IReadOnlyList<string>? summaryFields = null)
         {
             Id = id ?? throw new ArgumentNullException(nameof(id));
             Label = label ?? throw new ArgumentNullException(nameof(label));
@@ -91,6 +92,7 @@ namespace UnturnedMods.Shared.WebPanel
             KeyField = keyField;
             Layout = layout;
             Hidden = hidden;
+            SummaryFields = summaryFields ?? Array.Empty<string>();
         }
 
         /// <summary>
@@ -98,6 +100,13 @@ namespace UnturnedMods.Shared.WebPanel
         /// (e.g. the target of a table's per-row action). Generic helper for "invoke-only" actions.
         /// </summary>
         public bool Hidden { get; }
+
+        /// <summary>
+        /// For <see cref="WebActionKind.Collection"/>: field names whose values are shown as
+        /// "<label>: <value>" pills on each record (using the localized field labels), so a record's
+        /// key data (e.g. a shop item's buy/sell price) is visible without opening the editor.
+        /// </summary>
+        public IReadOnlyList<string> SummaryFields { get; }
 
         /// <summary>Stable, unique-within-module action id. Used for routing.</summary>
         public string Id { get; }
