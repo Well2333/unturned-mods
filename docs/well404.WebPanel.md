@@ -15,10 +15,10 @@
 按权限过滤)。**「首页」始终是第一个标签,并作为开屏默认页**(`/menu shop` 等带参数才定位到对应标签)。
 
 **多语言**:管理面板与玩家面板均内置**中/英双语**,右上角下拉切换,默认英文;玩家页另有
-「手动刷新 ↻ + 不会自动刷新」提示(因页面数据不自动刷新)。**两个面板切换的语言都保存在服务端,
-不在浏览器**——玩家语言按其 Steam ID 存于 `player-languages.txt`,管理面语言存于 `admin-language.txt`
-(单值);因此即使管理面 URL(快速隧道域名)每次重启变化、浏览器 localStorage 丢失,下次打开仍沿用上次
-所选语言。给开发者:网页文案用
+「手动刷新 ↻ + 不会自动刷新」提示(因页面数据不自动刷新)。**两个面板切换的语言都保存在服务端的配置文件里,
+不在浏览器**——玩家语言按其 Steam ID 存于 `player-languages.yaml`(`players:` 映射),管理面语言存于
+`admin-language.yaml`(单值);因此即使管理面 URL(快速隧道域名)每次重启变化、浏览器 localStorage 丢失,
+下次打开仍沿用上次所选语言(旧的 `*.txt` 会在首次加载时自动迁移为 `.yaml`)。给开发者:网页文案用
 `IWebTranslationRegistry`(英文源串为键 + 中文映射表),详见
 [development-standards.md §9](../memory/guidelines/development-standards.md)。
 

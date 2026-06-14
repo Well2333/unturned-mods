@@ -5,21 +5,26 @@ using System.Text;
 namespace well404.WebPanel
 {
     /// <summary>
-    /// Persists the admin panel's chosen UI language on the server (a single value in
-    /// <c>admin-language.txt</c> in the working directory), so it survives the admin URL changing
+    /// Persists the admin panel's chosen UI language on the server (a YAML config file
+    /// <c>admin-language.yaml</c> in the working directory), so it survives the admin URL changing
     /// (e.g. a fresh quick-tunnel domain) — browser localStorage is per-origin and would be lost.
     /// The admin surface has no per-user identity (it is gated by one secret token), so one shared
     /// value is enough. Thread-safe.
     /// </summary>
     public sealed class AdminLanguageStore
     {
+        private const string FileName = "admin-language.yaml";
+        private const string LegacyFileName = "admin-language.txt";
+
         private readonly string m_Path;
+        private readonly string m_LegacyPath;
         private readonly object m_Lock = new object();
         private string? m_Language;
 
         public AdminLanguageStore(string workingDirectory)
         {
-            m_Path = Path.Combine(workingDirectory, "admin-language.txt");
+            m_Path = Path.Combine(workingDirectory, FileName);
+            m_LegacyPath = Path.Combine(workingDirectory, LegacyFileName);
             Load();
         }
 
@@ -43,14 +48,7 @@ namespace well404.WebPanel
             lock (m_Lock)
             {
                 m_Language = language.Trim();
-                try
-                {
-                    File.WriteAllText(m_Path, m_Language, new UTF8Encoding(false));
-                }
-                catch
-                {
-                    // Best-effort; an unwritable data dir just means it won't persist across restarts.
-                }
+                Save();
             }
         }
 
@@ -60,16 +58,62 @@ namespace well404.WebPanel
             {
                 if (File.Exists(m_Path))
                 {
-                    var saved = File.ReadAllText(m_Path).Trim();
+                    m_Language = ParseLanguage(File.ReadAllLines(m_Path));
+                    return;
+                }
+
+                // One-time migration from the old plain-text file, if present.
+                if (File.Exists(m_LegacyPath))
+                {
+                    var saved = File.ReadAllText(m_LegacyPath).Trim();
                     if (saved.Length > 0)
                     {
                         m_Language = saved;
+                        Save();
                     }
                 }
             }
             catch
             {
                 // Ignore — treat as "no saved language".
+            }
+        }
+
+        private static string? ParseLanguage(string[] lines)
+        {
+            foreach (var raw in lines)
+            {
+                var line = raw.Trim();
+                if (line.Length == 0 || line[0] == '#' || !line.StartsWith("language:", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var value = line.Substring("language:".Length).Trim();
+                if (value.Length >= 2 && (value[0] == '"' || value[0] == '\'') && value[value.Length - 1] == value[0])
+                {
+                    value = value.Substring(1, value.Length - 2);
+                }
+
+                return value.Length > 0 ? value : null;
+            }
+
+            return null;
+        }
+
+        // Caller holds m_Lock.
+        private void Save()
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.Append("# Admin web-panel UI language. Managed by well404.WebPanel.\n");
+                sb.Append("language: \"").Append(m_Language).Append("\"\n");
+                File.WriteAllText(m_Path, sb.ToString(), new UTF8Encoding(false));
+            }
+            catch
+            {
+                // Best-effort; an unwritable data dir just means it won't persist across restarts.
             }
         }
     }
