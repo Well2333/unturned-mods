@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using OpenMod.API.Permissions;
 using OpenMod.API.Persistence;
 using OpenMod.Unturned.Users;
 using SDG.Unturned;
@@ -29,27 +31,32 @@ namespace well404.Vault
 
     /// <summary>
     /// The per-player vault: moves items between a player's backpack and persistent storage with
-    /// full state fidelity (a stored item keeps its quality and raw state bytes — attachments, the
-    /// rounds inside a magazine/ammo box, etc.). Capacity is counted in grid cells: each item costs
-    /// its asset's footprint (size_x × size_y), never its internal stack/ammo count. Registered as a
-    /// plugin-scoped singleton in <see cref="VaultContainerConfigurator"/>; all inventory access runs
-    /// on the main thread.
+    /// full item-state fidelity (a stored item keeps its quality and raw state bytes — attachments,
+    /// the rounds inside a magazine/ammo box, etc.). Capacity is counted in grid cells: each item
+    /// costs its asset's footprint (size_x × size_y), never its internal stack/ammo count. Capacity
+    /// is per-player: a config base, raised by any permission tier the player holds, or set
+    /// individually via a per-player override. Registered as a plugin-scoped singleton; all inventory
+    /// access runs on the main thread.
     /// </summary>
     public class VaultService
     {
         private const string DataKey = "vault";
 
         private readonly IConfiguration m_Configuration;
+        private readonly IPermissionChecker m_PermissionChecker;
         private IDataStore? m_DataStore;
         private VaultData m_Data = new VaultData();
 
-        public VaultService(IConfiguration configuration)
+        public VaultService(IConfiguration configuration, IPermissionChecker permissionChecker)
         {
             m_Configuration = configuration;
+            m_PermissionChecker = permissionChecker;
         }
 
-        /// <summary>Total capacity in grid cells (from config).</summary>
-        public int MaxSlots => (m_Configuration.Get<VaultSettings>() ?? new VaultSettings()).MaxSlots;
+        private VaultSettings Settings => m_Configuration.Get<VaultSettings>() ?? new VaultSettings();
+
+        /// <summary>The configured base capacity (before tiers / per-player overrides).</summary>
+        public int BaseMaxSlots => Settings.MaxSlots;
 
         /// <summary>Loads persisted data once. Called by the plugin on load (DataStore is plugin-owned).</summary>
         public async Task InitializeAsync(IDataStore dataStore)
@@ -59,7 +66,76 @@ namespace well404.Vault
             {
                 m_Data = await dataStore.LoadAsync<VaultData>(DataKey) ?? new VaultData();
             }
+
+            // Backfill unique ids for items stored before per-copy ids existed (so they can be
+            // withdrawn individually in the detail view).
+            var changed = false;
+            foreach (var list in m_Data.Players.Values)
+            {
+                foreach (var item in list)
+                {
+                    if (string.IsNullOrEmpty(item.Uid))
+                    {
+                        item.Uid = NewUid();
+                        changed = true;
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                await SaveAsync();
+            }
         }
+
+        // ----- capacity -----
+
+        /// <summary>The effective capacity for an online player: a per-player override, else the largest of
+        /// the config base and every permission tier the player holds.</summary>
+        public async Task<int> GetMaxSlotsAsync(UnturnedUser user)
+        {
+            if (m_Data.Overrides.TryGetValue(user.Id, out var overridden))
+            {
+                return overridden;
+            }
+
+            var settings = Settings;
+            var best = settings.MaxSlots;
+            foreach (var tier in settings.Tiers)
+            {
+                if (await m_PermissionChecker.CheckPermissionAsync(user, tier.Key).ConfigureAwait(false) == PermissionGrantResult.Grant)
+                {
+                    best = Math.Max(best, tier.Value);
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>Capacity known without the online user: a per-player override, else the config base.</summary>
+        public int OverrideOrBase(string steamId)
+            => m_Data.Overrides.TryGetValue(steamId, out var overridden) ? overridden : Settings.MaxSlots;
+
+        public IReadOnlyDictionary<string, int> Overrides => new Dictionary<string, int>(m_Data.Overrides);
+
+        public async Task SetOverrideAsync(string steamId, int slots)
+        {
+            m_Data.Overrides[steamId] = Math.Max(1, slots);
+            await SaveAsync();
+        }
+
+        public async Task<bool> ClearOverrideAsync(string steamId)
+        {
+            if (m_Data.Overrides.Remove(steamId))
+            {
+                await SaveAsync();
+                return true;
+            }
+
+            return false;
+        }
+
+        // ----- queries -----
 
         /// <summary>A snapshot of a player's stored items.</summary>
         public IReadOnlyList<StoredItem> Get(string steamId)
@@ -74,14 +150,6 @@ namespace well404.Vault
         {
             var asset = Assets.find(EAssetType.ITEM, itemId) as ItemAsset;
             return asset == null ? 1 : Math.Max(1, asset.size_x * asset.size_y);
-        }
-
-        /// <summary>The display name of an item id, or <c>#id</c> if unknown.</summary>
-        public static string NameOf(ushort itemId)
-        {
-            var asset = Assets.find(EAssetType.ITEM, itemId) as ItemAsset;
-            var name = asset?.itemName;
-            return string.IsNullOrEmpty(name) ? "#" + itemId : name!;
         }
 
         /// <summary>Groups a player's carried items by id (skips equipment slots and any open storage).</summary>
@@ -109,6 +177,8 @@ namespace well404.Vault
             return counts.Select(kv => new BackpackEntry(kv.Key, kv.Value)).ToList();
         }
 
+        // ----- store / take -----
+
         /// <summary>
         /// Moves up to <paramref name="amount"/> copies of <paramref name="itemId"/> from the player's
         /// backpack into the vault, preserving each item's full state. Stops early when capacity is
@@ -120,7 +190,6 @@ namespace well404.Vault
             var inventory = user.Player.Player.inventory;
             var steamId = user.Id;
 
-            // Collect up to `amount` matching item jars across the carried grids.
             var targets = new List<(byte page, ItemJar jar)>();
             for (byte page = PlayerInventory.SLOTS; page < PlayerInventory.STORAGE && targets.Count < amount; page++)
             {
@@ -137,7 +206,7 @@ namespace well404.Vault
 
             var list = ListFor(steamId);
             var used = UsedSlots(steamId);
-            var max = MaxSlots;
+            var max = await GetMaxSlotsAsync(user).ConfigureAwait(false);
             var cost = SlotCostOf(itemId);
             var stored = 0;
             var capacityReached = false;
@@ -153,6 +222,7 @@ namespace well404.Vault
                 var item = jar.item;
                 list.Add(new StoredItem
                 {
+                    Uid = NewUid(),
                     ItemId = item.id,
                     Amount = item.amount,
                     Quality = item.quality,
@@ -162,7 +232,6 @@ namespace well404.Vault
                 used += cost;
                 stored++;
 
-                // Remove the exact jar; recompute its index each time (positions of others are stable).
                 var index = inventory.getIndex(page, jar.x, jar.y);
                 inventory.removeItem(page, index);
             }
@@ -177,14 +246,13 @@ namespace well404.Vault
 
         /// <summary>
         /// Moves up to <paramref name="amount"/> copies of <paramref name="itemId"/> from the vault
-        /// back into the player's backpack (dropping at their feet if the backpack is full),
-        /// restoring full state. Returns how many were taken.
+        /// back into the backpack (dropping at the player's feet if full), restoring full state.
+        /// Returns how many were taken. Takes the earliest-stored copies first.
         /// </summary>
         public async Task<int> TakeAsync(UnturnedUser user, ushort itemId, int amount)
         {
             await UniTask.SwitchToMainThread();
             var player = user.Player.Player;
-            var inventory = player.inventory;
             var list = ListFor(user.Id);
             var taken = 0;
 
@@ -196,16 +264,8 @@ namespace well404.Vault
                     break;
                 }
 
-                var stored = list[idx];
-                var state = string.IsNullOrEmpty(stored.State) ? Array.Empty<byte>() : Convert.FromBase64String(stored.State);
-                var item = new Item(stored.ItemId, stored.Amount, stored.Quality, state);
+                GiveBack(player, list[idx]);
                 list.RemoveAt(idx);
-
-                if (!inventory.tryAddItem(item, true))
-                {
-                    ItemManager.dropItem(item, player.transform.position, true, true, false);
-                }
-
                 taken++;
             }
 
@@ -215,6 +275,33 @@ namespace well404.Vault
             }
 
             return taken;
+        }
+
+        /// <summary>Withdraws exactly one stored copy by its <see cref="StoredItem.Uid"/>. Returns false if absent.</summary>
+        public async Task<bool> TakeByUidAsync(UnturnedUser user, string uid)
+        {
+            await UniTask.SwitchToMainThread();
+            var list = ListFor(user.Id);
+            var idx = list.FindIndex(x => x.Uid == uid);
+            if (idx < 0)
+            {
+                return false;
+            }
+
+            GiveBack(user.Player.Player, list[idx]);
+            list.RemoveAt(idx);
+            await SaveAsync();
+            return true;
+        }
+
+        private static void GiveBack(Player player, StoredItem stored)
+        {
+            var state = string.IsNullOrEmpty(stored.State) ? Array.Empty<byte>() : Convert.FromBase64String(stored.State);
+            var item = new Item(stored.ItemId, stored.Amount, stored.Quality, state);
+            if (!player.inventory.tryAddItem(item, true))
+            {
+                ItemManager.dropItem(item, player.transform.position, true, true, false);
+            }
         }
 
         private List<StoredItem> ListFor(string steamId)
@@ -227,6 +314,8 @@ namespace well404.Vault
 
             return list;
         }
+
+        private static string NewUid() => Guid.NewGuid().ToString("N").Substring(0, 8);
 
         private async Task SaveAsync()
         {

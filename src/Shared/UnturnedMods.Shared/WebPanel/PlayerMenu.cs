@@ -30,12 +30,13 @@ namespace UnturnedMods.Shared.WebPanel
     /// <summary>A clickable button on a <see cref="PlayerCard"/>.</summary>
     public sealed class PlayerButton
     {
-        public PlayerButton(string actionId, string label, string? style = null, string? promptLabel = null)
+        public PlayerButton(string actionId, string label, string? style = null, string? promptLabel = null, string? promptDefault = null)
         {
             ActionId = actionId ?? throw new ArgumentNullException(nameof(actionId));
             Label = label ?? throw new ArgumentNullException(nameof(label));
             Style = style;
             PromptLabel = promptLabel;
+            PromptDefault = promptDefault;
         }
 
         /// <summary>Action id passed back to <see cref="IPlayerMenu.InvokeAsync"/> (e.g. <c>buy</c>, <c>claim</c>).</summary>
@@ -51,6 +52,9 @@ namespace UnturnedMods.Shared.WebPanel
         /// the entered value arrives as the <c>value</c> argument of <see cref="IPlayerMenu.InvokeAsync"/>.
         /// </summary>
         public string? PromptLabel { get; }
+
+        /// <summary>Pre-filled value for the prompt (e.g. the available count, so "OK" acts on all). Null = "1".</summary>
+        public string? PromptDefault { get; }
     }
 
     /// <summary>One entry (item, gift, ...) shown as a card with text and buttons.</summary>

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Localization;
 using OpenMod.API.Commands;
 using OpenMod.Core.Commands;
+using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Users;
 
 namespace well404.Vault.Commands
@@ -37,12 +38,14 @@ namespace well404.Vault.Commands
     public class CommandVaultStore : Command
     {
         private readonly VaultService m_Vault;
+        private readonly IItemDirectory m_ItemDirectory;
         private readonly IStringLocalizer m_StringLocalizer;
 
-        public CommandVaultStore(IServiceProvider serviceProvider, VaultService vault, IStringLocalizer stringLocalizer)
+        public CommandVaultStore(IServiceProvider serviceProvider, VaultService vault, IItemDirectory itemDirectory, IStringLocalizer stringLocalizer)
             : base(serviceProvider)
         {
             m_Vault = vault;
+            m_ItemDirectory = itemDirectory;
             m_StringLocalizer = stringLocalizer;
         }
 
@@ -52,7 +55,8 @@ namespace well404.Vault.Commands
             var (itemId, amount) = ParseArgs(Context, m_StringLocalizer);
 
             var result = await m_Vault.StoreAsync(user, itemId, amount);
-            var name = VaultService.NameOf(itemId);
+            var names = await VaultNames.BuildMapAsync(m_ItemDirectory);
+            var name = VaultNames.NameOf(itemId, names);
             if (result.Stored == 0)
             {
                 throw new UserFriendlyException(result.CapacityReached
@@ -99,12 +103,14 @@ namespace well404.Vault.Commands
     public class CommandVaultTake : Command
     {
         private readonly VaultService m_Vault;
+        private readonly IItemDirectory m_ItemDirectory;
         private readonly IStringLocalizer m_StringLocalizer;
 
-        public CommandVaultTake(IServiceProvider serviceProvider, VaultService vault, IStringLocalizer stringLocalizer)
+        public CommandVaultTake(IServiceProvider serviceProvider, VaultService vault, IItemDirectory itemDirectory, IStringLocalizer stringLocalizer)
             : base(serviceProvider)
         {
             m_Vault = vault;
+            m_ItemDirectory = itemDirectory;
             m_StringLocalizer = stringLocalizer;
         }
 
@@ -114,7 +120,8 @@ namespace well404.Vault.Commands
             var (itemId, amount) = CommandVaultStore.ParseArgs(Context, m_StringLocalizer);
 
             var taken = await m_Vault.TakeAsync(user, itemId, amount);
-            var name = VaultService.NameOf(itemId);
+            var names = await VaultNames.BuildMapAsync(m_ItemDirectory);
+            var name = VaultNames.NameOf(itemId, names);
             if (taken == 0)
             {
                 throw new UserFriendlyException(m_StringLocalizer["take:none", new { name }]);
@@ -132,12 +139,14 @@ namespace well404.Vault.Commands
     public class CommandVaultList : Command
     {
         private readonly VaultService m_Vault;
+        private readonly IItemDirectory m_ItemDirectory;
         private readonly IStringLocalizer m_StringLocalizer;
 
-        public CommandVaultList(IServiceProvider serviceProvider, VaultService vault, IStringLocalizer stringLocalizer)
+        public CommandVaultList(IServiceProvider serviceProvider, VaultService vault, IItemDirectory itemDirectory, IStringLocalizer stringLocalizer)
             : base(serviceProvider)
         {
             m_Vault = vault;
+            m_ItemDirectory = itemDirectory;
             m_StringLocalizer = stringLocalizer;
         }
 
@@ -145,12 +154,15 @@ namespace well404.Vault.Commands
         {
             var user = (UnturnedUser)Context.Actor;
             var items = m_Vault.Get(user.Id);
-            await PrintAsync(m_StringLocalizer["list:header", new { used = m_Vault.UsedSlots(user.Id), max = m_Vault.MaxSlots }]);
+            var max = await m_Vault.GetMaxSlotsAsync(user);
+            await PrintAsync(m_StringLocalizer["list:header", new { used = m_Vault.UsedSlots(user.Id), max }]);
             if (items.Count == 0)
             {
                 await PrintAsync(m_StringLocalizer["list:empty"]);
                 return;
             }
+
+            var names = await VaultNames.BuildMapAsync(m_ItemDirectory);
 
             // Group by item id for a compact list (id | name | count | slots).
             foreach (var group in System.Linq.Enumerable.GroupBy(items, x => x.ItemId))
@@ -163,7 +175,7 @@ namespace well404.Vault.Commands
                     slots += entry.SlotCost;
                 }
 
-                await PrintAsync(m_StringLocalizer["list:line", new { id = group.Key, name = VaultService.NameOf(group.Key), amount = count, slots }]);
+                await PrintAsync(m_StringLocalizer["list:line", new { id = group.Key, name = VaultNames.NameOf(group.Key, names), amount = count, slots }]);
             }
         }
     }

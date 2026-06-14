@@ -50,9 +50,9 @@ namespace well404.Vault
             translations?.AddBundle(VaultI18n.Zh, VaultI18n.ZhTable);
 
             RegisterPlayerMenu(vault, translations);
-            RegisterWebPanel();
+            RegisterWebPanel(vault);
 
-            m_Logger.LogInformation("Vault loaded: capacity {Slots} grid cells.", vault.MaxSlots);
+            m_Logger.LogInformation("Vault loaded: base capacity {Slots} grid cells.", vault.BaseMaxSlots);
         }
 
         protected override async UniTask OnUnloadAsync()
@@ -75,7 +75,11 @@ namespace well404.Vault
                 return;
             }
 
-            registry.RegisterMenu(new VaultPlayerMenu(vault, LifetimeScope.Resolve<IUserManager>(), translations));
+            registry.RegisterMenu(new VaultPlayerMenu(
+                vault,
+                LifetimeScope.Resolve<IUserManager>(),
+                LifetimeScope.Resolve<OpenMod.Extensions.Games.Abstractions.Items.IItemDirectory>(),
+                translations));
             m_PlayerMenuRegistry = registry;
 
             LifetimeScope.ResolveOptional<IPlayerCommandRegistry>()?.Register("well404.vault", new[]
@@ -89,8 +93,8 @@ namespace well404.Vault
             m_Logger.LogInformation("Vault: registered the player vault menu with the web panel.");
         }
 
-        /// <summary>Registers the capacity setting with the web panel, if one is present (optional).</summary>
-        private void RegisterWebPanel()
+        /// <summary>Registers the capacity settings + per-player overrides with the web panel, if present.</summary>
+        private void RegisterWebPanel(VaultService vault)
         {
             var registry = LifetimeScope.ResolveOptional<IWebPanelRegistry>();
             if (registry == null)
@@ -98,7 +102,7 @@ namespace well404.Vault
                 return;
             }
 
-            registry.RegisterModule(VaultWebPanelModule.Create(new VaultConfigStore(m_Configuration, WorkingDirectory)));
+            registry.RegisterModule(VaultWebPanelModule.Create(new VaultConfigStore(m_Configuration, WorkingDirectory), vault));
             m_WebPanelRegistry = registry;
         }
     }

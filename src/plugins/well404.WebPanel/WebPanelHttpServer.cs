@@ -650,7 +650,8 @@ namespace well404.WebPanel
                         .Append("\"actionId\":").Append(Json.Encode(button.ActionId)).Append(',')
                         .Append("\"label\":").Append(Json.Encode(button.Label)).Append(',')
                         .Append("\"style\":").Append(Json.Encode(button.Style)).Append(',')
-                        .Append("\"promptLabel\":").Append(Json.Encode(button.PromptLabel))
+                        .Append("\"promptLabel\":").Append(Json.Encode(button.PromptLabel)).Append(',')
+                        .Append("\"promptDefault\":").Append(Json.Encode(button.PromptDefault))
                         .Append('}');
                 }
 

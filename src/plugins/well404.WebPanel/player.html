@@ -293,7 +293,7 @@ function buildCard(menu, card) {
 async function invoke(menu, card, button, btnNode) {
   let value = null;
   if (button.promptLabel) {
-    const entered = window.prompt(button.promptLabel, "1");
+    const entered = window.prompt(button.promptLabel, button.promptDefault || "1");
     if (entered === null) return;
     value = entered.trim();
   }
