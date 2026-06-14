@@ -105,5 +105,22 @@ namespace well404.WebPanel
 
         /// <summary>How long to wait for the tunnel to report a public URL before giving up.</summary>
         public int ReadyTimeoutSeconds { get; set; } = 30;
+
+        /// <summary>
+        /// Keep the tunnel alive: if the tunnel process exits, or its public URL stops responding,
+        /// restart it and publish the fresh URL (a quick tunnel gets a NEW address each restart, so
+        /// players must re-open <c>/menu</c> for fresh links). Default true. Without this a
+        /// Cloudflare quick tunnel that drops after a few hours leaves the panel unreachable until a
+        /// manual server restart.
+        /// </summary>
+        public bool AutoRestart { get; set; } = true;
+
+        /// <summary>
+        /// How often (seconds) to health-check the tunnel's public URL. A process exit is always
+        /// detected immediately; this interval governs the HTTP reachability probe. 0 disables the
+        /// probe (process-exit detection still works). Default 60. The probe self-disables if it can
+        /// never reach the URL even once (e.g. no outbound HTTPS), so it never causes a restart loop.
+        /// </summary>
+        public int HealthCheckSeconds { get; set; } = 60;
     }
 }

@@ -24,6 +24,9 @@ namespace well404.WebPanel
         /// </summary>
         Task<string?> StartAsync(int localPort, CancellationToken cancellationToken);
 
+        /// <summary>Whether the tunnel backend is still running (e.g. its child process is alive).</summary>
+        bool IsRunning { get; }
+
         /// <summary>Tears the tunnel down (kills the child process, etc.). Safe to call repeatedly.</summary>
         void Stop();
     }
@@ -55,6 +58,28 @@ namespace well404.WebPanel
                 ? "https://[^\\s\"']+"
                 : settings.UrlPattern;
             m_UrlRegex = new Regex(pattern, RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>True while the child process has been started and has not exited.</summary>
+        public bool IsRunning
+        {
+            get
+            {
+                var process = m_Process;
+                if (process == null)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    return !process.HasExited;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
         }
 
         public async Task<string?> StartAsync(int localPort, CancellationToken cancellationToken)

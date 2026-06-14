@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -35,6 +36,7 @@ namespace well404.WebPanel
 
         private WebPanelHttpServer? m_Server;
         private ITunnelProvider? m_Tunnel;
+        private CancellationTokenSource? m_TunnelMonitorCts;
 
         public WebPanelPlugin(
             IConfiguration configuration,
@@ -140,11 +142,34 @@ namespace well404.WebPanel
                     + "joining the game. Disable web.devPlayer in production.", adminBase + "/" + token + "/dev-player",
                     web.DevPlayer.SteamId);
             }
+
+            // Keep the (quick) tunnel alive: it can drop after a while and would otherwise leave the
+            // panel unreachable until a manual restart. Watch it and bring it back with a fresh URL.
+            if (tunnelUrl != null)
+            {
+                var effective = ResolveEffectiveTunnel(web.Tunnel);
+                if (effective.AutoRestart)
+                {
+                    m_TunnelMonitorCts = new CancellationTokenSource();
+                    _ = MonitorTunnelAsync(web, token, sessions, tunnelUrl, effective, m_TunnelMonitorCts.Token);
+                }
+            }
         }
 
         protected override async UniTask OnUnloadAsync()
         {
             await UniTask.SwitchToMainThread();
+            try
+            {
+                m_TunnelMonitorCts?.Cancel();
+            }
+            catch
+            {
+                // ignored
+            }
+
+            m_TunnelMonitorCts?.Dispose();
+            m_TunnelMonitorCts = null;
             m_Tunnel?.Stop();
             m_Tunnel?.Dispose();
             m_Tunnel = null;
@@ -162,7 +187,7 @@ namespace well404.WebPanel
         /// Starts the optional outbound tunnel and, on success, publishes its public base URL to the
         /// player-link generator. Returns the URL (no trailing slash) or null if disabled / failed.
         /// </summary>
-        private async Task<string?> StartTunnelAsync(WebServerSettings web, PlayerWebSessionManager sessions)
+        private async Task<string?> StartTunnelAsync(WebServerSettings web, PlayerWebSessionManager sessions, CancellationToken ct = default)
         {
             var tunnel = web.Tunnel;
             if (tunnel == null || !tunnel.Enabled)
@@ -174,7 +199,7 @@ namespace well404.WebPanel
             var provider = new ProcessTunnelProvider(tunnel, m_Logger);
             try
             {
-                var url = await provider.StartAsync(web.Port, CancellationToken.None);
+                var url = await provider.StartAsync(web.Port, ct);
                 if (url == null)
                 {
                     provider.Stop();
@@ -200,6 +225,111 @@ namespace well404.WebPanel
         }
 
         /// <summary>
+        /// Watches the live tunnel and restarts it (publishing a fresh URL) whenever its process exits
+        /// or its public URL stops responding. The HTTP probe must succeed at least once before it is
+        /// allowed to trigger a restart, so an environment that cannot reach the URL (e.g. no outbound
+        /// HTTPS) silently falls back to process-exit detection rather than looping on restarts.
+        /// </summary>
+        private async Task MonitorTunnelAsync(
+            WebServerSettings web, string token, PlayerWebSessionManager sessions,
+            string initialUrl, TunnelSettings effective, CancellationToken ct)
+        {
+            var intervalSeconds = effective.HealthCheckSeconds > 0 ? effective.HealthCheckSeconds : 60;
+            var probeEnabled = effective.HealthCheckSeconds > 0;
+            var currentUrl = initialUrl;
+            var probeProven = false;   // becomes true after the first successful probe
+            var probeFailures = 0;
+
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                if (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                var tunnel = m_Tunnel;
+                var restart = false;
+
+                if (tunnel == null || !tunnel.IsRunning)
+                {
+                    m_Logger.LogWarning("WebPanel: tunnel process is no longer running — restarting it.");
+                    restart = true;
+                }
+                else if (probeEnabled)
+                {
+                    var healthy = await ProbeAsync(http, currentUrl, ct).ConfigureAwait(false);
+                    if (healthy)
+                    {
+                        probeProven = true;
+                        probeFailures = 0;
+                    }
+                    else if (probeProven)
+                    {
+                        probeFailures++;
+                        m_Logger.LogWarning("WebPanel: tunnel URL {Url} did not respond (attempt {Count}).", currentUrl, probeFailures);
+                        if (probeFailures >= 2)
+                        {
+                            restart = true;
+                        }
+                    }
+                    // If the probe has never succeeded, assume this host just can't reach the URL and
+                    // don't restart on it — process-exit detection still covers a dead tunnel.
+                }
+
+                if (!restart)
+                {
+                    continue;
+                }
+
+                m_Tunnel?.Stop();
+                m_Tunnel?.Dispose();
+                m_Tunnel = null;
+
+                var newUrl = await StartTunnelAsync(web, sessions, ct).ConfigureAwait(false);
+                probeProven = false;
+                probeFailures = 0;
+                if (newUrl != null)
+                {
+                    currentUrl = newUrl;
+                    m_Logger.LogWarning(
+                        "WebPanel: tunnel restarted — new admin panel URL is {AdminUrl} (it changed; players must "
+                        + "re-open /menu for fresh links).", newUrl + "/" + token + "/");
+                }
+                else
+                {
+                    m_Logger.LogWarning("WebPanel: tunnel restart did not yield a URL; will retry in {Seconds}s.", intervalSeconds);
+                }
+            }
+        }
+
+        /// <summary>True if a GET to the tunnel's public root returns a success status (the request
+        /// reached our local server through the tunnel). Any error / non-2xx (incl. Cloudflare's
+        /// tunnel-down 5xx) counts as unhealthy.</summary>
+        private static async Task<bool> ProbeAsync(HttpClient http, string baseUrl, CancellationToken ct)
+        {
+            try
+            {
+                using var response = await http.GetAsync(baseUrl + "/", ct).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Applies the built-in preset for <c>type: cloudflare</c> (fixed cloudflared args + URL
         /// pattern, only the binary path is taken from config). <c>type: custom</c> is used verbatim.
         /// </summary>
@@ -219,7 +349,9 @@ namespace well404.WebPanel
                 Args = "tunnel --url http://127.0.0.1:{port} --no-autoupdate",
                 UrlPattern = "https://[a-z0-9-]+\\.trycloudflare\\.com",
                 ApiUrl = string.Empty,
-                ReadyTimeoutSeconds = t.ReadyTimeoutSeconds > 0 ? t.ReadyTimeoutSeconds : 30
+                ReadyTimeoutSeconds = t.ReadyTimeoutSeconds > 0 ? t.ReadyTimeoutSeconds : 30,
+                AutoRestart = t.AutoRestart,
+                HealthCheckSeconds = t.HealthCheckSeconds
             };
         }
 

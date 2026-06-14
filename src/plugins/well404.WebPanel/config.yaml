@@ -45,6 +45,15 @@ web:
     readyTimeoutSeconds: 30
     # ^ The custom example above is ngrok (run `ngrok config add-authtoken <token>` once first).
 
+    # Keep the tunnel alive. A Cloudflare quick tunnel can drop after a few hours; with this on,
+    # the panel notices (the process exited, or the public URL stopped responding) and restarts it.
+    # A quick tunnel gets a NEW address on restart, so players must re-open /menu for fresh links
+    # (the new admin URL is printed in the log). Set false to keep the old behaviour.
+    autoRestart: true
+    # How often (seconds) to health-check the public URL; 0 = only react to the process exiting.
+    # The probe self-disables if it can never reach the URL even once, so it never loops on restarts.
+    healthCheckSeconds: 60
+
   # ---- Player surface (the /p page players open in-game via /menu) ----
 
   # Public base URL handed to players in their /menu link, e.g. "http://your-ip:27020".
