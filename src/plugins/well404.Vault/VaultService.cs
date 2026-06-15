@@ -27,7 +27,7 @@ namespace well404.Vault
     /// </summary>
     public readonly struct ItemVariant
     {
-        public ItemVariant(ushort itemId, byte amount, byte quality, string state, int count, int slotCost)
+        public ItemVariant(ushort itemId, byte amount, byte quality, string state, int count, int slotCost, byte maxAmount)
         {
             ItemId = itemId;
             Amount = amount;
@@ -35,6 +35,7 @@ namespace well404.Vault
             State = state;
             Count = count;
             SlotCost = slotCost;
+            MaxAmount = maxAmount;
         }
 
         public ushort ItemId { get; }
@@ -43,6 +44,9 @@ namespace well404.Vault
         public string State { get; }
         public int Count { get; }
         public int SlotCost { get; }
+
+        /// <summary>Full stack/magazine capacity (e.g. 8 for an 8-round shell box); 0 if unknown.</summary>
+        public byte MaxAmount { get; }
     }
 
     /// <summary>
@@ -94,6 +98,17 @@ namespace well404.Vault
                     {
                         item.Uid = NewUid();
                         changed = true;
+                    }
+
+                    // Backfill the stack capacity for items stored before it was recorded, so the web
+                    // view can show a fill ratio (e.g. 6/8). Only stacked items can have one.
+                    if (item.MaxAmount == 0 && item.Amount > 1)
+                    {
+                        item.MaxAmount = MaxAmountOf(item.ItemId);
+                        if (item.MaxAmount != 0)
+                        {
+                            changed = true;
+                        }
                     }
                 }
             }
@@ -168,6 +183,11 @@ namespace well404.Vault
             return asset == null ? 1 : Math.Max(1, asset.size_x * asset.size_y);
         }
 
+        /// <summary>Full stack/magazine capacity for an item id (e.g. an 8-round shell box → 8), or 0 if
+        /// the item isn't a magazine/ammo item. Asset lookup → main thread only.</summary>
+        public static byte MaxAmountOf(ushort itemId)
+            => Assets.find(EAssetType.ITEM, itemId) is ItemMagazineAsset mag ? mag.amount : (byte)0;
+
         // ----- variants (copies with identical id+amount+quality+state are one variant) -----
 
         /// <summary>The vault's contents collapsed into distinct variants (merging identical copies).</summary>
@@ -184,7 +204,7 @@ namespace well404.Vault
                 .OrderBy(g => g.Key.ItemId))
             {
                 var first = group.First();
-                result.Add(new ItemVariant(first.ItemId, first.Amount, first.Quality, first.State, group.Count(), first.SlotCost));
+                result.Add(new ItemVariant(first.ItemId, first.Amount, first.Quality, first.State, group.Count(), first.SlotCost, first.MaxAmount));
             }
 
             return result;
@@ -215,7 +235,7 @@ namespace well404.Vault
                 }
             }
 
-            return map.Select(kv => new ItemVariant(kv.Key.Item1, kv.Key.Item2, kv.Key.Item3, kv.Key.Item4, kv.Value, SlotCostOf(kv.Key.Item1))).ToList();
+            return map.Select(kv => new ItemVariant(kv.Key.Item1, kv.Key.Item2, kv.Key.Item3, kv.Key.Item4, kv.Value, SlotCostOf(kv.Key.Item1), MaxAmountOf(kv.Key.Item1))).ToList();
         }
 
         // ----- store -----
@@ -252,6 +272,7 @@ namespace well404.Vault
             var used = UsedSlots(steamId);
             var max = await GetMaxSlotsAsync(user).ConfigureAwait(false);
             var cost = SlotCostOf(itemId);
+            var maxAmount = MaxAmountOf(itemId);
             var stored = 0;
             var capacityReached = false;
 
@@ -271,7 +292,8 @@ namespace well404.Vault
                     Amount = item.amount,
                     Quality = item.quality,
                     State = item.state != null && item.state.Length > 0 ? Convert.ToBase64String(item.state) : string.Empty,
-                    SlotCost = cost
+                    SlotCost = cost,
+                    MaxAmount = maxAmount
                 });
                 used += cost;
                 stored++;

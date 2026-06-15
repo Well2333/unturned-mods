@@ -34,5 +34,9 @@ namespace well404.Vault
 
         /// <summary>Grid cells this item occupies (size_x × size_y), captured when stored.</summary>
         public int SlotCost { get; set; } = 1;
+
+        /// <summary>Full stack/magazine capacity for this item id (e.g. an 8-round shell box), captured
+        /// when stored so the web view can show a fill ratio like 6/8. 0 = unknown/not a stackable.</summary>
+        public byte MaxAmount { get; set; }
     }
 }

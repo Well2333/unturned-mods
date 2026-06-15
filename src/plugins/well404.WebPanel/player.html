@@ -44,18 +44,21 @@
   .section { margin:0 0 16px; }
   .section .grouphead { display:flex; align-items:center; gap:8px; margin:0 0 8px; }
   .section .grouphead .cnt { color:var(--muted); font-weight:400; }
-  /* Generic "list" layout: compact responsive rows (1 col on narrow Steam webview, more when wide) */
-  .plist { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:7px; }
-  .prow { display:flex; align-items:center; gap:9px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 11px; transition:border-color .12s; }
+  /* Generic "list" layout: responsive two-column grid of compact item cells (1 col on a narrow
+     Steam webview, 2+ when there's width). Each cell stacks a header (badge+name+tags) over its
+     action buttons so it stays readable in a half-width column instead of one wasteful full row. */
+  .plist { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:8px; align-items:start; }
+  .prow { display:flex; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:9px 12px; transition:border-color .12s; }
   .prow:hover { border-color:#4a4d55; }
-  .prow.wide { grid-column:1/-1; }   /* rows with pills span full width so contents have room */
+  .prow .ptop { display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
   .prow .badge { font-size:11px; color:var(--muted); background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:2px 6px; flex:0 0 auto; font-variant-numeric:tabular-nums; }
-  .prow .nm { font-weight:600; font-size:14px; flex:0 0 auto; max-width:46%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .prow .mid { flex:1 1 auto; min-width:0; display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
-  .prow .rowbtns { display:flex; gap:6px; flex:0 0 auto; margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
-  /* collapsible card: a parent row + its indented children */
+  .prow .nm { font-weight:600; font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .prow .mid { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+  .prow .rowbtns { display:flex; gap:6px; flex-wrap:wrap; }
+  /* collapsible card: a parent cell + its indented children, always spanning the full grid width.
+     The children themselves flow in the same responsive two-column grid to avoid wasted space. */
   .prowwrap { grid-column:1/-1; display:flex; flex-direction:column; gap:6px; }
-  .prowwrap > .children { display:flex; flex-direction:column; gap:6px; margin:0 0 0 16px; padding-left:10px; border-left:2px solid var(--line); }
+  .prowwrap > .children { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:6px; align-items:start; margin:0 0 0 16px; padding-left:10px; border-left:2px solid var(--line); }
   button.act.sm.toggle { background:var(--bg); }
   button.act { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:8px 16px; border-radius:7px; cursor:pointer; font-size:14px; }
   button.act:hover { filter:brightness(1.15); }
@@ -266,12 +269,12 @@ function renderView(menu, view) {
 function buildRow(menu, card) {
   const hasTags = card.tags && card.tags.length;
   const hasKids = card.children && card.children.length;
-  const row = el("div", { class: "prow" + (hasTags || hasKids ? " wide" : "") });
-  if (card.badge) row.append(el("span", { class: "badge", text: card.badge }));
-  if (card.label) row.append(el("span", { class: "nm", text: card.label }));
-  const mid = el("div", { class: "mid" });
-  if (hasTags) for (const t of card.tags) mid.append(el("span", { class: "pill", text: t }));
-  row.append(mid);
+  const row = el("div", { class: "prow" });
+  const top = el("div", { class: "ptop" });
+  if (card.badge) top.append(el("span", { class: "badge", text: card.badge }));
+  if (card.label) top.append(el("span", { class: "nm", text: card.label }));
+  if (hasTags) { const mid = el("div", { class: "mid" }); for (const t of card.tags) mid.append(el("span", { class: "pill", text: t })); top.append(mid); }
+  row.append(top);
   const bb = el("div", { class: "rowbtns" });
   if (card.buttons) for (const b of card.buttons) {
     const btn = el("button", { class: "act sm " + (b.style || ""), text: b.label, onclick: () => invoke(menu, card, b, btn) });

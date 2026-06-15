@@ -108,7 +108,13 @@ namespace well404.Vault
         private List<string> VariantTags(ItemVariant v, bool includeSlots, string lang)
         {
             var tags = new List<string> { "×" + v.Count.ToString(CultureInfo.InvariantCulture) };
-            if (v.Amount > 1)
+            // Stack/ammo fill shown as a ratio (e.g. 6/8) to avoid being mistaken for the copy count;
+            // fall back to the raw figure if the capacity is unknown.
+            if (v.MaxAmount > 1)
+            {
+                tags.Add(v.Amount.ToString(CultureInfo.InvariantCulture) + "/" + v.MaxAmount.ToString(CultureInfo.InvariantCulture));
+            }
+            else if (v.Amount > 1)
             {
                 tags.Add(m_Tr.Format(lang, "Amount {0}", v.Amount));
             }
@@ -131,14 +137,24 @@ namespace well404.Vault
             return tags;
         }
 
-        // All / a typed amount / One.
+        // With a single copy there's nothing to choose, so just one Store/Take button; with several,
+        // offer All / a typed amount / One.
         private PlayerButton[] OpsButtons(string mode, string cardKey, int count, string lang)
-            => new[]
+        {
+            if (count <= 1)
+            {
+                var style = mode == "store" ? "primary" : "success";
+                var label = m_Tr.Resolve(mode == "store" ? "Store" : "Take", lang);
+                return new[] { new PlayerButton(mode + "_all", label, style) };
+            }
+
+            return new[]
             {
                 OpButton(mode, "all", cardKey, count, lang),
                 OpButton(mode, "some", cardKey, count, lang),
                 OpButton(mode, "one", cardKey, count, lang)
             };
+        }
 
         private PlayerButton OpButton(string mode, string op, string cardKey, int count, string lang)
         {
@@ -148,9 +164,10 @@ namespace well404.Vault
                 case "all":
                     return new PlayerButton(mode + "_all", m_Tr.Resolve("All", lang), style);
                 case "some":
+                    // Prompt defaults to 1 (not the full count) so the typed-amount action is clearly
+                    // distinct from "All" and the player picks how many.
                     return new PlayerButton(mode + "_some", m_Tr.Resolve("Amount", lang), style,
-                        m_Tr.Resolve(mode == "store" ? "Amount to store" : "Amount to take", lang),
-                        count.ToString(CultureInfo.InvariantCulture));
+                        m_Tr.Resolve(mode == "store" ? "Amount to store" : "Amount to take", lang), "1");
                 default:
                     return new PlayerButton(mode + "_one", m_Tr.Resolve("One", lang), style);
             }
