@@ -1,0 +1,44 @@
+# Configuration for Auto Save.
+# Embedded as a resource; users can override it in the plugin's data directory.
+# Every value here is also editable in the web panel when well404.WebPanel is installed.
+# This file is rewritten by well404.WebPanel when settings are edited.
+
+schedule:
+  # Standard 5-field cron expression (minute hour day-of-month month day-of-week).
+  # Saves fire on the wall-clock boundaries it describes (like crontab), NOT on a timer
+  # started at server launch. Default: every 10 minutes (:00, :10, :20, ...).
+  cron: "*/10 * * * *"
+  # Time zone the cron is evaluated in. Empty = the server's local time zone.
+  # Otherwise an IANA id (e.g. "Asia/Shanghai") or a Windows id (e.g. "China Standard Time").
+  timeZone: ""
+
+backup:
+  # Master switch for backups. When false, the game is still saved on schedule, just not backed up.
+  enabled: true
+  # Make a backup after every Nth save (the backup runs together with that save).
+  # Default 6 → with the default 10-minute cron, a backup every hour. <= 0 disables backups.
+  everyNSaves: 6
+  # Where backup archives are written. Empty = "<server install>/Backups/<server id>".
+  # An absolute path is used as-is; a relative path is relative to the Unturned install root.
+  directory: ""
+  # Glob patterns (relative to the server savedata root "Servers/<id>/") to EXCLUDE from a backup.
+  # Everything else under the savedata root is included, so new/unknown folders are kept by default.
+  # "*" matches within one path segment; "**" matches across segments; matching is case-insensitive.
+  # The defaults drop downloadable/regenerable content (Steam Workshop downloads, the OpenMod NuGet
+  # package cache, caches, logs and temp files) while keeping the real save (Level, Players, Server,
+  # Config, OpenMod role/user/plugin configs and data).
+  excludePatterns:
+    - "Workshop/**"
+    - "Steam/**"
+    - "Bundles/**"
+    - "OpenMod/packages/**"
+    - "**/logs/**"
+    - "**/Logs/**"
+    - "**/*~"
+    - "**/*.bak"
+
+retention:
+  # Delete the oldest backups once EITHER limit is exceeded. 0 = no limit.
+  maxCount: 0
+  # Cap the total size of all backups, in megabytes. 0 = no limit.
+  maxTotalSizeMB: 0

@@ -1,0 +1,5 @@
+# Translations for Auto Save.
+# Keys are referenced via IStringLocalizer, e.g. m_StringLocalizer["plugin_events:plugin_start"].
+plugin_events:
+  plugin_start: "Auto Save has been loaded."
+  plugin_stop: "Auto Save has been unloaded."

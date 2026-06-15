@@ -10,6 +10,7 @@
 | `well404.Essentials` | [实用功能](well404.Essentials.md) — 面向玩家的 home/tp/warp/gift/sleep/back/party，统一传送规则，经济收费可选;玩家网页「实用工具」 |
 | `well404.AdminTools` | [管理员工具](well404.AdminTools.md) — 无敌、踢出、临时封禁/解封;命令 + 管理面板 |
 | `well404.Vault` | [私人仓库](well404.Vault.md) — 玩家存取背包物品(完整保真,按背包格子计容量);命令 + 玩家网页仓库 |
+| `well404.AutoSave` | [定时保存与备份](well404.AutoSave.md) — 按 crontab 墙钟定时保存,每 N 次保存做一次 LZMA 实体压缩备份(`.tar.lz`);可配备份目录/排除规则/保留上限;无游戏内指令,配置走 `config.yaml` + 管理面板 |
 
 > `well404.Shop` **硬依赖** `well404.Economy`(由它提供 `IEconomyProvider` 结算交易)。
 > 该依赖已写入 Shop 的 NuGet 包,`openmod install well404.Shop` 会自动一并安装 Economy。
@@ -69,7 +70,8 @@ scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
 ```
 
 **产物布局（扁平）**：`<输出目录>/<PluginId>.dll` + 非宿主第三方依赖（如
-`well404.Economy` 会带 `LiteDB.dll`；`well404.Shop` 只有插件 dll），全部平铺。
+`well404.Economy` 会带 `LiteDB.dll`；`well404.AutoSave` 会带 `Cronos.dll`、`SharpCompress.dll`、
+`System.Text.Encoding.CodePages.dll`；`well404.Shop` 只有插件 dll），全部平铺。
 **必须扁平**：OpenMod 的插件加载器只扫描 `plugins/*.dll` 顶层（不递归子目录），所以
 服务器 `openmod/plugins/` 的布局就等于本输出目录。构建**前清除**上次同名残余、**后只
 留目标文件**（中间产物在临时目录丢弃）；默认 `build/` 全量构建时会清掉旧产物但保留

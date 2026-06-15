@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Plugin project. Most settings are inherited from the repo-root
+    Directory.Build.props and Directory.Packages.props.
+
+    The project file name is well404.AutoSave.csproj, so RootNamespace and
+    AssemblyName both default to "well404.AutoSave" and stay EQUAL — this is
+    REQUIRED for IConfiguration / IStringLocalizer to resolve correctly.
+    Do not override them with different values.
+  -->
+
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <Description>Auto Save</Description>
+    <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageTags>openmod openmod-plugin unturned autosave backup</PackageTags>
+    <!-- NU1902: SharpCompress advisory GHSA-6c8g-7p36-r338 is a zip-slip in the EXTRACTION API
+         (IArchive.WriteToDirectory). It affects ALL published versions (<= latest), so there is no
+         version to upgrade to, and this plugin only ever CREATES archives (TarWriter + LZipStream) —
+         it never extracts, so the vulnerable code path is unreachable. Suppressed to keep the build
+         warning-free; revisit if a patched SharpCompress ships or if extraction is ever added.
+         (SDK 8.0.127 predates the per-advisory <NuGetAuditSuppress>, so NoWarn is used.) -->
+    <NoWarn>$(NoWarn);NU1902</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenMod.Unturned" />
+    <PackageReference Include="Legacy2CPSWorkaround">
+      <PrivateAssets>All</PrivateAssets>
+    </PackageReference>
+    <!-- cron scheduling + solid-LZMA archiving. -->
+    <PackageReference Include="Cronos" />
+    <PackageReference Include="SharpCompress" />
+    <!-- SharpCompress 0.30.1's only netstandard2.1 transitive dep. Referenced explicitly so
+         scripts/build.sh's extra_deps() flat-copies System.Text.Encoding.CodePages.dll next to the
+         plugin (the OpenMod host does not ship it). The `openmod install` path resolves it from
+         NuGet automatically; this is only for the flat local/build deployment path. -->
+    <PackageReference Include="System.Text.Encoding.CodePages" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="config.yaml" />
+    <EmbeddedResource Include="translations.yaml" />
+  </ItemGroup>
+
+  <!-- Shares the WebPanel abstractions (IWebPanelRegistry / IWebTranslationRegistry) from the
+       cross-plugin library. UnturnedMods.Shared is NEVER published to NuGet, so it is kept OUT of
+       this package's nuspec deps (PrivateAssets="all") and bundled into lib/ as a plain dll. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" PrivateAssets="all" />
+  </ItemGroup>
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeSharedInPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+  <Target Name="IncludeSharedInPackage">
+    <ItemGroup>
+      <BuildOutputInPackage Include="$(OutputPath)UnturnedMods.Shared.dll" />
+    </ItemGroup>
+  </Target>
+
+</Project>
