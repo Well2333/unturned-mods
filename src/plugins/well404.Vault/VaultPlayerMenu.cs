@@ -164,10 +164,13 @@ namespace well404.Vault
                 case "all":
                     return new PlayerButton(mode + "_all", m_Tr.Resolve("All", lang), style);
                 case "some":
-                    // Prompt defaults to 1 (not the full count) so the typed-amount action is clearly
-                    // distinct from "All" and the player picks how many.
+                    // Empty default ("") so the box opens blank and the player must type a number —
+                    // this keeps the typed-amount action distinct from both "All" and "One" (any fixed
+                    // default would coincide with one of them). The label shows the valid range.
                     return new PlayerButton(mode + "_some", m_Tr.Resolve("Amount", lang), style,
-                        m_Tr.Resolve(mode == "store" ? "Amount to store" : "Amount to take", lang), "1");
+                        m_Tr.Resolve(mode == "store" ? "Amount to store" : "Amount to take", lang)
+                            + " (1–" + count.ToString(CultureInfo.InvariantCulture) + ")",
+                        "");
                 default:
                     return new PlayerButton(mode + "_one", m_Tr.Resolve("One", lang), style);
             }

@@ -316,7 +316,10 @@ function buildCard(menu, card) {
 async function invoke(menu, card, button, btnNode) {
   let value = null;
   if (button.promptLabel) {
-    const entered = window.prompt(button.promptLabel, button.promptDefault || "1");
+    // An explicit empty promptDefault ("") opens the box empty so the player must type a value
+    // (e.g. a specific quantity); only an absent default falls back to "1".
+    const dflt = (button.promptDefault === null || button.promptDefault === undefined) ? "1" : button.promptDefault;
+    const entered = window.prompt(button.promptLabel, dflt);
     if (entered === null) return;
     value = entered.trim();
   }
