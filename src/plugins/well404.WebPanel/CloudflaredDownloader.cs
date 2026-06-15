@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -16,28 +18,47 @@ namespace well404.WebPanel
     /// <item>the admin-configured command, if it exists on disk or is found on <c>PATH</c>;</item>
     /// <item>a portable copy downloaded on an earlier run into the plugin's data directory;</item>
     /// <item>(when <c>web.tunnel.autoDownload</c> is on) a fresh download of the latest official
-    /// release into that same directory.</item>
+    /// release into that same directory, trying each configured mirror in turn with retries.</item>
     /// </list>
     /// The portable binary lives only under the plugin's working directory — it is NEVER installed
     /// system-wide or added to <c>PATH</c>, so removing the plugin's data folder removes it too.
-    /// On any failure the original command is returned unchanged, so the caller still surfaces the
-    /// existing "is it installed?" diagnostic and the panel keeps working locally.
+    /// Downloads honour the system / environment HTTP(S) proxy.
     /// </summary>
     internal static class CloudflaredDownloader
     {
         /// <summary>Sub-folder of the plugin working directory that holds the portable binary.</summary>
         private const string SubDirectory = "cloudflared";
 
-        /// <summary>Official release channel; <c>latest/download</c> always 302s to the newest asset.</summary>
-        private const string DownloadBase = "https://github.com/cloudflare/cloudflared/releases/latest/download/";
+        /// <summary>Canonical "latest release asset" URL; <c>{asset}</c> is the platform file name.</summary>
+        private const string CanonicalLatest =
+            "https://github.com/cloudflare/cloudflared/releases/latest/download/{asset}";
 
         /// <summary>
-        /// Returns the cloudflared command/path the tunnel should run. Downloads a portable copy when
-        /// the configured command is missing and <paramref name="autoDownload"/> is enabled. Never
-        /// throws and never returns null — falls back to <paramref name="command"/> on any problem.
+        /// Built-in default download sources, tried top to bottom (first that works wins). GitHub
+        /// release proxies first (reachable where github.com is blocked/slow), direct GitHub last.
+        /// Each entry may be a full template containing <c>{asset}</c>, or a bare prefix that gets the
+        /// canonical GitHub release URL appended. Overridable via <c>web.tunnel.downloadMirrors</c>.
+        /// NOTE: jsDelivr (cdn.jsdelivr.net) only mirrors a repo's committed files, NOT release
+        /// binaries, so it cannot serve cloudflared and is deliberately not a default.
         /// </summary>
-        public static async Task<string> EnsureAsync(
-            string command, bool autoDownload, string workingDirectory, ILogger logger, CancellationToken cancellationToken)
+        private static readonly string[] DefaultMirrors =
+        {
+            "https://ghproxy.net/",
+            "https://gh-proxy.com/",
+            "https://mirror.ghproxy.com/",
+            "https://ghproxy.com/",
+            "", // direct github.com
+        };
+
+        /// <summary>
+        /// Returns the cloudflared command/path the tunnel should run, or <c>null</c> if no usable
+        /// binary could be found or downloaded. Never throws. When <paramref name="autoDownload"/> is
+        /// off and the configured command is not found, the command is returned unchanged so the
+        /// caller still surfaces the existing "is it installed?" diagnostic.
+        /// </summary>
+        public static async Task<string?> EnsureAsync(
+            string command, bool autoDownload, IReadOnlyList<string>? mirrors, int attemptsPerSource,
+            string workingDirectory, ILogger logger, CancellationToken cancellationToken)
         {
             command = string.IsNullOrWhiteSpace(command) ? "cloudflared" : command.Trim();
 
@@ -61,33 +82,106 @@ namespace well404.WebPanel
                 return command;
             }
 
-            var url = ResolveDownloadUrl();
-            if (url == null)
+            var asset = ResolveAssetName();
+            if (asset == null)
             {
                 logger.LogWarning(
                     "WebPanel: cloudflared not found and auto-download does not support this platform "
                     + "({OS} / {Arch}). Install cloudflared manually and set web.tunnel.command, or use "
                     + "tunnel type: custom.", RuntimeInformation.OSDescription, RuntimeInformation.OSArchitecture);
-                return command;
+                return null;
             }
 
-            try
+            var urls = BuildCandidateUrls(asset, mirrors);
+            var attempts = attemptsPerSource > 0 ? attemptsPerSource : 2;
+
+            logger.LogInformation(
+                "WebPanel: cloudflared not found — downloading a portable copy into {Dir} (NOT installed "
+                + "system-wide). Trying {Sources} source(s), {Attempts} attempt(s) each.",
+                Path.GetDirectoryName(portable), urls.Count, attempts);
+
+            for (var s = 0; s < urls.Count; s++)
             {
-                logger.LogInformation(
-                    "WebPanel: cloudflared not found — downloading a portable copy into {Dir} (NOT installed "
-                    + "system-wide) from {Url}.", Path.GetDirectoryName(portable), url);
-                await DownloadAsync(url, portable, cancellationToken).ConfigureAwait(false);
-                MakeExecutable(portable, logger);
-                logger.LogInformation("WebPanel: portable cloudflared ready at {Path}.", portable);
-                return portable;
+                var url = urls[s];
+                for (var attempt = 1; attempt <= attempts; attempt++)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return null;
+                    }
+
+                    try
+                    {
+                        logger.LogInformation(
+                            "WebPanel: cloudflared download — source {S}/{N} attempt {A}/{Attempts}: {Url}",
+                            s + 1, urls.Count, attempt, attempts, url);
+                        await DownloadAsync(url, portable, cancellationToken).ConfigureAwait(false);
+                        MakeExecutable(portable, logger);
+                        logger.LogInformation("WebPanel: portable cloudflared ready at {Path} (from {Url}).", portable, url);
+                        return portable;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(
+                            "WebPanel: cloudflared download failed (source {S}/{N} attempt {A}/{Attempts}, {Url}): {Err}",
+                            s + 1, urls.Count, attempt, attempts, url, ex.Message);
+                    }
+                }
             }
-            catch (Exception ex)
+
+            logger.LogWarning(
+                "WebPanel: could not download cloudflared from any of {N} source(s). Set a reachable mirror in "
+                + "web.tunnel.downloadMirrors, configure a system/HTTPS_PROXY proxy, install cloudflared manually "
+                + "and set web.tunnel.command, or disable the tunnel (web.tunnel.enabled: false).", urls.Count);
+            return null;
+        }
+
+        /// <summary>Expands the mirror list (or built-in defaults) into concrete asset URLs.</summary>
+        private static List<string> BuildCandidateUrls(string asset, IReadOnlyList<string>? mirrors)
+        {
+            var sources = new List<string>();
+            if (mirrors != null)
             {
-                logger.LogWarning(ex,
-                    "WebPanel: failed to download a portable cloudflared from {Url}. Install it manually and set "
-                    + "web.tunnel.command, or disable the tunnel (web.tunnel.enabled: false).", url);
-                return command;
+                foreach (var m in mirrors)
+                {
+                    if (!string.IsNullOrWhiteSpace(m))
+                    {
+                        sources.Add(m.Trim());
+                    }
+                }
             }
+
+            if (sources.Count == 0)
+            {
+                sources.AddRange(DefaultMirrors);
+            }
+
+            var urls = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var src in sources)
+            {
+                string url;
+                if (src.Length == 0)
+                {
+                    url = CanonicalLatest.Replace("{asset}", asset);
+                }
+                else if (src.IndexOf("{asset}", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    url = src.Replace("{asset}", asset);
+                }
+                else
+                {
+                    // Bare prefix style, e.g. "https://ghproxy.com/" — prepend to the canonical URL.
+                    url = src + CanonicalLatest.Replace("{asset}", asset);
+                }
+
+                if (seen.Add(url))
+                {
+                    urls.Add(url);
+                }
+            }
+
+            return urls;
         }
 
         /// <summary>True if <paramref name="command"/> can be launched: an existing file when it is a
@@ -149,24 +243,20 @@ namespace well404.WebPanel
 
         private static string BinaryFileName() => IsWindows() ? "cloudflared.exe" : "cloudflared";
 
-        /// <summary>Maps the running OS/arch to its official cloudflared asset, or null if unsupported
-        /// (macOS ships a <c>.tgz</c> that needs extraction and is intentionally not auto-downloaded).</summary>
-        private static string? ResolveDownloadUrl()
+        /// <summary>Maps the running OS/arch to its official cloudflared asset file name, or null if
+        /// unsupported (macOS ships a <c>.tgz</c> that needs extraction and is not auto-downloaded).</summary>
+        private static string? ResolveAssetName()
         {
-            string? asset = null;
-
             if (IsWindows())
             {
                 switch (RuntimeInformation.OSArchitecture)
                 {
                     case Architecture.X86:
-                        asset = "cloudflared-windows-386.exe";
-                        break;
+                        return "cloudflared-windows-386.exe";
                     // cloudflared ships no native windows-arm64 build; amd64 runs under emulation.
                     case Architecture.X64:
                     case Architecture.Arm64:
-                        asset = "cloudflared-windows-amd64.exe";
-                        break;
+                        return "cloudflared-windows-amd64.exe";
                 }
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -174,25 +264,22 @@ namespace well404.WebPanel
                 switch (RuntimeInformation.OSArchitecture)
                 {
                     case Architecture.X64:
-                        asset = "cloudflared-linux-amd64";
-                        break;
+                        return "cloudflared-linux-amd64";
                     case Architecture.X86:
-                        asset = "cloudflared-linux-386";
-                        break;
+                        return "cloudflared-linux-386";
                     case Architecture.Arm64:
-                        asset = "cloudflared-linux-arm64";
-                        break;
+                        return "cloudflared-linux-arm64";
                     case Architecture.Arm:
-                        asset = "cloudflared-linux-arm";
-                        break;
+                        return "cloudflared-linux-arm";
                 }
             }
 
-            return asset == null ? null : DownloadBase + asset;
+            return null;
         }
 
         /// <summary>Streams <paramref name="url"/> to <paramref name="destination"/> via a temp file,
-        /// then atomically moves it into place so a reused copy is never partially written.</summary>
+        /// then atomically moves it into place so a reused copy is never partially written. Honours the
+        /// system / environment HTTP(S) proxy.</summary>
         private static async Task DownloadAsync(string url, string destination, CancellationToken cancellationToken)
         {
             var dir = Path.GetDirectoryName(destination);
@@ -203,7 +290,16 @@ namespace well404.WebPanel
 
             var temp = destination + ".download";
 
-            using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+            var handler = new HttpClientHandler();
+            var proxy = ResolveProxyFromEnvironment();
+            if (proxy != null)
+            {
+                handler.UseProxy = true;
+                handler.Proxy = proxy;
+            }
+            // else: handler.UseProxy defaults to true and picks up the system proxy (Windows/WinHTTP).
+
+            using (var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) })
             {
                 http.DefaultRequestHeaders.UserAgent.ParseAdd("well404.WebPanel");
                 using var response = await http
@@ -216,12 +312,33 @@ namespace well404.WebPanel
                 await source.CopyToAsync(file, 81920, cancellationToken).ConfigureAwait(false);
             }
 
+            if (new FileInfo(temp).Length == 0)
+            {
+                try { File.Delete(temp); } catch { /* best effort */ }
+                throw new IOException("downloaded file was empty");
+            }
+
             if (File.Exists(destination))
             {
                 File.Delete(destination);
             }
 
             File.Move(temp, destination);
+        }
+
+        /// <summary>Reads a proxy from the usual environment variables, or null to use the system proxy.</summary>
+        private static IWebProxy? ResolveProxyFromEnvironment()
+        {
+            foreach (var name in new[] { "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy" })
+            {
+                var value = Environment.GetEnvironmentVariable(name);
+                if (!string.IsNullOrWhiteSpace(value) && Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri))
+                {
+                    return new WebProxy(uri);
+                }
+            }
+
+            return null;
         }
 
         /// <summary>On Unix, marks the downloaded binary executable (<c>chmod +x</c>). No-op on Windows.</summary>

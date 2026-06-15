@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace well404.WebPanel
 {
     /// <summary>Strongly-typed view of the WebPanel <c>config.yaml</c>.</summary>
@@ -93,6 +95,20 @@ namespace well404.WebPanel
         /// platforms (e.g. macOS) install cloudflared manually. Default true.
         /// </summary>
         public bool AutoDownload { get; set; } = true;
+
+        /// <summary>
+        /// Only for <c>type: cloudflare</c> auto-download. Ordered list of download sources, tried top
+        /// to bottom (first that works wins). Each entry is either a full URL template containing
+        /// <c>{asset}</c> (the platform file name, e.g. <c>cloudflared-windows-amd64.exe</c>), or a bare
+        /// proxy prefix that gets the canonical GitHub release URL appended (e.g.
+        /// <c>https://ghproxy.com/</c>); an empty string means a direct github.com download. Empty list
+        /// = use the built-in defaults (a few GitHub-release proxies first, then direct GitHub). Note:
+        /// jsDelivr only mirrors repo files, not release binaries, so it cannot serve cloudflared.
+        /// </summary>
+        public List<string> DownloadMirrors { get; set; } = new List<string>();
+
+        /// <summary>How many times to retry each download source before moving to the next. Default 2.</summary>
+        public int DownloadAttempts { get; set; } = 2;
 
         /// <summary>
         /// Arguments for <see cref="Command"/>. The literal <c>{port}</c> is replaced with the panel

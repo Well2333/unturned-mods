@@ -92,12 +92,22 @@ web:
 | `custom` | 你完全自定义 `command` / `args` / `urlPattern` / `apiUrl`(`{port}` 会被替换为面板端口)。适配 ngrok 等任意工具;`custom` 不会自动下载,需你自行安装。 |
 
 **自动下载便携版 cloudflared(`autoDownload`,默认开,仅 `type: cloudflare`)**:当 `command`
-(默认 `cloudflared`)在磁盘和 `PATH` 中都找不到时,插件会从 Cloudflare 官方仓库下载**最新版**
-的**便携二进制**到本插件数据目录(`cloudflared/` 子目录),并直接运行它——**绝不**安装到系统、
-也不写入 `PATH`;下载结果会缓存复用,重启不再重复下载。支持 **Windows / Linux(x64、arm64)**;
-其它平台(如 macOS,发行包为需解压的 `.tgz`)请自行安装 `cloudflared` 并用 `command` 指定路径,
-或设 `autoDownload: false` 要求使用预装的 `cloudflared`。下载失败也不会影响面板本地使用,只是隧道
-未启用(日志会给出提示)。
+(默认 `cloudflared`)在磁盘和 `PATH` 中都找不到时,插件会下载**最新版**的**便携二进制**到本插件
+数据目录(`cloudflared/` 子目录),并直接运行它——**绝不**安装到系统、也不写入 `PATH`;下载结果会
+缓存复用,重启不再重复下载。支持 **Windows / Linux(x64、arm64)**;其它平台(如 macOS,发行包为
+需解压的 `.tgz`)请自行安装 `cloudflared` 并用 `command` 指定路径,或设 `autoDownload: false`。
+
+- **多镜像 + 重试 + 代理**:下载源由 `downloadMirrors` 控制,**按顺序逐个尝试、先成功者胜**,每个源
+  重试 `downloadAttempts` 次(默认 2);自动遵循系统代理与 `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY`
+  环境变量。每个条目可以是含 `{asset}`(平台文件名,如 `cloudflared-windows-amd64.exe`)的完整 URL
+  模板,或一个会被拼到官方 GitHub release 地址前的**代理前缀**(如 `https://ghproxy.com/`),或空串
+  `""` 表示直连 github.com。留空 `[]` 用内置默认(若干 GitHub release 代理在前、直连在后)。
+  > 注意:**jsDelivr 只镜像仓库内的提交文件、不镜像 release 二进制**,无法用于下载 cloudflared;
+  > 这里请填 GitHub release 代理。
+- **不阻塞启动**:隧道(含下载)在**后台**进行,服务器启动不会被下载卡住;隧道就绪后会单独打印公网
+  管理面地址。下载/启动失败不影响面板本地访问,只是隧道未启用。
+- **启动后醒目提醒**:若 WebPanel 启动期间出现任何问题(HTTP 监听失败、隧道未起来等),会在**服务器
+  完成开服(servercode 弹出)之后**再用一条醒目的 `ERR` 横幅日志重新提示管理员,避免被刷屏淹没。
 
 `custom` + ngrok 示例:
 

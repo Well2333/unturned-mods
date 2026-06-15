@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -8,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using SDG.Unturned;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
@@ -36,13 +38,23 @@ namespace well404.WebPanel
 
         private WebPanelHttpServer? m_Server;
         private ITunnelProvider? m_Tunnel;
-        private CancellationTokenSource? m_TunnelMonitorCts;
+        // Drives every background task this plugin starts (tunnel bring-up, monitor, post-host warning).
+        private CancellationTokenSource? m_BackgroundCts;
 
         // Registry singletons are captured at load so OnUnloadAsync never resolves from the Autofac
         // scope — at full server shutdown that scope is already disposed (ObjectDisposedException).
         private IWebPanelRegistry? m_WebPanelRegistry;
         private IPlayerMenuRegistry? m_PlayerMenuRegistry;
         private IPlayerCommandRegistry? m_PlayerCommandRegistry;
+
+        // Problems noticed during load (panel/tunnel) that get re-surfaced prominently AFTER the server
+        // finishes hosting, so the admin sees them below the noisy startup log rather than buried in it.
+        private readonly object m_IssuesLock = new object();
+        private readonly List<string> m_StartupIssues = new List<string>();
+        // Completes once the initial tunnel bring-up has resolved (success or give-up), so the post-host
+        // warning waits for the tunnel verdict before deciding whether to nag.
+        private readonly TaskCompletionSource<bool> m_TunnelInitialDone =
+            new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public WebPanelPlugin(
             IConfiguration configuration,
@@ -111,6 +123,11 @@ namespace well404.WebPanel
             var server = new WebPanelHttpServer(
                 registry, playerRegistry, translations, sessions, playerLanguages, adminLanguage,
                 m_Logger, prefix, token, html, playerHtml, web.DevPlayer);
+            var displayHost = host == "+" ? "<server-ip>" : host;
+            var localBase = $"http://{displayHost}:{web.Port}";
+
+            m_BackgroundCts = new CancellationTokenSource();
+
             try
             {
                 server.Start();
@@ -121,18 +138,18 @@ namespace well404.WebPanel
                 m_Logger.LogError(ex,
                     "WebPanel: failed to start HTTP listener on {Prefix}. Is the port already in use, or the "
                     + "address not assigned to this host?", prefix);
+                RecordStartupIssue(
+                    $"HTTP 监听启动失败({prefix}):端口可能被占用,或该地址未绑定到本机。Web 面板本次不可用。");
+                m_TunnelInitialDone.TrySetResult(true);
+                _ = WarnAfterServerHostedAsync(localBase, token, m_BackgroundCts.Token);
                 return;
             }
 
             m_Server = server;
 
-            // Start the optional outbound tunnel (cloudflared / ngrok / …). When it yields a public
-            // URL we feed it to the player-link generator so /menu links work without port-forwarding.
-            var tunnelUrl = await StartTunnelAsync(web, sessions);
-
-            var displayHost = host == "+" ? "<server-ip>" : host;
-            var adminBase = tunnelUrl ?? $"http://{displayHost}:{web.Port}";
-            var adminUrl = $"{adminBase}/{token}/";
+            // The local admin URL is known immediately; the tunnel (if any) comes up asynchronously
+            // below and logs its public URL when ready — so startup is never blocked on a download.
+            var adminUrl = $"{localBase}/{token}/";
             if (generatedToken)
             {
                 m_Logger.LogWarning(
@@ -148,20 +165,126 @@ namespace well404.WebPanel
             {
                 m_Logger.LogWarning(
                     "WebPanel: DEV player preview is ON — {DevUrl} opens the player panel as {SteamId} without "
-                    + "joining the game. Disable web.devPlayer in production.", adminBase + "/" + token + "/dev-player",
+                    + "joining the game. Disable web.devPlayer in production.", localBase + "/" + token + "/dev-player",
                     web.DevPlayer.SteamId);
             }
 
-            // Keep the (quick) tunnel alive: it can drop after a while and would otherwise leave the
-            // panel unreachable until a manual restart. Watch it and bring it back with a fresh URL.
-            if (tunnelUrl != null)
+            // Bring the optional outbound tunnel up in the BACKGROUND so a slow/failing cloudflared
+            // download never stalls server startup. On success it publishes the public URL to player
+            // links and logs the public admin URL; failures are re-surfaced after the server is hosted.
+            if (web.Tunnel != null && web.Tunnel.Enabled)
             {
-                var effective = ResolveEffectiveTunnel(web.Tunnel);
-                if (effective.AutoRestart)
+                _ = BringUpTunnelAsync(web, token, sessions, m_BackgroundCts.Token);
+            }
+            else
+            {
+                m_TunnelInitialDone.TrySetResult(true);
+            }
+
+            // Re-surface any startup problem prominently once the server has finished hosting.
+            _ = WarnAfterServerHostedAsync(localBase, token, m_BackgroundCts.Token);
+        }
+
+        /// <summary>
+        /// Brings the outbound tunnel up off the load path: starts it (downloading cloudflared if
+        /// needed), and on success publishes the public admin URL and — when AutoRestart is on — keeps
+        /// it alive. A failure is recorded as a startup issue for the post-host warning. Always signals
+        /// <see cref="m_TunnelInitialDone"/> once the first attempt resolves.
+        /// </summary>
+        private async Task BringUpTunnelAsync(
+            WebServerSettings web, string token, PlayerWebSessionManager sessions, CancellationToken ct)
+        {
+            string? url = null;
+            try
+            {
+                url = await StartTunnelAsync(web, sessions, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogError(ex, "WebPanel: tunnel bring-up threw unexpectedly.");
+            }
+            finally
+            {
+                m_TunnelInitialDone.TrySetResult(true);
+            }
+
+            if (url == null)
+            {
+                RecordStartupIssue(
+                    "内置反代(tunnel)未能启动:cloudflared 下载/启动失败(见上方日志)。玩家 /menu 链接与公网管理面"
+                    + "地址本次不可用;面板仍可经本地地址访问。可配置 web.tunnel.downloadMirrors / 系统代理后重试,"
+                    + "或设 web.tunnel.enabled: false 关闭。");
+                return;
+            }
+
+            m_Logger.LogInformation(
+                "WebPanel: tunnel public admin panel at {AdminUrl} — keep this URL secret.", url + "/" + token + "/");
+
+            var effective = ResolveEffectiveTunnel(web.Tunnel);
+            if (effective.AutoRestart && !ct.IsCancellationRequested)
+            {
+                await MonitorTunnelAsync(web, token, sessions, url, effective, ct).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Waits until the server has finished hosting (the connection code is shown) and the initial
+        /// tunnel attempt has resolved, then — if anything went wrong during load — re-logs it as a
+        /// prominent banner so the admin notices it below the noisy startup output.
+        /// </summary>
+        private async Task WarnAfterServerHostedAsync(string localBase, string token, CancellationToken ct)
+        {
+            try
+            {
+                // Poll for "server ready" (covers plugins loading either before or after hosting).
+                for (var i = 0; i < 600 && !ct.IsCancellationRequested; i++)
                 {
-                    m_TunnelMonitorCts = new CancellationTokenSource();
-                    _ = MonitorTunnelAsync(web, token, sessions, tunnelUrl, effective, m_TunnelMonitorCts.Token);
+                    if (Level.isLoaded && !string.IsNullOrEmpty(Provider.serverID))
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(1000, ct).ConfigureAwait(false);
                 }
+
+                // Let the tunnel verdict settle (bounded), then a beat so we print below the host banner.
+                await Task.WhenAny(m_TunnelInitialDone.Task, Task.Delay(TimeSpan.FromMinutes(5), ct)).ConfigureAwait(false);
+                await Task.Delay(2000, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            string[] issues;
+            lock (m_IssuesLock)
+            {
+                if (m_StartupIssues.Count == 0)
+                {
+                    return;
+                }
+
+                issues = m_StartupIssues.ToArray();
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("==================== WebPanel 启动异常提醒 ====================");
+            for (var i = 0; i < issues.Length; i++)
+            {
+                sb.AppendLine($"  • {issues[i]}");
+            }
+
+            sb.AppendLine($"  本地管理面板地址: {localBase}/{token}/ (请保密)");
+            sb.Append("============================================================");
+            m_Logger.LogError(sb.ToString());
+        }
+
+        /// <summary>Records a load-time problem to be re-surfaced after the server is hosted.</summary>
+        private void RecordStartupIssue(string message)
+        {
+            lock (m_IssuesLock)
+            {
+                m_StartupIssues.Add(message);
             }
         }
 
@@ -170,15 +293,16 @@ namespace well404.WebPanel
             await UniTask.SwitchToMainThread();
             try
             {
-                m_TunnelMonitorCts?.Cancel();
+                m_BackgroundCts?.Cancel();
             }
             catch
             {
                 // ignored
             }
 
-            m_TunnelMonitorCts?.Dispose();
-            m_TunnelMonitorCts = null;
+            m_TunnelInitialDone.TrySetResult(true);
+            m_BackgroundCts?.Dispose();
+            m_BackgroundCts = null;
             m_Tunnel?.Stop();
             m_Tunnel?.Dispose();
             m_Tunnel = null;
@@ -214,9 +338,18 @@ namespace well404.WebPanel
             // host system). For type: custom the admin owns the command, so we leave it untouched.
             if (string.Equals(tunnel.Type, "cloudflare", StringComparison.OrdinalIgnoreCase))
             {
-                tunnel.Command = await CloudflaredDownloader
-                    .EnsureAsync(tunnel.Command, tunnel.AutoDownload, WorkingDirectory, m_Logger, ct)
+                var resolved = await CloudflaredDownloader
+                    .EnsureAsync(tunnel.Command, tunnel.AutoDownload, tunnel.DownloadMirrors,
+                        tunnel.DownloadAttempts, WorkingDirectory, m_Logger, ct)
                     .ConfigureAwait(false);
+
+                if (resolved == null)
+                {
+                    // No usable cloudflared and auto-download gave up — EnsureAsync already logged why.
+                    return null;
+                }
+
+                tunnel.Command = resolved;
             }
 
             var provider = new ProcessTunnelProvider(tunnel, m_Logger);
@@ -370,6 +503,8 @@ namespace well404.WebPanel
                 Type = "cloudflare",
                 Command = string.IsNullOrWhiteSpace(t.Command) ? "cloudflared" : t.Command,
                 AutoDownload = t.AutoDownload,
+                DownloadMirrors = t.DownloadMirrors,
+                DownloadAttempts = t.DownloadAttempts,
                 Args = "tunnel --url http://127.0.0.1:{port} --no-autoupdate",
                 UrlPattern = "https://[a-z0-9-]+\\.trycloudflare\\.com",
                 ApiUrl = string.Empty,

@@ -38,6 +38,8 @@ web:
     type: "cloudflare"       # cloudflare(找不到 cloudflared 会自动下载便携版) | custom(自定义,适配 ngrok 等)
     command: "cloudflared"
     autoDownload: true       # cloudflare 专用:找不到 cloudflared 时下载便携版到插件数据目录(不装进系统),缓存复用
+    downloadMirrors: []      # 下载源(代理/镜像)列表,按序试、先成功者胜;空=用内置默认;遵循系统/HTTPS_PROXY 代理
+    downloadAttempts: 2      # 每个下载源的重试次数
   publicBaseUrl: ""          # 玩家 /menu 链接的公网地址;空=自动推导(开 tunnel 时用隧道地址)
   playerSessionMinutes: 5    # 玩家链接有效期下限;实际不少于 15 分钟
   devPlayer:                 # 开发预览:不进游戏也能以指定账号查看玩家面(默认关)
