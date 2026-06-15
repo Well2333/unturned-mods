@@ -22,8 +22,8 @@ namespace well404.Vault
             ["Amount {0}"] = "数量 {0}",
             ["Vault: {0} / {1} slots"] = "仓库：{0} / {1} 格",
             ["{0} slots"] = "占 {0} 格",
-            ["You must be online to use the vault."] = "你需要在线才能使用仓库。",
             ["You must be online to store or withdraw."] = "你需要在线才能存入或取出物品。",
+            ["You don't have permission to use the vault."] = "你没有使用仓库的权限。",
             ["Item not found."] = "找不到该物品。",
             ["Enter a valid quantity."] = "请输入有效的数量。",
             ["Unknown action."] = "未知操作。",
@@ -32,20 +32,14 @@ namespace well404.Vault
             ["Stored {0}× {1}."] = "已存入 {0}× {1}。",
             ["You have no {0} in the vault."] = "仓库里没有 {0}。",
             ["Took {0}× {1}."] = "已取出 {0}× {1}。",
-            // detail (per-copy) sub-view
-            ["Details"] = "详情",
-            ["Back"] = "返回",
-            ["{0} — copies"] = "{0} —— 各个",
             ["Durability {0}%"] = "耐久 {0}%",
-            ["Took {0} from your vault."] = "已从仓库取出 {0}。",
-            ["That copy is no longer in the vault."] = "这件物品已不在仓库中。",
 
             // ---- admin module chrome ----
             ["Capacity (grid cells)"] = "容量（格子数）",
             ["e.g. 200 — each item costs its size_x×size_y footprint"] = "如 200——每个物品按其 宽×高 格数占用",
-            ["Total vault capacity in inventory grid cells. Each stored item costs its grid footprint (e.g. a 2×2 ammo box = 4); an item's internal stack/ammo count never counts."]
-                = "仓库总容量（背包格子数）。每个物品按其网格尺寸占用（如 2×2 的弹药箱 = 4 格）；物品内部的堆叠/弹药数不计入。",
             ["Enter a valid capacity (a positive whole number)."] = "请输入有效的容量（正整数）。",
+            ["Bad tier format (expected permission=capacity)."] = "档位格式有误（应为 权限=容量）。",
+            ["Invalid tier capacity (a positive whole number)."] = "档位容量无效（应为正整数）。",
             ["Saved."] = "已保存。",
             ["Deleted."] = "已删除。",
             ["Not found."] = "未找到。",

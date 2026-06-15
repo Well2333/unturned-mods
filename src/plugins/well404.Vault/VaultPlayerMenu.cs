@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using OpenMod.API.Permissions;
 using OpenMod.API.Users;
 using OpenMod.Core.Users;
 using OpenMod.Extensions.Games.Abstractions.Items;
@@ -23,16 +24,23 @@ namespace well404.Vault
     {
         public const string MenuId = "vault";
 
+        // The web surface enforces the same permissions as the chat commands, so a player whose
+        // store/take is denied can't bypass it through the panel.
+        private const string StorePermission = "well404.Vault:commands.vault.store";
+        private const string TakePermission = "well404.Vault:commands.vault.take";
+
         private readonly VaultService m_Vault;
         private readonly IUserManager m_UserManager;
         private readonly IItemDirectory m_ItemDirectory;
+        private readonly IPermissionChecker m_Permissions;
         private readonly IWebTranslationRegistry m_Tr;
 
-        public VaultPlayerMenu(VaultService vault, IUserManager userManager, IItemDirectory itemDirectory, IWebTranslationRegistry translations)
+        public VaultPlayerMenu(VaultService vault, IUserManager userManager, IItemDirectory itemDirectory, IPermissionChecker permissions, IWebTranslationRegistry translations)
         {
             m_Vault = vault;
             m_UserManager = userManager;
             m_ItemDirectory = itemDirectory;
+            m_Permissions = permissions;
             m_Tr = translations;
         }
 
@@ -50,25 +58,32 @@ namespace well404.Vault
 
             var max = user != null ? await m_Vault.GetMaxSlotsAsync(user) : m_Vault.OverrideOrBase(steamId);
             var header = m_Tr.Format(lang, "Vault: {0} / {1} slots", m_Vault.UsedSlots(steamId), max);
-            // Contents are viewable read-only offline; only store/withdraw needs a live inventory.
-            var message = user == null ? m_Tr.Resolve("You must be online to store or withdraw.", lang) : null;
+
+            // Store/withdraw need a live inventory AND the matching permission (parity with the
+            // commands). Contents stay viewable (read-only) when offline or unauthorized.
+            var canStore = user != null && await CanAsync(user, StorePermission);
+            var canTake = user != null && await CanAsync(user, TakePermission);
+            var message = user == null
+                ? m_Tr.Resolve("You must be online to store or withdraw.", lang)
+                : (!canStore && !canTake ? m_Tr.Resolve("You don't have permission to use the vault.", lang) : null);
             var names = await VaultNames.BuildMapAsync(m_ItemDirectory);
 
             var cards = new List<PlayerCard>();
-            if (user != null)
+            if (canStore && user != null)
             {
                 var backpack = await m_Vault.BackpackVariantsAsync(user);
-                cards.AddRange(BuildItemCards(backpack, "store", m_Tr.Resolve("Backpack", lang), names, lang));
+                cards.AddRange(BuildItemCards(backpack, "store", m_Tr.Resolve("Backpack", lang), names, lang, allowOps: true));
             }
 
-            cards.AddRange(BuildItemCards(m_Vault.VaultVariants(steamId), "take", m_Tr.Resolve("Vault", lang), names, lang));
+            cards.AddRange(BuildItemCards(m_Vault.VaultVariants(steamId), "take", m_Tr.Resolve("Vault", lang), names, lang, allowOps: canTake));
 
             return new PlayerMenuView(m_Tr.Resolve("Vault", lang), header, cards, message, null, "list");
         }
 
         // Builds one card per item id (merging identical copies). A single-variant id is a plain card;
-        // a multi-variant id is a collapsible parent whose children are the variants.
-        private List<PlayerCard> BuildItemCards(IReadOnlyList<ItemVariant> variants, string mode, string group, IReadOnlyDictionary<string, string> names, string lang)
+        // a multi-variant id is a collapsible parent whose children are the variants. When allowOps is
+        // false (offline / no permission) the cards are built read-only (no action buttons).
+        private List<PlayerCard> BuildItemCards(IReadOnlyList<ItemVariant> variants, string mode, string group, IReadOnlyDictionary<string, string> names, string lang, bool allowOps)
         {
             var cards = new List<PlayerCard>();
             foreach (var byId in variants.GroupBy(v => v.ItemId).OrderBy(g => VaultNames.NameOf(g.Key, names)))
@@ -83,7 +98,7 @@ namespace well404.Vault
                 {
                     var v = list[0];
                     cards.Add(new PlayerCard(VariantKey(v), name, null,
-                        VariantTags(v, true, lang), OpsButtons(mode, VariantKey(v), v.Count, lang), group, "#" + idStr));
+                        VariantTags(v, true, lang), Ops(mode, VariantKey(v), v.Count, lang, allowOps), group, "#" + idStr));
                     continue;
                 }
 
@@ -92,18 +107,24 @@ namespace well404.Vault
                 foreach (var v in list.OrderByDescending(x => x.Amount).ThenByDescending(x => x.Quality))
                 {
                     children.Add(new PlayerCard(VariantKey(v), name, null,
-                        VariantTags(v, false, lang), OpsButtons(mode, VariantKey(v), v.Count, lang), group));
+                        VariantTags(v, false, lang), Ops(mode, VariantKey(v), v.Count, lang, allowOps), group));
                 }
 
+                var parentButtons = allowOps
+                    ? new[] { OpButton(mode, "all", idStr, totalCount, lang) }
+                    : Array.Empty<PlayerButton>();
                 cards.Add(new PlayerCard(
                     idStr, name, null,
                     new[] { "×" + totalCount.ToString(CultureInfo.InvariantCulture), m_Tr.Format(lang, "{0} slots", totalSlots) },
-                    new[] { OpButton(mode, "all", idStr, totalCount, lang) },
+                    parentButtons,
                     group, "#" + idStr, children));
             }
 
             return cards;
         }
+
+        private PlayerButton[] Ops(string mode, string cardKey, int count, string lang, bool allowOps)
+            => allowOps ? OpsButtons(mode, cardKey, count, lang) : Array.Empty<PlayerButton>();
 
         private List<string> VariantTags(ItemVariant v, bool includeSlots, string lang)
         {
@@ -195,6 +216,16 @@ namespace well404.Vault
 
             var mode = actionId.Substring(0, underscore);   // store | take
             var op = actionId.Substring(underscore + 1);    // all | some | one
+
+            // Enforce the same permission as the corresponding command (web/command parity).
+            if (mode == "store" || mode == "take")
+            {
+                if (!await CanAsync(user, mode == "store" ? StorePermission : TakePermission))
+                {
+                    return PlayerActionResult.Fail(m_Tr.Resolve("You don't have permission to use the vault.", lang));
+                }
+            }
+
             int amount;
             if (op == "all")
             {
@@ -266,7 +297,9 @@ namespace well404.Vault
                 return null;
             }
 
-            var parts = cardKey.Split('|');
+            // Limit to 4 so the (base64) state — the last field — is kept whole, exactly mirroring the
+            // 4-field encoder in VariantKey.
+            var parts = cardKey.Split(new[] { '|' }, 4, StringSplitOptions.None);
             if (parts.Length < 4
                 || !ushort.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
                 || !byte.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount)
@@ -294,5 +327,8 @@ namespace well404.Vault
 
         private async Task<UnturnedUser?> ResolveOnlineAsync(string steamId)
             => await m_UserManager.FindUserAsync(KnownActorTypes.Player, steamId, UserSearchMode.FindById) as UnturnedUser;
+
+        private async Task<bool> CanAsync(UnturnedUser user, string permission)
+            => await m_Permissions.CheckPermissionAsync(user, permission) == PermissionGrantResult.Grant;
     }
 }

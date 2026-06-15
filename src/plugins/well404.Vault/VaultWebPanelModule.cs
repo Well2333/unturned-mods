@@ -146,7 +146,8 @@ namespace well404.Vault
                 var parts = token.Split(new[] { '=', ':' }, 2);
                 if (parts.Length != 2)
                 {
-                    error = $"Bad tier format: {token} (expected permission=capacity)";
+                    // Arg-free so the host can localize it by key (no interpolated token).
+                    error = "Bad tier format (expected permission=capacity).";
                     return null;
                 }
 
@@ -155,7 +156,7 @@ namespace well404.Vault
                     || !int.TryParse(parts[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var cap)
                     || cap < 1)
                 {
-                    error = $"Invalid tier capacity: {token} (a positive whole number)";
+                    error = "Invalid tier capacity (a positive whole number).";
                     return null;
                 }
 

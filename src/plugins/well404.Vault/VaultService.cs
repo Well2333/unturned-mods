@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -55,8 +56,12 @@ namespace well404.Vault
     /// the rounds inside a magazine/ammo box, etc.). Capacity is counted in grid cells: each item
     /// costs its asset's footprint (size_x × size_y), never its internal stack/ammo count. Capacity
     /// is per-player: a config base, raised by any permission tier the player holds, or set
-    /// individually via a per-player override. Registered as a plugin-scoped singleton; all inventory
-    /// access runs on the main thread.
+    /// individually via a per-player override. Registered as a plugin-scoped singleton.
+    ///
+    /// Threading: SDG inventory/asset access runs on the Unity main thread (callers switch first).
+    /// The in-memory model (<c>m_Data</c>) is touched from the main thread (store/take) AND from the
+    /// web/command threads (render/list/overrides), so every read and write of it is guarded by
+    /// <c>m_Lock</c>, and persistence is serialized through <c>m_SaveLock</c> over a cloned snapshot.
     /// </summary>
     public class VaultService
     {
@@ -64,6 +69,8 @@ namespace well404.Vault
 
         private readonly IConfiguration m_Configuration;
         private readonly IPermissionChecker m_PermissionChecker;
+        private readonly object m_Lock = new object();
+        private readonly SemaphoreSlim m_SaveLock = new SemaphoreSlim(1, 1);
         private IDataStore? m_DataStore;
         private VaultData m_Data = new VaultData();
 
@@ -75,33 +82,31 @@ namespace well404.Vault
 
         private VaultSettings Settings => m_Configuration.Get<VaultSettings>() ?? new VaultSettings();
 
-        /// <summary>The configured base capacity (before tiers / per-player overrides).</summary>
-        public int BaseMaxSlots => Settings.MaxSlots;
+        /// <summary>The configured base capacity (before tiers / per-player overrides), at least 1.</summary>
+        public int BaseMaxSlots => Math.Max(1, Settings.MaxSlots);
 
         /// <summary>Loads persisted data once. Called by the plugin on load (DataStore is plugin-owned).</summary>
         public async Task InitializeAsync(IDataStore dataStore)
         {
             m_DataStore = dataStore;
+            VaultData loaded;
             if (await dataStore.ExistsAsync(DataKey))
             {
-                m_Data = await dataStore.LoadAsync<VaultData>(DataKey) ?? new VaultData();
+                loaded = await dataStore.LoadAsync<VaultData>(DataKey) ?? new VaultData();
+            }
+            else
+            {
+                loaded = new VaultData();
             }
 
-            // Backfill unique ids for items stored before per-copy ids existed (so they can be
-            // withdrawn individually in the detail view).
+            // Backfill the stack capacity for items stored before it was recorded, so the web view can
+            // show a fill ratio (e.g. 6/8). Only stacked items (ammo/magazines) have one. Runs on load
+            // before any concurrency, but we still publish under the lock for visibility.
             var changed = false;
-            foreach (var list in m_Data.Players.Values)
+            foreach (var list in loaded.Players.Values)
             {
                 foreach (var item in list)
                 {
-                    if (string.IsNullOrEmpty(item.Uid))
-                    {
-                        item.Uid = NewUid();
-                        changed = true;
-                    }
-
-                    // Backfill the stack capacity for items stored before it was recorded, so the web
-                    // view can show a fill ratio (e.g. 6/8). Only stacked items can have one.
                     if (item.MaxAmount == 0 && item.Amount > 1)
                     {
                         item.MaxAmount = MaxAmountOf(item.ItemId);
@@ -113,6 +118,11 @@ namespace well404.Vault
                 }
             }
 
+            lock (m_Lock)
+            {
+                m_Data = loaded;
+            }
+
             if (changed)
             {
                 await SaveAsync();
@@ -122,16 +132,23 @@ namespace well404.Vault
         // ----- capacity -----
 
         /// <summary>The effective capacity for an online player: a per-player override, else the largest of
-        /// the config base and every permission tier the player holds.</summary>
+        /// the config base and every permission tier the player holds. Never below 1.</summary>
         public async Task<int> GetMaxSlotsAsync(UnturnedUser user)
         {
-            if (m_Data.Overrides.TryGetValue(user.Id, out var overridden))
+            int overridden;
+            bool hasOverride;
+            lock (m_Lock)
             {
-                return overridden;
+                hasOverride = m_Data.Overrides.TryGetValue(user.Id, out overridden);
+            }
+
+            if (hasOverride)
+            {
+                return Math.Max(1, overridden);
             }
 
             var settings = Settings;
-            var best = settings.MaxSlots;
+            var best = Math.Max(1, settings.MaxSlots);
             foreach (var tier in settings.Tiers)
             {
                 if (await m_PermissionChecker.CheckPermissionAsync(user, tier.Key).ConfigureAwait(false) == PermissionGrantResult.Grant)
@@ -143,38 +160,70 @@ namespace well404.Vault
             return best;
         }
 
-        /// <summary>Capacity known without the online user: a per-player override, else the config base.</summary>
+        /// <summary>Capacity known without the online user: a per-player override, else the config base. Never below 1.</summary>
         public int OverrideOrBase(string steamId)
-            => m_Data.Overrides.TryGetValue(steamId, out var overridden) ? overridden : Settings.MaxSlots;
+        {
+            lock (m_Lock)
+            {
+                if (m_Data.Overrides.TryGetValue(steamId, out var overridden))
+                {
+                    return Math.Max(1, overridden);
+                }
+            }
 
-        public IReadOnlyDictionary<string, int> Overrides => new Dictionary<string, int>(m_Data.Overrides);
+            return Math.Max(1, Settings.MaxSlots);
+        }
+
+        public IReadOnlyDictionary<string, int> Overrides
+        {
+            get { lock (m_Lock) { return new Dictionary<string, int>(m_Data.Overrides); } }
+        }
 
         public async Task SetOverrideAsync(string steamId, int slots)
         {
-            m_Data.Overrides[steamId] = Math.Max(1, slots);
+            lock (m_Lock)
+            {
+                m_Data.Overrides[steamId] = Math.Max(1, slots);
+            }
+
             await SaveAsync();
         }
 
         public async Task<bool> ClearOverrideAsync(string steamId)
         {
-            if (m_Data.Overrides.Remove(steamId))
+            bool removed;
+            lock (m_Lock)
             {
-                await SaveAsync();
-                return true;
+                removed = m_Data.Overrides.Remove(steamId);
             }
 
-            return false;
+            if (removed)
+            {
+                await SaveAsync();
+            }
+
+            return removed;
         }
 
         // ----- queries -----
 
         /// <summary>A snapshot of a player's stored items.</summary>
         public IReadOnlyList<StoredItem> Get(string steamId)
-            => m_Data.Players.TryGetValue(steamId, out var list) ? list.ToList() : new List<StoredItem>();
+        {
+            lock (m_Lock)
+            {
+                return m_Data.Players.TryGetValue(steamId, out var list) ? list.ToList() : new List<StoredItem>();
+            }
+        }
 
         /// <summary>Grid cells currently used by a player's vault.</summary>
         public int UsedSlots(string steamId)
-            => m_Data.Players.TryGetValue(steamId, out var list) ? list.Sum(x => x.SlotCost) : 0;
+        {
+            lock (m_Lock)
+            {
+                return m_Data.Players.TryGetValue(steamId, out var list) ? list.Sum(x => x.SlotCost) : 0;
+            }
+        }
 
         /// <summary>The grid footprint of one item id (size_x × size_y), or 1 if the asset is unknown.</summary>
         public static int SlotCostOf(ushort itemId)
@@ -193,28 +242,37 @@ namespace well404.Vault
         /// <summary>The vault's contents collapsed into distinct variants (merging identical copies).</summary>
         public IReadOnlyList<ItemVariant> VaultVariants(string steamId)
         {
-            var result = new List<ItemVariant>();
-            if (!m_Data.Players.TryGetValue(steamId, out var list))
+            lock (m_Lock)
             {
+                var result = new List<ItemVariant>();
+                if (!m_Data.Players.TryGetValue(steamId, out var list))
+                {
+                    return result;
+                }
+
+                foreach (var group in list
+                    .GroupBy(x => (x.ItemId, x.Amount, x.Quality, x.State))
+                    .OrderBy(g => g.Key.ItemId))
+                {
+                    var first = group.First();
+                    result.Add(new ItemVariant(first.ItemId, first.Amount, first.Quality, first.State, group.Count(), first.SlotCost, first.MaxAmount));
+                }
+
                 return result;
             }
-
-            foreach (var group in list
-                .GroupBy(x => (x.ItemId, x.Amount, x.Quality, x.State))
-                .OrderBy(g => g.Key.ItemId))
-            {
-                var first = group.First();
-                result.Add(new ItemVariant(first.ItemId, first.Amount, first.Quality, first.State, group.Count(), first.SlotCost, first.MaxAmount));
-            }
-
-            return result;
         }
 
         /// <summary>The player's carried items collapsed into distinct variants.</summary>
         public async Task<IReadOnlyList<ItemVariant>> BackpackVariantsAsync(UnturnedUser user)
         {
             await UniTask.SwitchToMainThread();
-            var inventory = user.Player.Player.inventory;
+            var player = user.Player?.Player;
+            if (player == null)
+            {
+                return Array.Empty<ItemVariant>();
+            }
+
+            var inventory = player.inventory;
             var map = new Dictionary<(ushort, byte, byte, string), int>();
             for (byte page = PlayerInventory.SLOTS; page < PlayerInventory.STORAGE; page++)
             {
@@ -250,11 +308,25 @@ namespace well404.Vault
 
         private async Task<StoreResult> StoreMatchingAsync(UnturnedUser user, ushort itemId, Func<Item, bool> matches, int amount)
         {
-            await UniTask.SwitchToMainThread();
-            var inventory = user.Player.Player.inventory;
-            var steamId = user.Id;
+            // Resolve capacity FIRST: GetMaxSlotsAsync may await a permission backend and resume off the
+            // main thread, so we must not touch SDG inventory/assets after it. Switch to the main thread
+            // afterwards and keep everything below await-free so it all runs on the main thread.
+            var max = await GetMaxSlotsAsync(user);
+            var used = UsedSlots(user.Id);
 
-            var targets = new List<(byte page, ItemJar jar)>();
+            await UniTask.SwitchToMainThread();
+            var player = user.Player?.Player;
+            if (player == null)
+            {
+                return new StoreResult(0, false);
+            }
+
+            var inventory = player.inventory;
+            var cost = SlotCostOf(itemId);
+            var maxAmount = MaxAmountOf(itemId);
+
+            // Gather candidate jars (worn containers; held weapon slots are intentionally excluded).
+            var targets = new List<(byte page, byte x, byte y)>();
             for (byte page = PlayerInventory.SLOTS; page < PlayerInventory.STORAGE && targets.Count < amount; page++)
             {
                 var count = inventory.getItemCount(page);
@@ -263,20 +335,14 @@ namespace well404.Vault
                     var jar = inventory.getItem(page, i);
                     if (jar?.item != null && jar.item.id == itemId && matches(jar.item))
                     {
-                        targets.Add((page, jar));
+                        targets.Add((page, jar.x, jar.y));
                     }
                 }
             }
 
-            var list = ListFor(steamId);
-            var used = UsedSlots(steamId);
-            var max = await GetMaxSlotsAsync(user).ConfigureAwait(false);
-            var cost = SlotCostOf(itemId);
-            var maxAmount = MaxAmountOf(itemId);
-            var stored = 0;
+            var toAdd = new List<StoredItem>();
             var capacityReached = false;
-
-            foreach (var (page, jar) in targets)
+            foreach (var (page, x, y) in targets)
             {
                 if (used + cost > max)
                 {
@@ -284,30 +350,47 @@ namespace well404.Vault
                     break;
                 }
 
-                var item = jar.item;
-                list.Add(new StoredItem
+                // Remove from the backpack FIRST and only record it in the vault once the remove is
+                // confirmed — so a stale/moved jar can never duplicate the item into both places.
+                var index = inventory.getIndex(page, x, y);
+                if (index == byte.MaxValue)
                 {
-                    Uid = NewUid(),
+                    continue;
+                }
+
+                var jar = inventory.getItem(page, index);
+                if (jar?.item == null || jar.item.id != itemId || !matches(jar.item))
+                {
+                    continue;
+                }
+
+                var item = jar.item;
+                var stored = new StoredItem
+                {
                     ItemId = item.id,
                     Amount = item.amount,
                     Quality = item.quality,
                     State = item.state != null && item.state.Length > 0 ? Convert.ToBase64String(item.state) : string.Empty,
                     SlotCost = cost,
                     MaxAmount = maxAmount
-                });
-                used += cost;
-                stored++;
+                };
 
-                var index = inventory.getIndex(page, jar.x, jar.y);
                 inventory.removeItem(page, index);
+                toAdd.Add(stored);
+                used += cost;
             }
 
-            if (stored > 0)
+            if (toAdd.Count > 0)
             {
+                lock (m_Lock)
+                {
+                    ListForLocked(user.Id).AddRange(toAdd);
+                }
+
                 await SaveAsync();
             }
 
-            return new StoreResult(stored, capacityReached);
+            return new StoreResult(toAdd.Count, capacityReached);
         }
 
         // ----- take -----
@@ -324,24 +407,54 @@ namespace well404.Vault
         private async Task<int> TakeMatchingAsync(UnturnedUser user, Func<StoredItem, bool> matches, int amount)
         {
             await UniTask.SwitchToMainThread();
-            var player = user.Player.Player;
-            var list = ListFor(user.Id);
-            var taken = 0;
+            var player = user.Player?.Player;
+            if (player == null)
+            {
+                return 0;
+            }
 
+            var taken = 0;
+            var mutated = false;
             for (var n = 0; n < amount; n++)
             {
-                var idx = list.FindIndex(x => matches(x));
-                if (idx < 0)
+                StoredItem? entry = null;
+                lock (m_Lock)
+                {
+                    if (m_Data.Players.TryGetValue(user.Id, out var list))
+                    {
+                        var idx = list.FindIndex(x => matches(x));
+                        if (idx >= 0)
+                        {
+                            entry = list[idx];
+                        }
+                    }
+                }
+
+                if (entry == null)
                 {
                     break;
                 }
 
-                GiveBack(player, list[idx]);
-                list.RemoveAt(idx);
-                taken++;
+                var restored = GiveBack(player, entry);
+
+                // Always drop the entry from the vault (even if its state was corrupt and couldn't be
+                // restored) so the loop can't spin on it; only count items actually returned.
+                lock (m_Lock)
+                {
+                    if (m_Data.Players.TryGetValue(user.Id, out var list))
+                    {
+                        list.Remove(entry);
+                    }
+                }
+
+                mutated = true;
+                if (restored)
+                {
+                    taken++;
+                }
             }
 
-            if (taken > 0)
+            if (mutated)
             {
                 await SaveAsync();
             }
@@ -369,17 +482,31 @@ namespace well404.Vault
             return true;
         }
 
-        private static void GiveBack(Player player, StoredItem stored)
+        /// <summary>Reconstructs the stored item into the player's inventory (dropping at their feet if
+        /// it doesn't fit). Returns false if the persisted state was corrupt and could not be decoded.</summary>
+        private static bool GiveBack(Player player, StoredItem stored)
         {
-            var state = string.IsNullOrEmpty(stored.State) ? Array.Empty<byte>() : Convert.FromBase64String(stored.State);
+            byte[] state;
+            try
+            {
+                state = string.IsNullOrEmpty(stored.State) ? Array.Empty<byte>() : Convert.FromBase64String(stored.State);
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+
             var item = new Item(stored.ItemId, stored.Amount, stored.Quality, state);
             if (!player.inventory.tryAddItem(item, true))
             {
                 ItemManager.dropItem(item, player.transform.position, true, true, false);
             }
+
+            return true;
         }
 
-        private List<StoredItem> ListFor(string steamId)
+        // Caller must hold m_Lock.
+        private List<StoredItem> ListForLocked(string steamId)
         {
             if (!m_Data.Players.TryGetValue(steamId, out var list))
             {
@@ -390,14 +517,56 @@ namespace well404.Vault
             return list;
         }
 
-        private static string NewUid() => Guid.NewGuid().ToString("N").Substring(0, 8);
-
         private async Task SaveAsync()
         {
-            if (m_DataStore != null)
+            if (m_DataStore == null)
             {
-                await m_DataStore.SaveAsync(DataKey, m_Data);
+                return;
+            }
+
+            // Serialize a stable clone so the data store never walks a graph another thread is mutating,
+            // and serialize concurrent saves so two writers can't interleave the file write.
+            VaultData snapshot;
+            lock (m_Lock)
+            {
+                snapshot = CloneData(m_Data);
+            }
+
+            await m_SaveLock.WaitAsync();
+            try
+            {
+                await m_DataStore.SaveAsync(DataKey, snapshot);
+            }
+            finally
+            {
+                m_SaveLock.Release();
             }
         }
+
+        private static VaultData CloneData(VaultData data)
+        {
+            var copy = new VaultData();
+            foreach (var pair in data.Players)
+            {
+                copy.Players[pair.Key] = pair.Value.Select(CloneItem).ToList();
+            }
+
+            foreach (var pair in data.Overrides)
+            {
+                copy.Overrides[pair.Key] = pair.Value;
+            }
+
+            return copy;
+        }
+
+        private static StoredItem CloneItem(StoredItem s) => new StoredItem
+        {
+            ItemId = s.ItemId,
+            Amount = s.Amount,
+            Quality = s.Quality,
+            State = s.State,
+            SlotCost = s.SlotCost,
+            MaxAmount = s.MaxAmount
+        };
     }
 }

@@ -36,6 +36,10 @@ openmod install well404.Vault
 
 > 装了 WebPanel 时,`/menu vault` 可打开网页仓库(背包 / 仓库两区,点按钮存取)。
 
+- **权限**:命令按 OpenMod 路径派生权限(`well404.Vault:commands.vault[.store|.take|.list]`);**网页仓库的存 / 取
+  强制相同权限**,缺权限则网页只读,无法绕过。
+- **只存背包**:手持的主 / 副武器槽物品不会被存入,需先放进背包。
+
 ## 配置 (config.yaml)
 
 ```yaml

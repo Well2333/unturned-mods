@@ -17,9 +17,6 @@ namespace well404.Vault
     /// <summary>One stored item, kept with full state so guns/magazines/ammo boxes restore exactly.</summary>
     public class StoredItem
     {
-        /// <summary>A short unique id for this exact stored copy (so a specific instance can be withdrawn).</summary>
-        public string Uid { get; set; } = string.Empty;
-
         /// <summary>Game item asset id.</summary>
         public ushort ItemId { get; set; }
 

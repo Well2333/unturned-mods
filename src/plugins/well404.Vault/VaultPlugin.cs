@@ -79,6 +79,7 @@ namespace well404.Vault
                 vault,
                 LifetimeScope.Resolve<IUserManager>(),
                 LifetimeScope.Resolve<OpenMod.Extensions.Games.Abstractions.Items.IItemDirectory>(),
+                LifetimeScope.Resolve<OpenMod.API.Permissions.IPermissionChecker>(),
                 translations));
             m_PlayerMenuRegistry = registry;
 
