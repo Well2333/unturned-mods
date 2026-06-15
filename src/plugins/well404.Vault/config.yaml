@@ -1,0 +1,16 @@
+# Configuration for Personal Vault.
+# Embedded as a resource; users can override it in the plugin's data directory.
+
+# Base vault capacity in inventory grid cells (everyone gets at least this). Each stored item costs
+# its grid footprint (size_x × size_y, e.g. a 2×2 ammo box = 4 cells); an item's internal stack/ammo
+# count never counts. Editable in the web panel when well404.WebPanel is installed.
+maxSlots: 200
+
+# Per-permission capacity tiers: a player who holds the permission gets that capacity. A player takes
+# the LARGEST capacity among the base and every tier they hold (so VIPs get bigger vaults). A specific
+# player can be overridden individually in the web panel (Vault → Per-player capacity).
+tiers: {}
+# Example:
+# tiers:
+#   "well404.vault.size.vip": 400
+#   "well404.vault.size.mvp": 600

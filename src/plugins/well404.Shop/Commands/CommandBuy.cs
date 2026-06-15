@@ -4,13 +4,14 @@ using Microsoft.Extensions.Localization;
 using OpenMod.API.Commands;
 using OpenMod.Core.Commands;
 using OpenMod.Extensions.Economy.Abstractions;
+using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Users;
 
 namespace well404.Shop.Commands
 {
     [Command("buy")]
     [CommandSyntax("<id> [amount]")]
-    [CommandDescription("Buys an item or bundle from the shop.")]
+    [CommandDescription("Buys an item (by its item id) or a bundle (by its id) from the shop.")]
     [CommandActor(typeof(UnturnedUser))]
     public class CommandBuy : Command
     {
@@ -18,6 +19,7 @@ namespace well404.Shop.Commands
         private readonly ShopService m_ShopService;
         private readonly DiscountService m_DiscountService;
         private readonly IEconomyProvider m_Economy;
+        private readonly IItemDirectory m_ItemDirectory;
         private readonly IStringLocalizer m_StringLocalizer;
 
         public CommandBuy(
@@ -26,12 +28,14 @@ namespace well404.Shop.Commands
             ShopService shopService,
             DiscountService discountService,
             IEconomyProvider economy,
+            IItemDirectory itemDirectory,
             IStringLocalizer stringLocalizer) : base(serviceProvider)
         {
             m_Catalog = catalog;
             m_ShopService = shopService;
             m_DiscountService = discountService;
             m_Economy = economy;
+            m_ItemDirectory = itemDirectory;
             m_StringLocalizer = stringLocalizer;
         }
 
@@ -57,9 +61,12 @@ namespace well404.Shop.Commands
                 throw new UserFriendlyException(m_StringLocalizer["errors:item_not_found", new { id }]);
             }
 
+            var names = await ShopNames.BuildMapAsync(m_ItemDirectory);
+            var name = ShopNames.DisplayName(entry, names);
+
             if (entry.BuyPrice <= 0m)
             {
-                throw new UserFriendlyException(m_StringLocalizer["buy:not_buyable", new { name = entry.Name }]);
+                throw new UserFriendlyException(m_StringLocalizer["buy:not_buyable", new { name }]);
             }
 
             var multiplier = await m_DiscountService.GetMultiplierAsync(user);
@@ -82,7 +89,7 @@ namespace well404.Shop.Commands
             await PrintAsync(m_StringLocalizer["buy:success", new
             {
                 amount,
-                name = entry.Name,
+                name,
                 symbol = m_Economy.CurrencySymbol,
                 total
             }]);

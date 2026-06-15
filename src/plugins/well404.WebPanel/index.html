@@ -54,6 +54,10 @@
   .pills { display:flex; flex-wrap:wrap; gap:5px; }
   .lrow .pills { flex:1; }
   .pill { display:inline-block; background:var(--bg); border:1px solid var(--line); border-radius:11px; padding:2px 9px; font-size:12px; }
+  .pill.kv { background:var(--panel); color:var(--muted); }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; min-width:280px; max-width:92%; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .modal .edittitle { font-size:15px; color:var(--fg); margin-bottom:12px; }
   .slot-x { position:absolute; top:6px; right:9px; color:var(--muted); cursor:pointer; font-size:15px; line-height:1; }
   .lrow .slot-x { position:static; margin-left:auto; }
   .tile .slot-x:hover, .lrow .slot-x:hover { color:var(--err); }
@@ -68,10 +72,10 @@
 <header>
   <h1>🛠️ Web Panel</h1>
   <div class="spacer"></div>
-  <input id="token" type="password" placeholder="访问 token（如已配置）" />
+  <select id="langSel" title="Language" style="display:none"></select>
 </header>
 <div class="layout">
-  <nav id="nav"><div class="empty">加载中…</div></nav>
+  <nav id="nav"><div class="empty">Loading…</div></nav>
   <main id="main"></main>
 </div>
 
@@ -79,6 +83,21 @@
 "use strict";
 const $ = (sel, el=document) => el.querySelector(sel);
 const enc = encodeURIComponent;
+
+let lang = localStorage.getItem("adminpanel_lang") || "";
+let languages = [];
+const STR = {
+  en: { loading:"Loading…", unauthorized:"Unauthorized: the token in the link is invalid or changed — ask an admin for the current link.",
+        reqFailed:"Request failed", noModules:"No modules registered yet. They appear here once a WebPanel-aware plugin is installed and loaded.",
+        save:"Save", add:"＋ Add", del:"Delete", saveOk:"Saved", search:"Search", enterKeyword:"Enter a keyword…",
+        none:"(no entries — click ＋ Add)", saveFail:"Save failed", delFail:"Delete failed", edit:"Edit: ", addItem:"New entry", cancel:"Cancel", confirm:"Confirm", rows:"rows" },
+  zh: { loading:"加载中…", unauthorized:"未授权：访问链接中的 token 无效或已变更，请向管理员索取最新链接。",
+        reqFailed:"请求失败", noModules:"暂无已注册的模块。安装并加载支持 WebPanel 的插件后会出现在这里。",
+        save:"保存", add:"＋ 新增", del:"删除", saveOk:"保存成功", search:"搜索", enterKeyword:"输入关键词…",
+        none:"（暂无条目，点「＋ 新增」添加）", saveFail:"保存失败", delFail:"删除失败", edit:"编辑：", addItem:"新增条目", cancel:"取消", confirm:"确认", rows:"行" }
+};
+function T(k){ return (STR[lang] && STR[lang][k]) || STR.en[k] || k; }
+function langQS(){ return lang ? ("lang=" + enc(lang)) : ""; }
 const el = (tag, props={}, ...kids) => {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -91,24 +110,18 @@ const el = (tag, props={}, ...kids) => {
   return n;
 };
 
-const tokenInput = $("#token");
-tokenInput.value = localStorage.getItem("webpanel_token") || "";
-tokenInput.addEventListener("change", () => {
-  localStorage.setItem("webpanel_token", tokenInput.value);
-  loadModules();
-});
-
+// The page is served under a secret token path (…/<token>/), so every relative API call
+// carries the token automatically — there is no separate token field to fill in.
 function headers(extra={}) {
-  const h = Object.assign({}, extra);
-  const t = tokenInput.value.trim();
-  if (t) h["X-Web-Token"] = t;
-  return h;
+  return Object.assign({}, extra);
 }
 
 async function api(path, opts={}) {
-  const res = await fetch(path, opts);
-  if (res.status === 401) throw new Error("未授权：请在右上角填入正确的访问 token。");
-  if (!res.ok) throw new Error("请求失败：HTTP " + res.status);
+  const q = langQS();
+  const url = q ? (path + (path.includes("?") ? "&" : "?") + q) : path;
+  const res = await fetch(url, opts);
+  if (res.status === 401 || res.status === 404) throw new Error(T("unauthorized"));
+  if (!res.ok) throw new Error(T("reqFailed") + ": HTTP " + res.status);
   return res.json();
 }
 
@@ -116,7 +129,7 @@ async function api(path, opts={}) {
 // which HttpListener rejects with 411).
 function invoke(module, action, params) {
   const body = (params && params.toString()) || "_=1";
-  return api(`/api/modules/${enc(module.id)}/${enc(action.id)}`, {
+  return api(`api/modules/${enc(module.id)}/${enc(action.id)}`, {
     method: "POST",
     headers: headers({ "Content-Type": "application/x-www-form-urlencoded" }),
     body
@@ -127,18 +140,41 @@ let modules = [];
 let activeId = null;
 let flash = null; // {ok, text} shown once at the next render, near the save button
 
+function buildLangSwitcher() {
+  const sel = $("#langSel");
+  sel.replaceChildren(...languages.map(l => el("option", { value: l, text: l.toUpperCase() })));
+  sel.value = lang;
+  sel.style.display = languages.length > 1 ? "" : "none";
+  sel.onchange = async () => {
+    lang = sel.value;
+    localStorage.setItem("adminpanel_lang", lang);
+    document.documentElement.lang = lang;
+    // Persist server-side so the choice survives the admin URL (tunnel domain) changing.
+    try { await api("api/lang", { method:"POST", headers: headers({ "Content-Type":"application/x-www-form-urlencoded" }), body: "lang=" + enc(lang) }); } catch (e) {}
+    loadModules();
+  };
+}
+
 async function loadModules() {
   const nav = $("#nav");
+  let data;
   try {
-    const data = await api("/api/modules", { headers: headers() });
+    data = await api("api/modules", { headers: headers() });
     modules = data.modules || [];
   } catch (e) {
     nav.replaceChildren(el("div", { class:"empty", text: e.message }));
     $("#main").replaceChildren();
     return;
   }
+  languages = data.languages || [];
+  // The server returns the saved admin language (persisted in its data dir); adopt it so the panel
+  // always opens in the language last chosen, even on a brand-new admin URL where localStorage is empty.
+  lang = data.lang || lang || data.defaultLanguage || "en";
+  localStorage.setItem("adminpanel_lang", lang);
+  document.documentElement.lang = lang;
+  buildLangSwitcher();
   if (!modules.length) {
-    nav.replaceChildren(el("div", { class:"empty", text:"暂无已注册的模块。安装并加载支持 WebPanel 的插件后会出现在这里。" }));
+    nav.replaceChildren(el("div", { class:"empty", text: T("noModules") }));
     $("#main").replaceChildren();
     return;
   }
@@ -159,6 +195,7 @@ function render() {
 
   const settings = []; // {action, inputs} groups saved together by the page button
   for (const action of module.actions) {
+    if (action.hidden) continue;   // invoke-only actions (e.g. a table's per-row action target)
     const built = buildCard(module, action);
     main.append(built.card);
     if (action.kind === "settings") settings.push({ action, inputs: built.inputs });
@@ -168,7 +205,7 @@ function render() {
   if (settings.length) {
     const msg = el("div", { class:"msg" });
     if (flash) { msg.className = "msg " + (flash.ok ? "ok" : "err"); msg.textContent = flash.text; flash = null; }
-    const btn = el("button", { class:"act", text:"保存", onclick: () => saveAll(module, settings, btn) });
+    const btn = el("button", { class:"act", text:T("save"), onclick: () => saveAll(module, settings, btn) });
     main.append(el("div", { class:"savebar" }, btn, msg));
   }
 }
@@ -182,13 +219,13 @@ function buildCard(module, action) {
 
   if (action.kind === "table") {
     card.append(out, msg);
-    invoke(module, action).then(r => showResult(r, msg, out)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+    invoke(module, action).then(r => showResult(r, msg, out, module)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
   } else if (action.kind === "settings") {
     const row = el("div", { class:"row" });
     for (const f of action.fields) row.append(fieldNode(f, inputs));
     card.append(row, msg, out);
     if (action.hasLoader) {
-      api(`/api/modules/${enc(module.id)}/${enc(action.id)}/values`, { headers: headers() })
+      api(`api/modules/${enc(module.id)}/${enc(action.id)}/values`, { headers: headers() })
         .then(d => prefill(inputs, action.fields, d.values || {}))
         .catch(() => {});
     }
@@ -199,14 +236,14 @@ function buildCard(module, action) {
     row.append(btn);
     card.append(row, msg, out);
   } else if (action.kind === "search") {
-    const f = action.fields[0] || { name:"query", label:"搜索", type:"text", placeholder:"输入关键词…" };
+    const f = action.fields[0] || { name:"query", label:T("search"), type:"text", placeholder:T("enterKeyword") };
     card.append(el("div", { class:"row" }, fieldNode(f, inputs)), msg, out);
     let timer = null;
     inputs[f.name].addEventListener("input", () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
         msg.className = "msg";
-        invoke(module, action, collect(inputs)).then(r => showResult(r, msg, out)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+        invoke(module, action, collect(inputs)).then(r => showResult(r, msg, out, module)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
       }, 250);
     });
   } else if (action.kind === "collection") {
@@ -222,27 +259,35 @@ function buildCollection(module, action, card, msg) {
   const isList = action.layout === "list";
   const container = el("div", { class: isList ? "list" : "tiles" });
   const editor = el("div");
-  const addBtn = el("button", { class:"act", text:"＋ 新增", onclick: () => openEditor(null) });
+  const addBtn = el("button", { class:"act", text:T("add"), onclick: () => openEditor(null) });
   card.append(container, el("div", { class:"row", style:"margin-top:10px" }, addBtn), editor, msg);
 
   function reload() {
     editor.replaceChildren();
     msg.className = "msg";
-    api(`/api/modules/${enc(module.id)}/${enc(action.id)}/records`, { headers: headers() })
+    api(`api/modules/${enc(module.id)}/${enc(action.id)}/records`, { headers: headers() })
       .then(d => paint(d.records || []))
       .catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
   }
 
   function paint(records) {
     if (!records.length) {
-      container.replaceChildren(el("span", { class:"muted", text:"（暂无条目，点「＋ 新增」添加）" }));
+      container.replaceChildren(el("span", { class:"muted", text:T("none") }));
       return;
     }
     container.replaceChildren(...records.map(rec => {
       const title = el("div", { class:"slot-title", text: rec.label });
-      const pillbox = el("div", { class:"pills" }, ...(rec.tags || []).map(t => el("span", { class:"pill", text: t })));
+      const tagPills = (rec.tags || []).map(t => el("span", { class:"pill", text: t }));
+      // Summary pills: selected field values shown as "<label>: <value>" using localized field labels.
+      const sumPills = (action.summaryFields || []).map(name => {
+        const v = rec.values ? rec.values[name] : undefined;
+        if (v === undefined || v === "") return null;
+        const f = (action.fields || []).find(x => x.name === name);
+        return el("span", { class:"pill kv", text: (f ? f.label : name) + ": " + v });
+      }).filter(Boolean);
+      const pillbox = el("div", { class:"pills" }, ...tagPills, ...sumPills);
       const x = action.hasDelete
-        ? el("span", { class:"slot-x", text:"×", title:"删除", onclick: (e) => { e.stopPropagation(); del(rec); } })
+        ? el("span", { class:"slot-x", text:"×", title:T("del"), onclick: (e) => { e.stopPropagation(); del(rec); } })
         : null;
       return el("div", { class: isList ? "lrow" : "tile", onclick: () => openEditor(rec) }, title, pillbox, x);
     }));
@@ -258,31 +303,31 @@ function buildCollection(module, action, card, msg) {
       row.append(node);
     }
     const emsg = el("div", { class:"msg" });
-    const saveBtn = el("button", { class:"act", text:"保存", onclick: async () => {
+    const saveBtn = el("button", { class:"act", text:T("save"), onclick: async () => {
       saveBtn.disabled = true;
       emsg.className = "msg";
       try {
         const r = await invoke(module, action, collect(inputs));
         if (r.success) { reload(); }
-        else { emsg.className = "msg err"; emsg.textContent = r.message || "保存失败"; saveBtn.disabled = false; }
+        else { emsg.className = "msg err"; emsg.textContent = r.message || T("saveFail"); saveBtn.disabled = false; }
       } catch (e) { emsg.className = "msg err"; emsg.textContent = e.message; saveBtn.disabled = false; }
     }});
     const actions = el("div", { class:"row", style:"margin-top:10px" }, saveBtn);
-    if (rec && action.hasDelete) actions.append(el("button", { class:"act danger", text:"删除", onclick: () => del(rec) }));
-    actions.append(el("button", { class:"act ghost", text:"取消", onclick: () => editor.replaceChildren() }));
+    if (rec && action.hasDelete) actions.append(el("button", { class:"act danger", text:T("del"), onclick: () => del(rec) }));
+    actions.append(el("button", { class:"act ghost", text:T("cancel"), onclick: () => editor.replaceChildren() }));
     editor.replaceChildren(el("div", { class:"editbox" },
-      el("div", { class:"edittitle", text: rec ? "编辑：" + rec.label : "新增条目" }), row, actions, emsg));
+      el("div", { class:"edittitle", text: rec ? T("edit") + rec.label : T("addItem") }), row, actions, emsg));
   }
 
   async function del(rec) {
     const body = new URLSearchParams(); body.set("key", rec.key);
     msg.className = "msg";
     try {
-      const r = await api(`/api/modules/${enc(module.id)}/${enc(action.id)}/delete`, {
+      const r = await api(`api/modules/${enc(module.id)}/${enc(action.id)}/delete`, {
         method: "POST", headers: headers({ "Content-Type": "application/x-www-form-urlencoded" }), body: body.toString()
       });
       if (r.success) reload();
-      else { msg.className = "msg err"; msg.textContent = r.message || "删除失败"; }
+      else { msg.className = "msg err"; msg.textContent = r.message || T("delFail"); }
     } catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
   }
 
@@ -293,17 +338,25 @@ function fieldNode(f, inputs) {
   let input;
   if (f.type === "select") {
     input = el("select");
+    // For select, option values double as i18n keys server-side; the server already localized
+    // the option texts, so value and text are the same localized string here.
     for (const opt of (f.options || [])) input.append(el("option", { value: opt, text: opt }));
   } else if (f.type === "boolean") {
     input = el("select");
-    input.append(el("option", { value:"true", text:"是" }), el("option", { value:"false", text:"否" }));
+    input.append(el("option", { value:"true", text: lang === "zh" ? "是" : "Yes" }),
+                 el("option", { value:"false", text: lang === "zh" ? "否" : "No" }));
+  } else if (f.type === "textarea") {
+    input = el("textarea", { rows: "12", style: "min-width:min(560px,80vw); width:100%; resize:vertical; font:13px/1.5 monospace;" });
+    if (f.placeholder) input.placeholder = f.placeholder;
   } else {
     input = el("input", { type: f.type === "number" ? "number" : "text" });
     if (f.type === "number") input.step = "any";
     if (f.placeholder) input.placeholder = f.placeholder;
   }
   inputs[f.name] = input;
-  return el("div", { class:"field" }, el("label", { text: f.label + (f.required ? " *" : "") }), input);
+  const wrap = el("div", { class:"field" }, el("label", { text: f.label + (f.required ? " *" : "") }), input);
+  if (f.type === "textarea") wrap.style.width = "100%";
+  return wrap;
 }
 
 function collect(inputs) {
@@ -322,7 +375,7 @@ async function submitForm(module, action, inputs, btn, msg, out) {
   btn.disabled = true;
   msg.className = "msg";
   try {
-    showResult(await invoke(module, action, collect(inputs)), msg, out);
+    showResult(await invoke(module, action, collect(inputs)), msg, out, module);
   } catch (e) {
     msg.className = "msg err"; msg.textContent = e.message;
   } finally {
@@ -348,7 +401,7 @@ async function saveAll(module, settings, btn) {
   }
 }
 
-function showResult(result, msg, out) {
+function showResult(result, msg, out, module) {
   out.replaceChildren();
   if (result.message) {
     msg.className = "msg " + (result.success ? "ok" : "err");
@@ -357,11 +410,63 @@ function showResult(result, msg, out) {
     msg.className = "msg";
   }
   if (result.columns && result.rows) {
-    const thead = el("thead", {}, el("tr", {}, ...result.columns.map(c => el("th", { text: c }))));
-    const tbody = el("tbody", {}, ...result.rows.map(r => el("tr", {}, ...r.map(c => el("td", { text: c })))));
+    // Optional per-row action (generic): a button that invokes module/<rowActionId> with the row key.
+    const hasRowAction = result.rowActionId && module;
+    const headCells = result.columns.map(c => el("th", { text: c }));
+    if (hasRowAction) headCells.push(el("th", { text: "" }));
+    const thead = el("thead", {}, el("tr", {}, ...headCells));
+    const tbody = el("tbody", {}, ...result.rows.map((r, i) => {
+      const cells = r.map(c => el("td", { text: c }));
+      if (hasRowAction) {
+        const key = (result.rowKeys && result.rowKeys[i] != null) ? result.rowKeys[i] : r[0];
+        const btn = el("button", { class:"act", text: result.rowActionLabel || "+",
+          onclick: () => rowAction(module, result.rowActionId, key, btn, msg, result.rowActionFields, result.rowActionLabel) });
+        cells.push(el("td", {}, btn));
+      }
+      return el("tr", {}, ...cells);
+    }));
     out.append(el("table", {}, thead, tbody));
-    out.append(el("div", { class:"count", text: `${result.rows.length} 行` }));
+    out.append(el("div", { class:"count", text: `${result.rows.length} ${T("rows")}` }));
   }
+}
+
+// Invokes a table row's action (e.g. shop quick-add). If the action declares input fields, a popup
+// collects them first (so e.g. the admin must set the prices). On success re-renders the module so
+// any collection that gained a record reflects it; on failure surfaces the message.
+async function rowAction(module, actionId, key, btn, msg, fields, title) {
+  let extra = {};
+  if (fields && fields.length) {
+    extra = await showModal(title || "", fields);
+    if (extra === null) return;   // cancelled
+  }
+  btn.disabled = true;
+  const body = new URLSearchParams(); body.set("key", key);
+  for (const k in extra) body.set(k, extra[k]);
+  try {
+    const r = await api(`api/modules/${enc(module.id)}/${enc(actionId)}`, {
+      method:"POST", headers: headers({ "Content-Type":"application/x-www-form-urlencoded" }), body: body.toString() });
+    if (r.success) { flash = { ok:true, text: r.message }; render(); }
+    else { msg.className = "msg err"; msg.textContent = r.message || T("saveFail"); btn.disabled = false; }
+  } catch (e) { msg.className = "msg err"; msg.textContent = e.message; btn.disabled = false; }
+}
+
+// A small modal that collects the given fields and resolves to their values (or null if cancelled).
+function showModal(title, fields) {
+  return new Promise(resolve => {
+    const inputs = {};
+    const row = el("div", { class:"row" });
+    for (const f of fields) row.append(fieldNode(f, inputs));
+    const overlay = el("div", { class:"modal-overlay" });
+    const done = (val) => { overlay.remove(); resolve(val); };
+    const ok = el("button", { class:"act", text:T("confirm"), onclick: () => done(collect(inputs)) });
+    const cancel = el("button", { class:"act ghost", text:T("cancel"), onclick: () => done(null) });
+    overlay.append(el("div", { class:"modal" },
+      el("div", { class:"edittitle", text: title }), row,
+      el("div", { class:"row", style:"margin-top:12px" }, ok, cancel)));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) done(null); });
+    document.body.append(overlay);
+    const first = fields[0] && inputs[fields[0].name]; if (first) first.focus();
+  });
 }
 
 loadModules();

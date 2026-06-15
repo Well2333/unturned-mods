@@ -12,6 +12,7 @@
 - 🔁 玩家间转账 `/pay`,可设最低额度与手续费税率
 - ⚔️ 击杀奖励:玩家 / 僵尸 / 巨型僵尸 / 动物可分别配置奖励金额
 - 🌐 可选 Web 管理面板集成(配合 [well404.WebPanel](https://www.nuget.org/packages/well404.WebPanel/))
+- 🎮 可选玩家网页钱包:玩家 `/menu` 即可在浏览器里查看余额、向在线玩家转账
 
 ## 安装
 
@@ -57,6 +58,8 @@ killRewards:
 
 安装 [well404.WebPanel](https://www.nuget.org/packages/well404.WebPanel/) 后,Economy 会自动注册「经济」模块:浏览并编辑所有玩家余额、配置货币信息、击杀奖励与转账参数。未安装面板时插件照常通过命令工作。
 
+此外还会注册一个**面向玩家**的钱包菜单:玩家在游戏内输入 `/menu`(或 `/menu economy`)即可在浏览器里查看自己的余额、向任一在线玩家转账(沿用 `/pay` 的开关、最低额与税率)。
+
 ## well404 OpenMod 插件家族
 
 | 插件 | 说明 |
@@ -64,6 +67,7 @@ killRewards:
 | [well404.Economy](https://www.nuget.org/packages/well404.Economy/) | 货币经济核心,全局 `IEconomyProvider` 供币 |
 | [well404.Shop](https://www.nuget.org/packages/well404.Shop/) | 物品商店,买卖物品 / 组合包,依赖 Economy |
 | [well404.WebPanel](https://www.nuget.org/packages/well404.WebPanel/) | 通用 Web 管理面板,供各插件挂载可视化管理模块 |
+| [well404.Essentials](https://www.nuget.org/packages/well404.Essentials/) | 面向玩家的实用指令：home/tp/warp/gift/sleep/back，经济收费可选 |
 
 完整文档、配置示例与本地调试说明见 [GitHub 仓库](https://github.com/Well2333/unturned-mods) 的 [`docs/`](https://github.com/Well2333/unturned-mods/tree/main/docs)。
 

@@ -1,0 +1,77 @@
+# Configuration for Essentials.
+# Embedded as a resource; users can override it in the plugin's data directory.
+# Every value here is also editable from well404.WebPanel when it is installed.
+# warps and gifts are rewritten by the panel / by in-game commands; manual comments
+# inside those two lists are lost on the next write.
+#
+# Economy fees (teleport.costs.*) require an IEconomyProvider (e.g. well404.Economy).
+# Without an economy plugin, all teleports are free regardless of these values.
+
+teleport:
+  # Seconds the player must stand still before a teleport fires (0 = instant).
+  warmupSeconds: 5
+  # Cancel the warmup if the player moves more than moveThreshold metres.
+  cancelOnMove: true
+  moveThreshold: 0.5
+  # Per-command cooldown after a successful teleport (0 = none).
+  cooldownSeconds: 0
+  # Economy fee per teleport, by command. All 0 by default (free).
+  costs:
+    home: 0
+    tp: 0
+    warp: 0
+    back: 0
+
+tpa:
+  # How long a /tp request to a non-teammate stays open (seconds).
+  expirationSeconds: 30
+
+party:
+  # How long a /party invite stays open (seconds).
+  inviteExpirationSeconds: 60
+  # Max party size this plugin enforces (0 = no extra cap). Unturned's vanilla
+  # group-size limit is always bypassed; this is the plugin's own optional cap.
+  maxMembers: 0
+
+back:
+  # Damage immunity granted after /back lands on the death point (0 = none).
+  invincibilitySeconds: 5
+
+sleep:
+  enabled: true
+  # Fraction of online players who must /sleep to flip day<->night (0.5 = half).
+  requiredRatio: 0.5
+
+# Travel points. /warp <name> teleports here; /warp set <name> [cooldown] adds one.
+# Each warp also needs the per-warp permission `well404.essentials.warps.<name>`.
+warps: []
+# Example:
+# warps:
+#   - name: "spawn"
+#     x: 100.0
+#     y: 40.0
+#     z: -50.0
+#     yaw: 90.0
+#     cooldownSeconds: 0
+
+# Free gift packs. /gift lists what you can claim; /gift <id> claims one.
+# permission: empty = everyone; set a node (e.g. well404.essentials.gift.vip) for VIP packs.
+# cron: standard 5-field crontab for the refresh schedule; a player may claim once per period.
+#       empty cron = claimable only once ever.
+gifts: []
+# Example:
+# gifts:
+#   - id: "daily"
+#     name: "Daily Supply"
+#     permission: ""
+#     cron: "0 0 * * *"      # every day at 00:00
+#     items:
+#       - itemId: 15
+#         amount: 2
+#   - id: "vip"
+#     name: "VIP Weekly Crate"
+#     permission: "well404.essentials.gift.vip"
+#     cron: "0 0 * * 1"      # every Monday at 00:00
+#     items:
+#       - itemId: 81
+#         amount: 1

@@ -11,14 +11,67 @@ web:
   #   192.168.x  -> a specific NIC address
   bindAddress: "127.0.0.1"
 
-  port: 8080
+  # Panel port. Kept near the Unturned server ports (27015–27017) and clear of them, so it is easy
+  # to forward alongside the game and avoids the common, often-occupied 8080.
+  port: 27020
 
-  # Access token, required in the `X-Web-Token` header (or `?token=`) for every /api call.
-  # MANDATORY for any non-loopback bindAddress: if left empty there, the server refuses to
-  # expose the panel and falls back to 127.0.0.1 (unless allowInsecurePublic is true).
-  # Empty token + loopback bind = no auth (local machine only).
+  # Secret admin token. The admin panel is ALWAYS served behind it as a path prefix:
+  #   http://host:port/<token>/
+  # The token IS the auth — a wrong/missing one returns a plain 404. Leave empty to have a
+  # random token minted each run (printed in the server log at startup); set a stable value
+  # here to keep the admin URL constant across restarts.
   token: ""
 
-  # Advanced / hidden escape hatch: allow a non-loopback bind WITHOUT a token.
-  # Insecure — anyone who can reach the port gets full admin access. Leave false.
-  allowInsecurePublic: false
+  # ---- Tunnel / reverse proxy (optional; exposes the panel without opening ports) ----
+  # Launches an admin-installed CLI tunnel (NOT bundled/downloaded) and uses its public URL
+  # for player /menu links and the admin URL. Hides the server's real IP; gives HTTPS for free.
+  tunnel:
+    enabled: false
+
+    # type: "cloudflare" | "custom"
+    #   cloudflare -> a no-account Cloudflare Quick Tunnel. Install `cloudflared`, then leave the
+    #                 rest at defaults; args/urlPattern are preset, only `command` (binary path)
+    #                 is used. You get a random https://<...>.trycloudflare.com URL.
+    #   custom     -> you control everything below (command/args/urlPattern/apiUrl), e.g. ngrok.
+    type: "cloudflare"
+
+    # The tunnel binary (or a full path to it). For cloudflare this is the only field that matters.
+    command: "cloudflared"
+
+    # The following four only apply when type: "custom". `{port}` is replaced with the panel port.
+    args: "http {port}"
+    urlPattern: "https://[a-z0-9-]+\\.ngrok[a-z0-9.-]*"   # regex to pull the URL out of output/api
+    apiUrl: "http://127.0.0.1:4040/api/tunnels"           # optional local JSON API to poll instead of logs
+    readyTimeoutSeconds: 30
+    # ^ The custom example above is ngrok (run `ngrok config add-authtoken <token>` once first).
+
+    # Keep the tunnel alive. A Cloudflare quick tunnel can drop after a few hours; with this on,
+    # the panel notices (the process exited, or the public URL stopped responding) and restarts it.
+    # A quick tunnel gets a NEW address on restart, so players must re-open /menu for fresh links
+    # (the new admin URL is printed in the log). Set false to keep the old behaviour.
+    autoRestart: true
+    # How often (seconds) to health-check the public URL; 0 = only react to the process exiting.
+    # The probe self-disables if it can never reach the URL even once, so it never loops on restarts.
+    healthCheckSeconds: 60
+
+  # ---- Player surface (the /p page players open in-game via /menu) ----
+
+  # Public base URL handed to players in their /menu link, e.g. "http://your-ip:27020".
+  # Must be reachable from players' browsers. Leave empty to derive it from bindAddress
+  # + port (only works when bindAddress is a routable address, not 127.0.0.1 / 0.0.0.0).
+  # When no usable URL is available, /menu tells the player the panel isn't reachable.
+  publicBaseUrl: ""
+
+  # How long a player's /menu link stays valid, in minutes.
+  playerSessionMinutes: 5
+
+  # ---- Developer preview (impersonate a fixed player without joining the game) ----
+  # When enabled, opening  http://host:port/<token>/dev-player  mints a long-lived session for the
+  # Steam ID below and drops you straight into that player's /p panel — handy for previewing/debugging
+  # the player menus from a browser without being in-game. Gated behind BOTH the secret admin token
+  # and this switch; keep it OFF in production (it is player impersonation). Actions that need the
+  # player actually online (buy/sell, teleport) still say "must be online"; only the views preview.
+  devPlayer:
+    enabled: false
+    steamId: ""            # e.g. "76561198180246554"
+    displayName: "Dev Player"

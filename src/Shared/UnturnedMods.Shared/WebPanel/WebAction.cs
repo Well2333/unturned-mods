@@ -6,13 +6,17 @@ namespace UnturnedMods.Shared.WebPanel
     /// <summary>The submitted field values for an action invocation.</summary>
     public sealed class WebActionRequest
     {
-        public WebActionRequest(IReadOnlyDictionary<string, string> values)
+        public WebActionRequest(IReadOnlyDictionary<string, string> values, string language = "en")
         {
             Values = values ?? throw new ArgumentNullException(nameof(values));
+            Language = string.IsNullOrWhiteSpace(language) ? "en" : language;
         }
 
         /// <summary>Raw field name → value map (form keys or the search box's <c>query</c>).</summary>
         public IReadOnlyDictionary<string, string> Values { get; }
+
+        /// <summary>The admin's chosen UI language (for localizing any returned messages).</summary>
+        public string Language { get; }
 
         /// <summary>Returns the trimmed value for <paramref name="name"/>, or null if absent/blank.</summary>
         public string? Get(string name)
@@ -85,6 +89,39 @@ namespace UnturnedMods.Shared.WebPanel
         public IReadOnlyList<string>? Columns { get; set; }
 
         public IReadOnlyList<IReadOnlyList<string>>? Rows { get; set; }
+
+        /// <summary>
+        /// Optional per-row action: when set, the panel renders a button (labelled
+        /// <see cref="RowActionLabel"/>, an i18n key) on every row that invokes the module action
+        /// <see cref="RowActionId"/> with that row's key (from <see cref="RowKeys"/> when given,
+        /// else the row's first cell). Generic — the host doesn't interpret the action.
+        /// </summary>
+        public string? RowActionId { get; set; }
+
+        public string? RowActionLabel { get; set; }
+
+        /// <summary>Per-row keys parallel to <see cref="Rows"/>; null = use each row's first cell.</summary>
+        public IReadOnlyList<string>? RowKeys { get; set; }
+
+        /// <summary>
+        /// Optional input fields prompted (in a popup) before the row action runs; their values are
+        /// posted alongside the row key. Null/empty = invoke immediately. Lets a row action collect
+        /// data (e.g. the shop quick-add asking for buy/sell prices).
+        /// </summary>
+        public IReadOnlyList<WebField>? RowActionFields { get; set; }
+
+        /// <summary>Attaches a per-row action button to a table result (see <see cref="RowActionId"/>).</summary>
+        public WebActionResult WithRowAction(
+            string actionId, string label,
+            IReadOnlyList<string>? rowKeys = null,
+            IReadOnlyList<WebField>? fields = null)
+        {
+            RowActionId = actionId;
+            RowActionLabel = label;
+            RowKeys = rowKeys;
+            RowActionFields = fields;
+            return this;
+        }
 
         public static WebActionResult Ok(string? message = null)
             => new WebActionResult { Success = true, Message = message };

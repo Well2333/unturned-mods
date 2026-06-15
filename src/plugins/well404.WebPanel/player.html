@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Player Panel</title>
+<style>
+  :root { --bg:#1e1f22; --panel:#2b2d31; --panel2:#313338; --line:#3f4147; --fg:#dbdee1; --muted:#949ba4; --accent:#5865f2; --ok:#3ba55d; --err:#ed4245; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; align-items:center; gap:10px; padding:12px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header .spacer { flex:1; }
+  header .who { color:var(--muted); font-size:13px; }
+  header select, header button.tool { background:var(--panel2); border:1px solid var(--line); color:var(--fg); border-radius:6px; padding:6px 9px; font-size:13px; cursor:pointer; }
+  .tabs { display:flex; flex-wrap:wrap; gap:6px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:49px; z-index:9; }
+  .tabs button { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:7px 14px; border-radius:999px; cursor:pointer; font-size:14px; }
+  .tabs button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  main { padding:16px; max-width:720px; margin:0 auto; }
+  .note { color:var(--muted); font-size:12px; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .head { display:inline-block; font-size:14px; font-weight:600; color:var(--fg); margin:0 0 16px; background:var(--panel2); border:1px solid var(--line); border-radius:999px; padding:7px 16px; }
+  .notice { padding:10px 13px; border-radius:8px; font-size:13px; margin:0 0 14px; background:var(--panel2); border:1px solid var(--line); white-space:pre-line; }
+  .md { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:4px 16px; margin:0 0 14px; }
+  .md h1,.md h2,.md h3 { margin:14px 0 8px; }
+  .md h1 { font-size:20px; } .md h2 { font-size:17px; } .md h3 { font-size:15px; }
+  .md p { margin:8px 0; } .md ul,.md ol { margin:8px 0; padding-left:22px; }
+  .md a { color:var(--accent); } .md code { background:var(--bg); padding:1px 5px; border-radius:4px; }
+  .md hr { border:none; border-top:1px solid var(--line); margin:12px 0; }
+  .cmds { display:flex; flex-direction:column; gap:6px; }
+  .cmd { display:flex; gap:10px; align-items:baseline; background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:7px 11px; }
+  .cmd code { color:#fff; font-weight:600; flex:0 0 auto; }
+  .cmd span { color:var(--muted); font-size:13px; }
+  .grouphead { font-size:13px; color:var(--muted); margin:14px 0 6px; font-weight:600; }
+  .cards { display:flex; flex-direction:column; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; transition:border-color .12s, box-shadow .12s, transform .12s; }
+  .card:hover { border-color:#4a4d55; box-shadow:0 4px 14px rgba(0,0,0,.25); }
+  .card h3 { margin:0 0 8px; font-size:15px; }
+  .card .lines { color:var(--muted); font-size:13px; margin:0 0 8px; }
+  .card .lines div { margin:2px 0; }
+  .pills { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px; }
+  .pill { display:inline-block; background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:3px 10px; font-size:12px; color:var(--fg); }
+  .btns { display:flex; flex-wrap:wrap; gap:8px; }
+  /* Generic section heading (driven by card.group) + count */
+  .section { margin:0 0 16px; }
+  .section .grouphead { display:flex; align-items:center; gap:8px; margin:0 0 8px; }
+  .section .grouphead .cnt { color:var(--muted); font-weight:400; }
+  /* Generic "list" layout: responsive two-column grid of compact item cells (1 col on a narrow
+     Steam webview, 2+ when there's width). Each cell stacks a header (badge+name+tags) over its
+     action buttons so it stays readable in a half-width column instead of one wasteful full row. */
+  .plist { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:8px; align-items:start; }
+  .prow { display:flex; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:9px 12px; transition:border-color .12s; }
+  .prow:hover { border-color:#4a4d55; }
+  .prow .ptop { display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
+  .prow .badge { font-size:11px; color:var(--muted); background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:2px 6px; flex:0 0 auto; font-variant-numeric:tabular-nums; }
+  .prow .nm { font-weight:600; font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .prow .mid { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+  .prow .rowbtns { display:flex; gap:6px; flex-wrap:wrap; }
+  /* collapsible card: a parent cell + its indented children, always spanning the full grid width.
+     The children themselves flow in the same responsive two-column grid to avoid wasted space. */
+  .prowwrap { grid-column:1/-1; display:flex; flex-direction:column; gap:6px; }
+  .prowwrap > .children { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:6px; align-items:start; margin:0 0 0 16px; padding-left:10px; border-left:2px solid var(--line); }
+  button.act.sm.toggle { background:var(--bg); }
+  button.act { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:8px 16px; border-radius:7px; cursor:pointer; font-size:14px; }
+  button.act:hover { filter:brightness(1.15); }
+  button.act:disabled { opacity:.5; cursor:default; }
+  button.act.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.act.success { background:var(--ok); border-color:var(--ok); color:#fff; }
+  button.act.danger { background:var(--err); border-color:var(--err); color:#fff; }
+  button.act.sm { padding:6px 10px; font-size:13px; border-radius:6px; white-space:nowrap; }
+  .flash { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); max-width:90%; padding:11px 16px; border-radius:8px; font-size:14px; z-index:20; box-shadow:0 4px 16px rgba(0,0,0,.4); white-space:pre-line; }
+  .flash.ok { background:var(--ok); color:#fff; }
+  .flash.err { background:var(--err); color:#fff; }
+  .empty { color:var(--muted); text-align:center; padding:50px 16px; }
+  /* In-page input prompt (replaces window.prompt, which Steam's in-game browser suppresses) */
+  .pmodal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:60; }
+  .pmodal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; min-width:260px; max-width:92%; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .pmodal .ptitle { font-size:15px; color:var(--fg); margin-bottom:12px; }
+  .pmodal input { width:100%; box-sizing:border-box; background:var(--bg); border:1px solid var(--line); color:var(--fg); border-radius:7px; padding:10px 12px; font-size:16px; }
+  .pmodal .pmbtns { display:flex; gap:8px; margin-top:14px; justify-content:flex-end; }
+  button.act.ghost { background:transparent; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="appTitle">🎮 Player Panel</h1>
+  <div class="spacer"></div>
+  <div class="who" id="who"></div>
+  <select id="langSel" title="Language"></select>
+  <button class="tool" id="refreshBtn">↻</button>
+</header>
+<div class="tabs" id="tabs"></div>
+<main id="main"><div class="empty">Loading…</div></main>
+
+<script>
+"use strict";
+const $ = (s, r=document) => r.querySelector(s);
+const enc = encodeURIComponent;
+
+const TOKEN = new URLSearchParams(location.search).get("t") || "";
+let lang = localStorage.getItem("panel_lang") || "";   // resolved from server default on first load
+const expandedRows = new Set();   // collapsible-card keys kept open across re-renders
+let menus = [];
+let languages = [];
+let activeId = decodeURIComponent((location.hash || "").replace(/^#/, "")) || null;
+
+// ---- frontend chrome i18n (server-driven content is localized server-side) ----
+const STR = {
+  en: { title:"🎮 Player Panel", loading:"Loading…", noFeatures:"Nothing available yet.",
+        empty:"(nothing here)", noToken:"Missing session token. Type /menu in-game to reopen the panel.",
+        sessionEnded:"Session expired — reopen the panel in-game with /menu.",
+        staleNote:"This page does not refresh on its own — tap ↻ to get the latest data.",
+        refresh:"Refresh", reqFailed:"Request failed", details:"Details",
+        confirm:"OK", cancel:"Cancel" },
+  zh: { title:"🎮 玩家面板", loading:"加载中…", noFeatures:"暂时没有可用的功能。",
+        empty:"（暂无内容）", noToken:"缺少会话令牌。请在游戏内输入 /menu 重新打开面板。",
+        sessionEnded:"会话已过期，请在游戏内用 /menu 重新打开面板。",
+        staleNote:"本页不会自动刷新——点 ↻ 获取最新数据。",
+        refresh:"刷新", reqFailed:"请求失败", details:"详情",
+        confirm:"确定", cancel:"取消" }
+};
+function T(k){ return (STR[lang] && STR[lang][k]) || STR.en[k] || k; }
+
+function el(tag, attrs={}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k === "html") node.innerHTML = v;
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2), v);
+    else if (v !== null && v !== undefined) node.setAttribute(k, v);
+  }
+  for (const c of children) if (c) node.append(c);
+  return node;
+}
+
+async function api(path, opts={}) {
+  const sep = path.includes("?") ? "&" : "?";
+  const res = await fetch(path + sep + "t=" + enc(TOKEN) + "&lang=" + enc(lang), opts);
+  if (res.status === 401) throw new Error(T("sessionEnded"));
+  if (!res.ok) throw new Error(T("reqFailed") + ": HTTP " + res.status);
+  return res.json();
+}
+
+// ---- minimal, safe Markdown renderer (escapes HTML first) ----
+function mdToHtml(src) {
+  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const lines = esc(src).split(/\r?\n/);
+  let html = "", inList = false;
+  const inline = s => s
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+  for (let raw of lines) {
+    const line = raw.trim();
+    if (/^[-*]\s+/.test(line)) { if (!inList){html+="<ul>";inList=true;} html += "<li>"+inline(line.replace(/^[-*]\s+/,""))+"</li>"; continue; }
+    if (inList) { html += "</ul>"; inList = false; }
+    if (!line) continue;
+    const h = line.match(/^(#{1,3})\s+(.*)$/);
+    if (h) { html += "<h"+h[1].length+">"+inline(h[2])+"</h"+h[1].length+">"; continue; }
+    if (/^---+$/.test(line)) { html += "<hr>"; continue; }
+    html += "<p>"+inline(line)+"</p>";
+  }
+  if (inList) html += "</ul>";
+  return html;
+}
+
+let flashTimer = null;
+function flash(message, ok) {
+  if (!message) return;
+  clearTimeout(flashTimer);
+  const old = $(".flash"); if (old) old.remove();
+  const node = el("div", { class: "flash " + (ok ? "ok" : "err"), text: message });
+  document.body.append(node);
+  flashTimer = setTimeout(() => node.remove(), 4000);
+}
+
+function applyChrome() {
+  $("#appTitle").textContent = T("title");
+  $("#refreshBtn").title = T("refresh");
+  document.documentElement.lang = lang;
+}
+
+function buildLangSwitcher() {
+  const sel = $("#langSel");
+  sel.replaceChildren(...languages.map(l => el("option", { value: l, text: l.toUpperCase() })));
+  sel.value = lang;
+  sel.onchange = async () => {
+    lang = sel.value;
+    localStorage.setItem("panel_lang", lang);
+    applyChrome();
+    // Persist the choice server-side (per player) before reloading, so it sticks across sessions.
+    try { await api("/api/p/lang", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "_=1" }); } catch (e) {}
+    load();
+  };
+  sel.style.display = languages.length > 1 ? "" : "none";
+}
+
+async function load() {
+  let data;
+  try { data = await api("/api/p/view"); }
+  catch (e) { $("#main").replaceChildren(el("div", { class: "empty", text: e.message })); return; }
+
+  languages = data.languages || [];
+  // The server returns the player's saved language (persisted per Steam ID); adopt it so the panel
+  // always opens in the language they last chose, on any device.
+  lang = data.lang || lang || data.defaultLanguage || "en";
+  localStorage.setItem("panel_lang", lang);
+  applyChrome();
+  buildLangSwitcher();
+
+  menus = data.menus || [];
+  $("#who").textContent = data.player ? data.player.name : "";
+  if (!menus.length) {
+    $("#tabs").replaceChildren();
+    $("#main").replaceChildren(el("div", { class: "empty", text: T("noFeatures") }));
+    return;
+  }
+  if (!menus.some(m => m.id === activeId)) activeId = menus[0].id;
+  renderTabs();
+  renderActive();
+}
+
+function renderTabs() {
+  $("#tabs").replaceChildren(...menus.map(m =>
+    el("button", { class: m.id === activeId ? "active" : "", onclick: () => {
+      activeId = m.id; history.replaceState(null, "", "#" + enc(m.id)); renderTabs(); renderActive();
+    } }, (m.icon ? m.icon + " " : "") + m.title)));
+}
+
+function renderActive() {
+  const menu = menus.find(m => m.id === activeId);
+  if (menu) renderView(menu, menu.view);
+}
+
+// Generic renderer for every menu. The host has NO per-plugin knowledge: a menu drives
+// its own look entirely through the data it returns — an optional Markdown body, a header
+// chip, a layout hint ("list" vs cards), and cards that may carry a section group + a badge.
+function renderView(menu, view) {
+  const main = $("#main");
+  main.replaceChildren();
+  main.append(el("div", { class: "note" }, el("span", { text: "ℹ " + T("staleNote") })));
+
+  if (view.bodyMarkdown) main.append(el("div", { class: "md", html: mdToHtml(view.bodyMarkdown) }));
+  if (view.header) main.append(el("div", { class: "head", text: view.header }));
+  if (view.message) main.append(el("div", { class: "notice", text: view.message }));
+
+  const cards = view.cards || [];
+  if (!cards.length && !view.bodyMarkdown) {
+    if (!view.message) main.append(el("div", { class: "empty", text: T("empty") }));
+    return;
+  }
+
+  // Group cards by their optional section label, preserving the order menus give them.
+  const groups = [];
+  const index = new Map();
+  for (const card of cards) {
+    const key = card.group || "";
+    if (!index.has(key)) { index.set(key, groups.length); groups.push({ label: card.group || null, cards: [] }); }
+    groups[index.get(key)].cards.push(card);
+  }
+
+  const list = view.layout === "list";
+  for (const g of groups) {
+    const sec = el("div", { class: "section" });
+    if (g.label) sec.append(el("div", { class: "grouphead" },
+      el("span", { text: g.label }), el("span", { class: "cnt", text: "· " + g.cards.length })));
+    const wrap = el("div", { class: list ? "plist" : "cards" });
+    for (const c of g.cards) wrap.append(list ? buildRow(menu, c) : buildCard(menu, c));
+    sec.append(wrap);
+    main.append(sec);
+  }
+}
+
+// Compact one-line row for the "list" layout: optional leading badge, label, any pill tags,
+// then the card's buttons. A row with tags (or children) spans full width. A card with children
+// gets an inline expand/collapse toggle; the children render indented beneath it.
+function buildRow(menu, card) {
+  const hasTags = card.tags && card.tags.length;
+  const hasKids = card.children && card.children.length;
+  const row = el("div", { class: "prow" });
+  const top = el("div", { class: "ptop" });
+  if (card.badge) top.append(el("span", { class: "badge", text: card.badge }));
+  if (card.label) top.append(el("span", { class: "nm", text: card.label }));
+  if (hasTags) { const mid = el("div", { class: "mid" }); for (const t of card.tags) mid.append(el("span", { class: "pill", text: t })); top.append(mid); }
+  row.append(top);
+  const bb = el("div", { class: "rowbtns" });
+  if (card.buttons) for (const b of card.buttons) {
+    const btn = el("button", { class: "act sm " + (b.style || ""), text: b.label, onclick: () => invoke(menu, card, b, btn) });
+    bb.append(btn);
+  }
+
+  if (!hasKids) {
+    if (bb.children.length) row.append(bb);
+    return row;
+  }
+
+  const kids = el("div", { class: "children" });
+  for (const ch of card.children) kids.append(buildRow(menu, ch));
+  const sync = () => { const open = expandedRows.has(card.key); kids.style.display = open ? "" : "none"; toggle.textContent = (open ? "▾ " : "▸ ") + T("details"); };
+  const toggle = el("button", { class: "act sm toggle", onclick: () => {
+    if (expandedRows.has(card.key)) expandedRows.delete(card.key); else expandedRows.add(card.key);
+    sync();
+  } });
+  bb.append(toggle);
+  row.append(bb);
+  sync();
+  return el("div", { class: "prowwrap" }, row, kids);
+}
+
+function buildCard(menu, card) {
+  // A card with no buttons and a "cmds:" key prefix is rendered as a command list (intro page).
+  const node = el("div", { class: "card" }, el("h3", { text: card.label }));
+  if (card.lines && card.lines.length) node.append(el("div", { class: "lines" }, ...card.lines.map(l => el("div", { text: l }))));
+  if (card.tags && card.tags.length) node.append(el("div", { class: "pills" }, ...card.tags.map(t => el("span", { class: "pill", text: t }))));
+  if (card.buttons && card.buttons.length) {
+    node.append(el("div", { class: "btns" }, ...card.buttons.map(b => {
+      const btn = el("button", { class: "act " + (b.style || ""), text: b.label, onclick: () => invoke(menu, card, b, btn) });
+      return btn;
+    })));
+  }
+  return node;
+}
+
+// An in-page numeric prompt. Steam's in-game browser silently ignores window.prompt(), so we
+// render our own overlay with an input. Resolves to the trimmed string, or null if cancelled.
+function askValue(label, dflt) {
+  return new Promise(resolve => {
+    const overlay = el("div", { class:"pmodal-overlay" });
+    const input = el("input", { type:"number", inputmode:"numeric", min:"1", step:"1", value: dflt || "" });
+    const close = (val) => { overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); };
+    const onKey = (e) => { if (e.key === "Enter") close(input.value.trim()); else if (e.key === "Escape") close(null); };
+    const ok = el("button", { class:"act", text:T("confirm"), onclick: () => close(input.value.trim()) });
+    const cancel = el("button", { class:"act ghost", text:T("cancel"), onclick: () => close(null) });
+    overlay.append(el("div", { class:"pmodal" },
+      el("div", { class:"ptitle", text: label }), input,
+      el("div", { class:"pmbtns" }, cancel, ok)));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+    document.addEventListener("keydown", onKey);
+    document.body.append(overlay);
+    input.focus(); input.select();
+  });
+}
+
+async function invoke(menu, card, button, btnNode) {
+  let value = null;
+  if (button.promptLabel) {
+    // An explicit empty promptDefault ("") opens the box empty so the player must type a value
+    // (e.g. a specific quantity); only an absent default falls back to "1".
+    const dflt = (button.promptDefault === null || button.promptDefault === undefined) ? "1" : button.promptDefault;
+    const entered = await askValue(button.promptLabel, dflt);
+    if (entered === null) return;
+    value = entered.trim();
+  }
+  btnNode.disabled = true;
+  const body = new URLSearchParams();
+  body.set("action", button.actionId);
+  body.set("cardKey", card.key);
+  if (value !== null) body.set("value", value);
+
+  let r;
+  try {
+    r = await api("/api/p/invoke/" + enc(menu.id), {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body
+    });
+  } catch (e) { flash(e.message, false); btnNode.disabled = false; return; }
+
+  flash(r.message, r.success);
+  if (r.refresh && r.view) { menu.view = r.view; if (menu.id === activeId) renderView(menu, r.view); }
+  else btnNode.disabled = false;
+}
+
+$("#refreshBtn").addEventListener("click", load);
+
+if (!TOKEN) {
+  applyChrome();
+  $("#main").replaceChildren(el("div", { class: "empty", text: T("noToken") }));
+} else {
+  load();
+}
+</script>
+</body>
+</html>

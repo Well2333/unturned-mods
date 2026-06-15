@@ -14,38 +14,81 @@ namespace well404.WebPanel
     /// <summary>
     /// A dependency-free HTTP host (BCL <see cref="HttpListener"/>) that serves the
     /// generic single-page panel and a small JSON API over the
-    /// <see cref="IWebPanelRegistry"/>:
+    /// <see cref="IWebPanelRegistry"/>. The admin surface lives entirely under a secret
+    /// <b>token path</b> (<c>/&lt;token&gt;/…</c>) — the unguessable first path segment IS the
+    /// auth, so a wrong or missing token is an ordinary 404 (no unauthorized oracle):
     /// <list type="bullet">
-    /// <item><c>GET /</c> — the SPA (no auth, so the token can be entered there).</item>
-    /// <item><c>GET /api/modules</c> — module + action metadata to render from.</item>
-    /// <item><c>POST /api/modules/{module}/{action}</c> — invoke an action.</item>
+    /// <item><c>GET /&lt;token&gt;/</c> — the SPA (its API calls are relative, so they stay in-path).</item>
+    /// <item><c>GET /&lt;token&gt;/api/modules</c> — module + action metadata to render from.</item>
+    /// <item><c>POST /&lt;token&gt;/api/modules/{module}/{action}</c> — invoke an action.</item>
     /// </list>
-    /// All <c>/api</c> calls require the token (when one is configured) in the
-    /// <c>X-Web-Token</c> header or a <c>?token=</c> query parameter.
+    /// The token is mandatory (the plugin generates one when config leaves it empty); anything
+    /// outside the token path — including bare <c>/</c> — reveals nothing.
+    /// <para>
+    /// It also serves a separate, per-player surface (no admin token; authenticated by a
+    /// short-lived session token a player receives in-game):
+    /// <list type="bullet">
+    /// <item><c>GET /p</c> — the player SPA (reads the <c>?t=</c> session token).</item>
+    /// <item><c>GET /api/p/view</c> — the player's menus, each pre-rendered.</item>
+    /// <item><c>POST /api/p/invoke/{menu}</c> — execute a card button as that player.</item>
+    /// </list>
+    /// Player <c>/api/p</c> calls carry the session token in <c>?t=</c> (or the
+    /// <c>X-Player-Token</c> header); it is validated against <see cref="PlayerWebSessionManager"/>.
+    /// </para>
     /// </summary>
     public sealed class WebPanelHttpServer : IDisposable
     {
         private readonly IWebPanelRegistry m_Registry;
+        private readonly IPlayerMenuRegistry m_PlayerRegistry;
+        private readonly IWebTranslationRegistry m_Translations;
+        private readonly PlayerWebSessionManager m_Sessions;
+        private readonly PlayerLanguageStore m_PlayerLanguages;
+        private readonly AdminLanguageStore m_AdminLanguage;
         private readonly ILogger m_Logger;
         private readonly string m_Token;
         private readonly string m_Html;
+        private readonly string m_PlayerHtml;
+        private readonly DevPlayerSettings m_DevPlayer;
         private readonly HttpListener m_Listener;
         private CancellationTokenSource? m_Cts;
 
         public WebPanelHttpServer(
             IWebPanelRegistry registry,
+            IPlayerMenuRegistry playerRegistry,
+            IWebTranslationRegistry translations,
+            PlayerWebSessionManager sessions,
+            PlayerLanguageStore playerLanguages,
+            AdminLanguageStore adminLanguage,
             ILogger logger,
             string prefix,
             string token,
-            string html)
+            string html,
+            string playerHtml,
+            DevPlayerSettings devPlayer)
         {
             m_Registry = registry;
+            m_PlayerRegistry = playerRegistry;
+            m_Translations = translations;
+            m_Sessions = sessions;
+            m_PlayerLanguages = playerLanguages;
+            m_AdminLanguage = adminLanguage;
             m_Logger = logger;
             m_Token = token;
             m_Html = html;
+            m_PlayerHtml = playerHtml;
+            m_DevPlayer = devPlayer ?? new DevPlayerSettings();
             m_Listener = new HttpListener();
             m_Listener.Prefixes.Add(prefix);
         }
+
+        /// <summary>The language requested via <c>?lang=</c>, or the default when absent.</summary>
+        private string LangOf(HttpListenerRequest request)
+        {
+            var lang = request.QueryString["lang"];
+            return string.IsNullOrWhiteSpace(lang) ? m_Translations.DefaultLanguage : lang!;
+        }
+
+        private string Tr(string? key, string lang) => m_Translations.Resolve(key ?? string.Empty, lang);
 
         public void Start()
         {
@@ -88,31 +131,120 @@ namespace well404.WebPanel
                 var request = context.Request;
                 var path = request.Url?.AbsolutePath ?? "/";
 
-                if (request.HttpMethod == "GET" && (path == "/" || path == "/index.html"))
+                // CORS preflight (only fires for non-simple cross-origin requests via a proxy).
+                if (request.HttpMethod == "OPTIONS")
+                {
+                    WriteText(context.Response, 204, "text/plain; charset=utf-8", string.Empty);
+                    return;
+                }
+
+                // ----- player surface (separate, per-player session auth) -----
+                if (request.HttpMethod == "GET" && (path == "/p" || path == "/p/"))
+                {
+                    WriteText(context.Response, 200, "text/html; charset=utf-8", m_PlayerHtml);
+                    return;
+                }
+
+                if (path.StartsWith("/api/p/", StringComparison.Ordinal) || path == "/api/p")
+                {
+                    await HandlePlayerApiAsync(context, path).ConfigureAwait(false);
+                    return;
+                }
+
+                // ----- admin surface (token-in-path: /<token>/…) --------------
+                // The secret token is the first path segment; a wrong/absent one is a plain 404,
+                // indistinguishable from a non-existent route (no "unauthorized" oracle).
+                var prefix = "/" + m_Token;
+                if (path == prefix)
+                {
+                    // Redirect to the trailing-slash form so the SPA's relative API calls resolve
+                    // under /<token>/ rather than the server root.
+                    context.Response.Redirect(prefix + "/");
+                    context.Response.StatusCode = 302;
+                    context.Response.Close();
+                    return;
+                }
+
+                if (!path.StartsWith(prefix + "/", StringComparison.Ordinal))
+                {
+                    // Anything outside the token path (including bare "/") reveals nothing.
+                    var body = path == "/"
+                        ? "Web Panel is running. Access requires the admin token URL."
+                        : "Not found";
+                    WriteText(context.Response, path == "/" ? 200 : 404, "text/plain; charset=utf-8", body);
+                    return;
+                }
+
+                // Strip the token prefix; route the remainder exactly like the old admin API.
+                var adminPath = path.Substring(prefix.Length);
+
+                if (request.HttpMethod == "GET" && (adminPath == "/" || adminPath == "/index.html"))
                 {
                     WriteText(context.Response, 200, "text/html; charset=utf-8", m_Html);
                     return;
                 }
 
-                if (!path.StartsWith("/api/", StringComparison.Ordinal) && path != "/api")
+                // Developer preview: mint a session for the configured player and redirect into the
+                // player surface, so the /p menus can be inspected without joining the game. Gated by
+                // the admin token (we're already inside its path) AND the devPlayer switch; when off,
+                // it 404s like any other unknown route (no oracle).
+                if (request.HttpMethod == "GET" && adminPath == "/dev-player")
+                {
+                    if (!m_DevPlayer.Enabled)
+                    {
+                        WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                        return;
+                    }
+
+                    var devToken = m_Sessions.CreateDevSession(m_DevPlayer.SteamId, m_DevPlayer.DisplayName);
+                    if (devToken == null)
+                    {
+                        WriteText(context.Response, 200, "text/plain; charset=utf-8",
+                            "devPlayer.enabled is true but devPlayer.steamId is empty — set it in config.yaml.");
+                        return;
+                    }
+
+                    context.Response.Redirect("/p?t=" + devToken);
+                    context.Response.StatusCode = 302;
+                    context.Response.Close();
+                    return;
+                }
+
+                if (!adminPath.StartsWith("/api/", StringComparison.Ordinal) && adminPath != "/api")
                 {
                     WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
                     return;
                 }
 
-                if (!IsAuthorized(request))
+                // Persist the admin UI language server-side so it survives the admin URL changing
+                // (browser localStorage is per-origin and would be lost on a new tunnel domain).
+                if (request.HttpMethod == "POST" && adminPath == "/api/lang")
                 {
-                    WriteJson(context.Response, 401, "{\"success\":false,\"message\":\"Unauthorized\"}");
+                    var chosen = request.QueryString["lang"];
+                    if (string.IsNullOrWhiteSpace(chosen))
+                    {
+                        ParseForm(ReadBody(request)).TryGetValue("lang", out chosen);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(chosen))
+                    {
+                        m_AdminLanguage.Set(chosen!);
+                    }
+
+                    WriteJson(context.Response, 200, "{\"ok\":true}");
                     return;
                 }
 
-                if (request.HttpMethod == "GET" && path == "/api/modules")
+                if (request.HttpMethod == "GET" && adminPath == "/api/modules")
                 {
-                    WriteJson(context.Response, 200, BuildModulesJson());
+                    // The saved admin language wins over the query string, so the panel always opens
+                    // in the language last chosen; the client adopts the returned "lang".
+                    var lang = m_AdminLanguage.Get() ?? LangOf(request);
+                    WriteJson(context.Response, 200, BuildModulesJson(lang));
                     return;
                 }
 
-                var segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                var segments = adminPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
                 if (segments.Length == 5 && segments[1] == "modules")
                 {
                     // ["api", "modules", "{module}", "{action}", "values" | "records" | "delete"]
@@ -176,7 +308,7 @@ namespace well404.WebPanel
             WebActionResult result;
             try
             {
-                result = await action.Handler(new WebActionRequest(values)).ConfigureAwait(false);
+                result = await action.Handler(new WebActionRequest(values, LangOf(context.Request))).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -184,7 +316,7 @@ namespace well404.WebPanel
                 result = WebActionResult.Fail(ex.Message);
             }
 
-            WriteJson(context.Response, 200, BuildResultJson(result));
+            WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
         }
 
         private async Task LoadValuesAsync(HttpListenerContext context, string moduleId, string actionId)
@@ -258,7 +390,8 @@ namespace well404.WebPanel
             var action = FindAction(moduleId, actionId);
             if (action?.DeleteHandler == null)
             {
-                WriteJson(context.Response, 404, "{\"success\":false,\"message\":\"不支持删除\"}");
+                WriteJson(context.Response, 404,
+                    "{\"success\":false,\"message\":" + Json.Encode(Tr("Delete is not supported here.", LangOf(context.Request))) + "}");
                 return;
             }
 
@@ -266,7 +399,7 @@ namespace well404.WebPanel
             WebActionResult result;
             try
             {
-                result = await action.DeleteHandler(new WebActionRequest(values)).ConfigureAwait(false);
+                result = await action.DeleteHandler(new WebActionRequest(values, LangOf(context.Request))).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -274,7 +407,7 @@ namespace well404.WebPanel
                 result = WebActionResult.Fail(ex.Message);
             }
 
-            WriteJson(context.Response, 200, BuildResultJson(result));
+            WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
         }
 
         private WebPanelAction? FindAction(string moduleId, string actionId)
@@ -323,29 +456,241 @@ namespace well404.WebPanel
             return sb.ToString();
         }
 
-        private bool IsAuthorized(HttpListenerRequest request)
+        // ----- player surface -------------------------------------------------
+
+        /// <summary>
+        /// Routes the player-facing JSON API. Authenticates every call against the
+        /// per-player session token (<c>?t=</c> or <c>X-Player-Token</c>); the admin token is
+        /// never accepted here, and the session token is never accepted on the admin API.
+        /// </summary>
+        private async Task HandlePlayerApiAsync(HttpListenerContext context, string path)
         {
-            if (string.IsNullOrEmpty(m_Token))
+            var session = m_Sessions.Validate(GetPlayerToken(context.Request));
+            if (session == null)
             {
-                return true;
+                WriteJson(context.Response, 401,
+                    "{\"ok\":false,\"message\":\"Session expired — reopen the panel in-game.\"}");
+                return;
             }
 
-            var header = request.Headers["X-Web-Token"];
-            if (string.Equals(header, m_Token, StringComparison.Ordinal))
+            var segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // ["api", "p", "lang"] — persist this player's chosen panel language (server-side, per
+            // Steam ID), so it is restored next time they open the panel from any device.
+            if (context.Request.HttpMethod == "POST" && segments.Length == 3 && segments[2] == "lang")
             {
-                return true;
+                var chosen = context.Request.QueryString["lang"];
+                if (string.IsNullOrWhiteSpace(chosen))
+                {
+                    ParseForm(ReadBody(context.Request)).TryGetValue("lang", out chosen);
+                }
+
+                if (!string.IsNullOrWhiteSpace(chosen))
+                {
+                    m_PlayerLanguages.Set(session.SteamId, chosen!);
+                }
+
+                WriteJson(context.Response, 200, "{\"ok\":true}");
+                return;
             }
 
-            var query = request.QueryString["token"];
-            return string.Equals(query, m_Token, StringComparison.Ordinal);
+            // The player's saved language wins over the query string, so the panel always opens in
+            // the language they last chose; only an explicit switch (POST /lang) changes it.
+            var lang = m_PlayerLanguages.Get(session.SteamId) ?? LangOf(context.Request);
+            var ctx = new PlayerMenuContext(session.SteamId, session.DisplayName, lang);
+
+            // ["api", "p", "view"]
+            if (context.Request.HttpMethod == "GET" && segments.Length == 3 && segments[2] == "view")
+            {
+                await PlayerViewAsync(context, ctx).ConfigureAwait(false);
+                return;
+            }
+
+            // ["api", "p", "invoke", "{menuId}"]
+            if (context.Request.HttpMethod == "POST" && segments.Length == 4 && segments[2] == "invoke")
+            {
+                await PlayerInvokeAsync(context, ctx, segments[3]).ConfigureAwait(false);
+                return;
+            }
+
+            WriteJson(context.Response, 404, "{\"ok\":false,\"message\":\"Unknown endpoint\"}");
+        }
+
+        private async Task PlayerViewAsync(HttpListenerContext context, PlayerMenuContext ctx)
+        {
+            var menus = m_PlayerRegistry.GetMenus();
+            var sb = new StringBuilder();
+            sb.Append("{\"ok\":true,\"player\":")
+                .Append("{\"name\":").Append(Json.Encode(ctx.DisplayName)).Append('}')
+                .Append(",\"lang\":").Append(Json.Encode(ctx.Language))
+                .Append(',');
+            AppendLanguagesJson(sb);
+            sb.Append(",\"menus\":[");
+
+            for (var i = 0; i < menus.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(',');
+                }
+
+                var menu = menus[i];
+                var view = await RenderSafeAsync(menu, ctx).ConfigureAwait(false);
+                sb.Append('{')
+                    .Append("\"id\":").Append(Json.Encode(menu.Id)).Append(',')
+                    .Append("\"title\":").Append(Json.Encode(Tr(menu.Title, ctx.Language))).Append(',')
+                    .Append("\"icon\":").Append(Json.Encode(menu.Icon)).Append(',')
+                    .Append("\"view\":");
+                AppendPlayerView(sb, view);
+                sb.Append('}');
+            }
+
+            sb.Append("]}");
+            WriteJson(context.Response, 200, sb.ToString());
+        }
+
+        private async Task PlayerInvokeAsync(HttpListenerContext context, PlayerMenuContext ctx, string menuId)
+        {
+            var menu = m_PlayerRegistry.GetMenu(menuId);
+            if (menu == null)
+            {
+                WriteJson(context.Response, 404, "{\"success\":false,\"message\":\"Unknown menu\"}");
+                return;
+            }
+
+            var values = ParseForm(ReadBody(context.Request));
+            values.TryGetValue("action", out var actionId);
+            values.TryGetValue("cardKey", out var cardKey);
+            values.TryGetValue("value", out var value);
+
+            PlayerActionResult result;
+            try
+            {
+                result = await menu.InvokeAsync(ctx, actionId ?? string.Empty, cardKey ?? string.Empty,
+                    string.IsNullOrEmpty(value) ? null : value).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} action threw.", menuId);
+                result = PlayerActionResult.Fail(ex.Message);
+            }
+
+            var sb = new StringBuilder();
+            sb.Append('{')
+                .Append("\"success\":").Append(Json.Bool(result.Success)).Append(',')
+                .Append("\"message\":").Append(Json.Encode(result.Message)).Append(',')
+                .Append("\"refresh\":").Append(Json.Bool(result.Refresh)).Append(',')
+                .Append("\"view\":");
+
+            if (result.Refresh)
+            {
+                AppendPlayerView(sb, await RenderSafeAsync(menu, ctx).ConfigureAwait(false));
+            }
+            else
+            {
+                sb.Append("null");
+            }
+
+            sb.Append('}');
+            WriteJson(context.Response, 200, sb.ToString());
+        }
+
+        private async Task<PlayerMenuView> RenderSafeAsync(IPlayerMenu menu, PlayerMenuContext ctx)
+        {
+            try
+            {
+                return await menu.RenderAsync(ctx).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} render threw.", menu.Id);
+                return new PlayerMenuView(menu.Title, null, Array.Empty<PlayerCard>(),
+                    "Failed to load: " + ex.Message);
+            }
+        }
+
+        private static void AppendPlayerView(StringBuilder sb, PlayerMenuView view)
+        {
+            sb.Append('{')
+                .Append("\"title\":").Append(Json.Encode(view.Title)).Append(',')
+                .Append("\"header\":").Append(Json.Encode(view.Header)).Append(',')
+                .Append("\"message\":").Append(Json.Encode(view.Message)).Append(',')
+                .Append("\"bodyMarkdown\":").Append(Json.Encode(view.BodyMarkdown)).Append(',')
+                .Append("\"layout\":").Append(Json.Encode(view.Layout)).Append(',')
+                .Append("\"cards\":");
+            AppendPlayerCards(sb, view.Cards);
+            sb.Append('}');
+        }
+
+        private static void AppendPlayerCards(StringBuilder sb, IReadOnlyList<PlayerCard> cards)
+        {
+            sb.Append('[');
+            for (var i = 0; i < cards.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(',');
+                }
+
+                var card = cards[i];
+                sb.Append('{')
+                    .Append("\"key\":").Append(Json.Encode(card.Key)).Append(',')
+                    .Append("\"label\":").Append(Json.Encode(card.Label)).Append(',')
+                    .Append("\"group\":").Append(Json.Encode(card.Group)).Append(',')
+                    .Append("\"badge\":").Append(Json.Encode(card.Badge)).Append(',')
+                    .Append("\"lines\":");
+                AppendStringArray(sb, card.Lines);
+                sb.Append(",\"tags\":");
+                AppendStringArray(sb, card.Tags);
+                sb.Append(",\"buttons\":[");
+
+                for (var j = 0; j < card.Buttons.Count; j++)
+                {
+                    if (j > 0)
+                    {
+                        sb.Append(',');
+                    }
+
+                    var button = card.Buttons[j];
+                    sb.Append('{')
+                        .Append("\"actionId\":").Append(Json.Encode(button.ActionId)).Append(',')
+                        .Append("\"label\":").Append(Json.Encode(button.Label)).Append(',')
+                        .Append("\"style\":").Append(Json.Encode(button.Style)).Append(',')
+                        .Append("\"promptLabel\":").Append(Json.Encode(button.PromptLabel)).Append(',')
+                        .Append("\"promptDefault\":").Append(Json.Encode(button.PromptDefault))
+                        .Append('}');
+                }
+
+                sb.Append("],\"children\":");
+                AppendPlayerCards(sb, card.Children);
+                sb.Append('}');
+            }
+
+            sb.Append(']');
+        }
+
+        private static string? GetPlayerToken(HttpListenerRequest request)
+        {
+            var header = request.Headers["X-Player-Token"];
+            return !string.IsNullOrEmpty(header) ? header : request.QueryString["t"];
         }
 
         // ----- JSON building -------------------------------------------------
 
-        private string BuildModulesJson()
+        /// <summary>Appends <c>"lang":"..","languages":[..]</c> for the client's language switcher.</summary>
+        private void AppendLanguagesJson(StringBuilder sb)
+        {
+            sb.Append("\"defaultLanguage\":").Append(Json.Encode(m_Translations.DefaultLanguage))
+                .Append(",\"languages\":");
+            AppendStringArray(sb, m_Translations.Languages);
+        }
+
+        private string BuildModulesJson(string lang)
         {
             var sb = new StringBuilder();
-            sb.Append("{\"modules\":[");
+            sb.Append("{\"lang\":").Append(Json.Encode(lang)).Append(',');
+            AppendLanguagesJson(sb);
+            sb.Append(",\"modules\":[");
             var modules = m_Registry.GetModules();
             for (var i = 0; i < modules.Count; i++)
             {
@@ -357,7 +702,7 @@ namespace well404.WebPanel
 
                 sb.Append('{')
                     .Append("\"id\":").Append(Json.Encode(module.Id)).Append(',')
-                    .Append("\"title\":").Append(Json.Encode(module.Title)).Append(',')
+                    .Append("\"title\":").Append(Json.Encode(Tr(module.Title, lang))).Append(',')
                     .Append("\"icon\":").Append(Json.Encode(module.Icon)).Append(',')
                     .Append("\"actions\":[");
 
@@ -371,35 +716,19 @@ namespace well404.WebPanel
 
                     sb.Append('{')
                         .Append("\"id\":").Append(Json.Encode(action.Id)).Append(',')
-                        .Append("\"label\":").Append(Json.Encode(action.Label)).Append(',')
+                        .Append("\"label\":").Append(Json.Encode(Tr(action.Label, lang))).Append(',')
                         .Append("\"kind\":").Append(Json.Encode(action.Kind.ToString().ToLowerInvariant())).Append(',')
                         .Append("\"hasLoader\":").Append(Json.Bool(action.Loader != null)).Append(',')
                         .Append("\"hasDelete\":").Append(Json.Bool(action.DeleteHandler != null)).Append(',')
                         .Append("\"keyField\":").Append(Json.Encode(action.KeyField)).Append(',')
                         .Append("\"layout\":").Append(Json.Encode(action.Layout)).Append(',')
-                        .Append("\"description\":").Append(Json.Encode(action.Description)).Append(',')
-                        .Append("\"fields\":[");
-
-                    for (var k = 0; k < action.Fields.Count; k++)
-                    {
-                        var field = action.Fields[k];
-                        if (k > 0)
-                        {
-                            sb.Append(',');
-                        }
-
-                        sb.Append('{')
-                            .Append("\"name\":").Append(Json.Encode(field.Name)).Append(',')
-                            .Append("\"label\":").Append(Json.Encode(field.Label)).Append(',')
-                            .Append("\"type\":").Append(Json.Encode(field.Type.ToString().ToLowerInvariant())).Append(',')
-                            .Append("\"required\":").Append(Json.Bool(field.Required)).Append(',')
-                            .Append("\"placeholder\":").Append(Json.Encode(field.Placeholder)).Append(',')
-                            .Append("\"options\":");
-                        AppendStringArray(sb, field.Options);
-                        sb.Append('}');
-                    }
-
-                    sb.Append("]}");
+                        .Append("\"hidden\":").Append(Json.Bool(action.Hidden)).Append(',')
+                        .Append("\"description\":").Append(Json.Encode(Tr(action.Description, lang))).Append(',')
+                        .Append("\"summaryFields\":");
+                    AppendStringArray(sb, action.SummaryFields);
+                    sb.Append(",\"fields\":");
+                    AppendFieldsJson(sb, action.Fields, lang);
+                    sb.Append('}');
                 }
 
                 sb.Append("]}");
@@ -409,14 +738,25 @@ namespace well404.WebPanel
             return sb.ToString();
         }
 
-        private static string BuildResultJson(WebActionResult result)
+        /// <summary>
+        /// Serializes an action result, localizing the message and the table column headers to
+        /// <paramref name="lang"/> (both are i18n keys). Row cells are dynamic data (names, ids) and
+        /// are emitted verbatim.
+        /// </summary>
+        private string BuildResultJson(WebActionResult result, string lang)
         {
             var sb = new StringBuilder();
             sb.Append('{')
                 .Append("\"success\":").Append(Json.Bool(result.Success)).Append(',')
-                .Append("\"message\":").Append(Json.Encode(result.Message)).Append(',')
-                .Append("\"columns\":");
-            AppendStringArray(sb, result.Columns);
+                .Append("\"message\":").Append(Json.Encode(result.Message == null ? null : Tr(result.Message, lang))).Append(',')
+                .Append("\"rowActionId\":").Append(Json.Encode(result.RowActionId)).Append(',')
+                .Append("\"rowActionLabel\":").Append(Json.Encode(result.RowActionLabel == null ? null : Tr(result.RowActionLabel, lang))).Append(',')
+                .Append("\"rowActionFields\":");
+            AppendFieldsJson(sb, result.RowActionFields, lang);
+            sb.Append(",\"rowKeys\":");
+            AppendStringArray(sb, result.RowKeys);
+            sb.Append(",\"columns\":");
+            AppendLocalizedStringArray(sb, result.Columns, lang);
             sb.Append(",\"rows\":");
 
             if (result.Rows == null)
@@ -443,6 +783,35 @@ namespace well404.WebPanel
             return sb.ToString();
         }
 
+        /// <summary>Serializes a field list (name/label/type/required/placeholder/options), localizing labels.</summary>
+        private void AppendFieldsJson(StringBuilder sb, IReadOnlyList<WebField>? fields, string lang)
+        {
+            sb.Append('[');
+            if (fields != null)
+            {
+                for (var k = 0; k < fields.Count; k++)
+                {
+                    var field = fields[k];
+                    if (k > 0)
+                    {
+                        sb.Append(',');
+                    }
+
+                    sb.Append('{')
+                        .Append("\"name\":").Append(Json.Encode(field.Name)).Append(',')
+                        .Append("\"label\":").Append(Json.Encode(Tr(field.Label, lang))).Append(',')
+                        .Append("\"type\":").Append(Json.Encode(field.Type.ToString().ToLowerInvariant())).Append(',')
+                        .Append("\"required\":").Append(Json.Bool(field.Required)).Append(',')
+                        .Append("\"placeholder\":").Append(Json.Encode(field.Placeholder == null ? null : Tr(field.Placeholder, lang))).Append(',')
+                        .Append("\"options\":");
+                    AppendLocalizedStringArray(sb, field.Options, lang);
+                    sb.Append('}');
+                }
+            }
+
+            sb.Append(']');
+        }
+
         private static void AppendStringArray(StringBuilder sb, IReadOnlyList<string>? items)
         {
             if (items == null)
@@ -460,6 +829,29 @@ namespace well404.WebPanel
                 }
 
                 sb.Append(Json.Encode(items[i]));
+            }
+
+            sb.Append(']');
+        }
+
+        /// <summary>Like <see cref="AppendStringArray"/> but resolves each item as an i18n key.</summary>
+        private void AppendLocalizedStringArray(StringBuilder sb, IReadOnlyList<string>? items, string lang)
+        {
+            if (items == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('[');
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(',');
+                }
+
+                sb.Append(Json.Encode(Tr(items[i], lang)));
             }
 
             sb.Append(']');
@@ -513,11 +905,25 @@ namespace well404.WebPanel
         private static void WriteText(HttpListenerResponse response, int status, string contentType, string body)
         {
             var bytes = Encoding.UTF8.GetBytes(body);
+            SetCorsHeaders(response);
             response.StatusCode = status;
             response.ContentType = contentType;
             response.ContentLength64 = bytes.Length;
             response.OutputStream.Write(bytes, 0, bytes.Length);
             response.OutputStream.Close();
+        }
+
+        /// <summary>
+        /// Permissive CORS so the panel keeps working behind an arbitrary user-supplied reverse
+        /// proxy that may serve the page from a different origin. Safe to allow <c>*</c> here: auth
+        /// is a secret URL/token, never a cookie, so cross-origin JS gains nothing a direct request
+        /// wouldn't already have.
+        /// </summary>
+        private static void SetCorsHeaders(HttpListenerResponse response)
+        {
+            response.Headers["Access-Control-Allow-Origin"] = "*";
+            response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-Player-Token";
         }
 
         private static void WriteJson(HttpListenerResponse response, int status, string json)

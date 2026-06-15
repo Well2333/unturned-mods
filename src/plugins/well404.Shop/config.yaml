@@ -12,23 +12,18 @@ discounts:
   #   well404.shop.vip: 0.9
   #   well404.shop.mvp: 0.8
 
-# Each entry is referenced by its `id` in /buy and /sell.
-#   type: item   -> a single Unturned item (itemId, amount per unit)
-#   type: bundle -> a custom combo pack (contents). Bundles can be sold too
-#                   (all contents are taken back).
-# buyPrice 0 = not buyable; sellPrice 0 = not sellable.
+# Plain items: a single game item, referenced in /buy and /sell by its own item id
+# (its display name comes from the game). buyPrice 0 = not buyable; sellPrice 0 = not sellable.
 items:
-  - id: "medkit"
-    name: "Medkit"
-    type: "item"
-    itemId: 15
-    amount: 1
+  - itemId: 15
     buyPrice: 100
     sellPrice: 40
 
+# Bundles: a named pack of several items, referenced by its own `id` in /buy and /sell.
+# A bundle can be sold too when sellPrice > 0 (all contents are taken back).
+bundles:
   - id: "starter"
     name: "Starter Pack"
-    type: "bundle"
     buyPrice: 500
     sellPrice: 0
     contents:

@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>0.1.2</Version>
+    <Version>1.0.0</Version>
     <Description>Web Panel</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -30,6 +30,8 @@
     <EmbeddedResource Include="translations.yaml" />
     <!-- The generic single-page panel, served by WebPanelHttpServer. -->
     <EmbeddedResource Include="index.html" />
+    <!-- The player-facing single-page surface, served at /p. -->
+    <EmbeddedResource Include="player.html" />
   </ItemGroup>
 
   <!-- The web-panel registration abstraction (IWebPanelRegistry + descriptors) lives

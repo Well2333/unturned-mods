@@ -1,0 +1,5 @@
+# Translations for Admin Tools.
+# Keys are referenced via IStringLocalizer, e.g. m_StringLocalizer["plugin_events:plugin_start"].
+plugin_events:
+  plugin_start: "Admin Tools has been loaded."
+  plugin_stop: "Admin Tools has been unloaded."

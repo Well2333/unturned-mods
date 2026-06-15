@@ -35,7 +35,8 @@ namespace well404.Shop
             }
             else
             {
-                result[entry.ItemId] = entry.Amount;
+                // A plain item grants exactly one of itself per purchase unit.
+                result[entry.ItemId] = 1;
             }
 
             return result;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
@@ -10,67 +11,90 @@ using UnturnedMods.Shared.WebPanel;
 namespace well404.Shop
 {
     /// <summary>
-    /// Builds the shop's <see cref="WebPanelModule"/>: list the catalog, add/edit an entry,
-    /// remove an entry, and search the game's item assets (id + name) to fill in an item id.
-    /// <para>
-    /// A single entry form handles both kinds: enter one <c>itemId×amount</c> and it saves a
-    /// plain <c>item</c>; enter several (comma-separated) and it saves a <c>bundle</c> whose
-    /// contents are those items. Catalog edits are written back to <c>config.yaml</c> via
-    /// <see cref="ShopConfigStore"/>. The search runs on the main thread.
-    /// </para>
+    /// Builds the shop's <see cref="WebPanelModule"/>. Plain items and bundles are managed in two
+    /// separate collections so each stays as simple as it can be: a plain item is just an item id
+    /// plus a price pair (its name comes from the game); a bundle adds an id, name and contents. A
+    /// game-item search lets the admin look up ids and one-click "quick add" any item as a plain
+    /// item. Catalog edits are written back to <c>config.yaml</c> via <see cref="ShopConfigStore"/>.
     /// </summary>
     internal static class ShopWebPanelModule
     {
         public const string ModuleId = "well404.shop";
 
         private const int SearchLimit = 100;
+        private const string QuickAddActionId = "additem";
 
         public static WebPanelModule Create(ShopConfigStore store, IItemDirectory itemDirectory)
         {
             var items = new WebPanelAction(
                 id: "items",
-                label: "商品",
+                label: "Plain items",
                 kind: WebActionKind.Collection,
-                handler: request => Task.FromResult(Save(store, request)),
+                handler: request => Task.FromResult(SaveItem(store, request)),
                 fields: new[]
                 {
-                    new WebField("id", "商品ID", WebFieldType.Text, required: true, placeholder: "/buy /sell 用的唯一ID"),
-                    new WebField("name", "显示名", WebFieldType.Text, required: true),
-                    new WebField("items", "物品", WebFieldType.Text, required: true,
-                        placeholder: "物品ID×数量，逗号分隔。单个=物品，多个=礼包。如 15x2 或 15x2, 81x1"),
-                    new WebField("buyPrice", "买价", WebFieldType.Number, required: false, placeholder: "0=不可买"),
-                    new WebField("sellPrice", "卖价", WebFieldType.Number, required: false, placeholder: "0=不可卖")
+                    new WebField("itemId", "Item ID", WebFieldType.Number, required: true),
+                    new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
+                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
                 },
-                description: "点商品编辑，「新增」添加。「物品」填一条=普通物品，多条（逗号分隔）=礼包；"
-                    + "格式 物品ID×数量（只写ID则数量1），如 15x2 或 15x2, 81x1。物品ID 可用下方检索。",
+                description: "Click to edit, Add to create. A plain item is bought and sold by its game item id; its display name comes from the game. Look up ids with the search below.",
                 recordsLoader: () => LoadItemRecordsAsync(store, itemDirectory),
-                deleteHandler: request => Task.FromResult(Remove(store, request)),
-                keyField: "id");
+                deleteHandler: request => Task.FromResult(RemoveItem(store, request)),
+                keyField: "itemId",
+                summaryFields: new[] { "buyPrice", "sellPrice" });
+
+            var bundles = new WebPanelAction(
+                id: "bundles",
+                label: "Bundles",
+                kind: WebActionKind.Collection,
+                handler: request => Task.FromResult(SaveBundle(store, request)),
+                fields: new[]
+                {
+                    new WebField("id", "Bundle ID", WebFieldType.Text, required: true, placeholder: "Unique id used by /buy /sell"),
+                    new WebField("name", "Display name", WebFieldType.Text, required: true),
+                    new WebField("contents", "Contents", WebFieldType.Text, required: true,
+                        placeholder: "itemId×amount, comma-separated, e.g. 15x2, 81x1"),
+                    new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
+                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
+                },
+                description: "Click a bundle to edit, Add to create. A bundle is a named pack of items; contents format itemId×amount, comma-separated (id only = amount 1), e.g. 15x2, 81x1.",
+                recordsLoader: () => LoadBundleRecordsAsync(store, itemDirectory),
+                deleteHandler: request => Task.FromResult(RemoveBundle(store, request)),
+                keyField: "id",
+                summaryFields: new[] { "buyPrice", "sellPrice" });
 
             var search = new WebPanelAction(
                 id: "search",
-                label: "检索游戏物品",
+                label: "Search game items",
                 kind: WebActionKind.Search,
                 handler: request => SearchAsync(itemDirectory, request),
                 fields: new[]
                 {
-                    new WebField("query", "物品名或ID", WebFieldType.Text, placeholder: "输入关键词或数字ID…")
+                    new WebField("query", "Item name or ID", WebFieldType.Text, placeholder: "Type a keyword or numeric ID…")
                 },
-                description: "在全部游戏物品中按名称或 ID 模糊检索，拿到「物品ID」填到上面的表单。");
+                description: "Search any game item by name or ID, then click + to add it to the shop as a plain item (set its prices afterwards).");
+
+            // Invoke-only target of the search's per-row "+" button: quick-adds the clicked item id
+            // as a draft plain item (zero prices, ready to edit). Hidden so it has no card of its own.
+            var quickAdd = new WebPanelAction(
+                id: QuickAddActionId,
+                label: "Add to shop",
+                kind: WebActionKind.Form,
+                handler: request => Task.FromResult(QuickAddItem(store, request)),
+                hidden: true);
 
             var discount = new WebPanelAction(
                 id: "discount",
-                label: "VIP 折扣",
+                label: "VIP discount",
                 kind: WebActionKind.Settings,
                 handler: request => Task.FromResult(SaveDiscount(store, request)),
                 fields: new[]
                 {
-                    new WebField("enabled", "折扣总开关", WebFieldType.Select, options: new[] { "开", "关" }),
-                    new WebField("tiers", "档位", WebFieldType.Text,
-                        placeholder: "权限=倍率，逗号分隔：如 well404.shop.vip=0.9, well404.shop.mvp=0.8")
+                    new WebField("enabled", "Discount master switch", WebFieldType.Boolean),
+                    new WebField("tiers", "Tiers", WebFieldType.Text,
+                        placeholder: "permission=multiplier, comma-separated: e.g. well404.shop.vip=0.9, well404.shop.mvp=0.8")
                 },
-                description: "折扣作用于买价；玩家取其拥有权限中最低(最优)的倍率。"
-                    + "「档位」格式 权限=倍率（0<倍率≤1，逗号分隔）；清空即取消所有档位。",
+                description: "Discounts apply to buy prices; a player gets the lowest (best) multiplier among their granted permissions. Tiers format: permission=multiplier (0<m≤1, comma-separated); empty clears all tiers.",
                 loader: () => Task.FromResult(store.ReadDiscounts(d =>
                 {
                     var parts = new List<string>();
@@ -81,21 +105,177 @@ namespace well404.Shop
 
                     return (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
                     {
-                        ["enabled"] = d.Enabled ? "开" : "关",
+                        ["enabled"] = d.Enabled ? "true" : "false",
                         ["tiers"] = string.Join(", ", parts)
                     };
                 })));
 
             return new WebPanelModule(
-                ModuleId, "商店 / 商品",
-                new[] { items, search, discount },
+                ModuleId, "Shop",
+                new[] { items, bundles, search, quickAdd, discount },
                 icon: "🛒");
         }
+
+        // ----- plain items -----
+
+        private static async Task<IReadOnlyList<WebRecord>> LoadItemRecordsAsync(ShopConfigStore store, IItemDirectory itemDirectory)
+        {
+            var names = await ShopNames.BuildMapAsync(itemDirectory);
+            var records = new List<WebRecord>();
+            foreach (var item in store.Items)
+            {
+                var id = item.ItemId.ToString(CultureInfo.InvariantCulture);
+                records.Add(new WebRecord(
+                    id,
+                    ShopNames.NameOf(item.ItemId, names),
+                    new Dictionary<string, string>
+                    {
+                        ["itemId"] = id,
+                        ["buyPrice"] = Num(item.BuyPrice),
+                        ["sellPrice"] = Num(item.SellPrice)
+                    },
+                    new[] { "#" + id }));
+            }
+
+            return records;
+        }
+
+        private static WebActionResult SaveItem(ShopConfigStore store, WebActionRequest request)
+        {
+            var idRaw = request.Get("itemId");
+            if (idRaw == null
+                || !ushort.TryParse(idRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId)
+                || itemId == 0)
+            {
+                return WebActionResult.Fail("Enter a valid item ID.");
+            }
+
+            store.UpsertItem(new ShopItemConfig
+            {
+                ItemId = itemId,
+                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
+                SellPrice = request.GetDecimal("sellPrice") ?? 0m
+            });
+            return WebActionResult.Ok("Saved.");
+        }
+
+        private static WebActionResult RemoveItem(ShopConfigStore store, WebActionRequest request)
+        {
+            var key = request.Get("key");
+            if (key == null)
+            {
+                return WebActionResult.Fail("Enter a valid item ID.");
+            }
+
+            return store.RemoveItem(key) ? WebActionResult.Ok("Deleted.") : WebActionResult.Fail("Not found.");
+        }
+
+        private static WebActionResult QuickAddItem(ShopConfigStore store, WebActionRequest request)
+        {
+            var key = request.Get("key");
+            if (key == null
+                || !ushort.TryParse(key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId)
+                || itemId == 0)
+            {
+                return WebActionResult.Fail("Enter a valid item ID.");
+            }
+
+            if (store.Items.Any(x => x.ItemId == itemId))
+            {
+                return WebActionResult.Fail("Already in the shop.");
+            }
+
+            store.UpsertItem(new ShopItemConfig
+            {
+                ItemId = itemId,
+                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
+                SellPrice = request.GetDecimal("sellPrice") ?? 0m
+            });
+            return WebActionResult.Ok("Added to the shop.");
+        }
+
+        // ----- bundles -----
+
+        private static async Task<IReadOnlyList<WebRecord>> LoadBundleRecordsAsync(ShopConfigStore store, IItemDirectory itemDirectory)
+        {
+            var names = await ShopNames.BuildMapAsync(itemDirectory);
+            var records = new List<WebRecord>();
+            foreach (var bundle in store.Bundles)
+            {
+                var rawParts = new List<string>();
+                var prettyParts = new List<string>();
+                foreach (var content in bundle.Contents)
+                {
+                    rawParts.Add(Raw(content.ItemId, content.Amount));
+                    prettyParts.Add(ShopNames.Label(content.ItemId, content.Amount, names));
+                }
+
+                records.Add(new WebRecord(
+                    bundle.Id,
+                    bundle.Name,
+                    new Dictionary<string, string>
+                    {
+                        ["id"] = bundle.Id,
+                        ["name"] = bundle.Name,
+                        ["contents"] = string.Join(", ", rawParts),
+                        ["buyPrice"] = Num(bundle.BuyPrice),
+                        ["sellPrice"] = Num(bundle.SellPrice)
+                    },
+                    prettyParts));
+            }
+
+            return records;
+        }
+
+        private static WebActionResult SaveBundle(ShopConfigStore store, WebActionRequest request)
+        {
+            var id = request.Get("id");
+            var name = request.Get("name");
+            var contentsRaw = request.Get("contents");
+            if (id == null || name == null || contentsRaw == null)
+            {
+                return WebActionResult.Fail("Enter the bundle ID, name and contents.");
+            }
+
+            var parsed = ParseItems(contentsRaw, out var error);
+            if (parsed == null)
+            {
+                return WebActionResult.Fail(error!);
+            }
+
+            if (parsed.Count == 0)
+            {
+                return WebActionResult.Fail("Contents cannot be empty, e.g. 15x2, 81x1.");
+            }
+
+            store.UpsertBundle(new ShopBundleConfig
+            {
+                Id = id,
+                Name = name,
+                Contents = parsed,
+                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
+                SellPrice = request.GetDecimal("sellPrice") ?? 0m
+            });
+            return WebActionResult.Ok("Saved.");
+        }
+
+        private static WebActionResult RemoveBundle(ShopConfigStore store, WebActionRequest request)
+        {
+            var id = request.Get("key");
+            if (id == null)
+            {
+                return WebActionResult.Fail("Not found.");
+            }
+
+            return store.RemoveBundle(id) ? WebActionResult.Ok("Deleted.") : WebActionResult.Fail("Not found.");
+        }
+
+        // ----- discounts -----
 
         private static WebActionResult SaveDiscount(ShopConfigStore store, WebActionRequest request)
         {
             var enabledRaw = request.Get("enabled");
-            bool? enabled = enabledRaw == "开" ? true : enabledRaw == "关" ? (bool?)false : null;
+            bool? enabled = enabledRaw == "true" ? true : enabledRaw == "false" ? (bool?)false : null;
 
             // Settings form is pre-filled, so the submitted "tiers" value is authoritative:
             // parse it as the full set (empty = clear all tiers).
@@ -115,7 +295,7 @@ namespace well404.Shop
                 d.Tiers = tiers;
             });
 
-            return WebActionResult.Ok("已保存折扣设置。");
+            return WebActionResult.Ok("Saved discount settings.");
         }
 
         /// <summary>Parses "perm=mult, perm:mult" tier text into a map. Returns null + error on a bad entry.</summary>
@@ -136,7 +316,7 @@ namespace well404.Shop
                 var parts = token.Split(new[] { '=', ':' }, 2);
                 if (parts.Length != 2)
                 {
-                    error = $"档位格式错误：{token}（应为 权限=倍率）";
+                    error = $"Bad tier format: {token} (expected permission=multiplier)";
                     return null;
                 }
 
@@ -145,7 +325,7 @@ namespace well404.Shop
                     || !decimal.TryParse(parts[1].Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var mult)
                     || mult <= 0m || mult > 1m)
                 {
-                    error = $"档位倍率无效：{token}（0<倍率≤1）";
+                    error = $"Invalid tier multiplier: {token} (0<m≤1)";
                     return null;
                 }
 
@@ -155,170 +335,48 @@ namespace well404.Shop
             return result;
         }
 
-        private static async Task<IReadOnlyList<WebRecord>> LoadItemRecordsAsync(ShopConfigStore store, IItemDirectory itemDirectory)
-        {
-            var names = await BuildNameMapAsync(itemDirectory);
-
-            var records = new List<WebRecord>();
-            foreach (var entry in store.Items)
-            {
-                var rawParts = new List<string>();
-                var prettyParts = new List<string>();
-                if (entry.IsBundle)
-                {
-                    foreach (var content in entry.Contents)
-                    {
-                        rawParts.Add(Raw(content.ItemId, content.Amount));
-                        prettyParts.Add(FormatItem(content.ItemId, content.Amount, names));
-                    }
-                }
-                else
-                {
-                    rawParts.Add(Raw(entry.ItemId, entry.Amount));
-                    prettyParts.Add(FormatItem(entry.ItemId, entry.Amount, names));
-                }
-
-                records.Add(new WebRecord(
-                    entry.Id,
-                    entry.Name,
-                    new Dictionary<string, string>
-                    {
-                        ["id"] = entry.Id,
-                        ["name"] = entry.Name,
-                        ["items"] = string.Join(", ", rawParts),
-                        ["buyPrice"] = Num(entry.BuyPrice),
-                        ["sellPrice"] = Num(entry.SellPrice)
-                    },
-                    prettyParts));
-            }
-
-            return records;
-        }
-
-        /// <summary>The raw editable form of an item ref, e.g. <c>81x3</c>.</summary>
-        private static string Raw(ushort itemId, int amount)
-            => itemId.ToString(CultureInfo.InvariantCulture) + "x" + amount.ToString(CultureInfo.InvariantCulture);
-
-        /// <summary>Formats one item ref for display as <c>Name(id)*amount</c> (or <c>id*amount</c> if name unknown).</summary>
-        private static string FormatItem(ushort itemId, int amount, IReadOnlyDictionary<string, string> names)
-        {
-            var id = itemId.ToString(CultureInfo.InvariantCulture);
-            var qty = amount.ToString(CultureInfo.InvariantCulture);
-            return names.TryGetValue(id, out var name) && name.Length > 0
-                ? $"{name}({id})*{qty}"
-                : $"{id}*{qty}";
-        }
-
-        /// <summary>Builds a game item-id → name lookup from the item directory (main thread).</summary>
-        private static async Task<IReadOnlyDictionary<string, string>> BuildNameMapAsync(IItemDirectory itemDirectory)
-        {
-            await UniTask.SwitchToMainThread();
-            var assets = await itemDirectory.GetItemAssetsAsync();
-            var names = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var asset in assets)
-            {
-                var assetId = asset.ItemAssetId;
-                if (assetId != null && !names.ContainsKey(assetId))
-                {
-                    names[assetId] = asset.ItemName ?? string.Empty;
-                }
-            }
-
-            return names;
-        }
-
-        private static WebActionResult Save(ShopConfigStore store, WebActionRequest request)
-        {
-            var id = request.Get("id");
-            var name = request.Get("name");
-            var itemsRaw = request.Get("items");
-            if (id == null || name == null || itemsRaw == null)
-            {
-                return WebActionResult.Fail("请填写商品ID、显示名与物品。");
-            }
-
-            var parsed = ParseItems(itemsRaw, out var error);
-            if (parsed == null)
-            {
-                return WebActionResult.Fail(error!);
-            }
-
-            if (parsed.Count == 0)
-            {
-                return WebActionResult.Fail("「物品」不能为空，格式如 15x2 或 15x2, 81x1。");
-            }
-
-            var buyPrice = request.GetDecimal("buyPrice") ?? 0m;
-            var sellPrice = request.GetDecimal("sellPrice") ?? 0m;
-
-            ShopEntry entry;
-            string summary;
-            if (parsed.Count == 1)
-            {
-                // A single item -> a plain "item" entry.
-                entry = new ShopEntry
-                {
-                    Id = id,
-                    Name = name,
-                    Type = "item",
-                    ItemId = parsed[0].ItemId,
-                    Amount = parsed[0].Amount,
-                    BuyPrice = buyPrice,
-                    SellPrice = sellPrice
-                };
-                summary = $"物品 {entry.ItemId}×{entry.Amount}";
-            }
-            else
-            {
-                // Multiple items -> a "bundle" entry.
-                entry = new ShopEntry
-                {
-                    Id = id,
-                    Name = name,
-                    Type = "bundle",
-                    Contents = parsed,
-                    BuyPrice = buyPrice,
-                    SellPrice = sellPrice
-                };
-                summary = $"礼包 {parsed.Count} 种物品";
-            }
-
-            store.Upsert(entry);
-            return WebActionResult.Ok(
-                $"已保存 {entry.Id}（{entry.Name}）：{summary}，买 {Num(buyPrice)} / 卖 {Num(sellPrice)}。");
-        }
-
-        private static WebActionResult Remove(ShopConfigStore store, WebActionRequest request)
-        {
-            // The collection delete endpoint sends the record key as "key".
-            var id = request.Get("key");
-            if (id == null)
-            {
-                return WebActionResult.Fail("缺少商品 ID。");
-            }
-
-            return store.Remove(id)
-                ? WebActionResult.Ok($"已删除商品 {id}。")
-                : WebActionResult.Fail($"未找到商品 {id}。");
-        }
+        // ----- game item search (with per-row quick-add) -----
 
         private static async Task<WebActionResult> SearchAsync(IItemDirectory itemDirectory, WebActionRequest request)
         {
             var query = request.Get("query");
             if (query == null)
             {
-                return WebActionResult.Table(new[] { "物品ID", "名称" }, new List<IReadOnlyList<string>>(), "输入物品名或 ID 检索。");
+                return WebActionResult.Table(new[] { "Item ID", "Name" }, new List<IReadOnlyList<string>>(), "Type an item name or ID to search.");
             }
 
             await UniTask.SwitchToMainThread();
             var assets = await itemDirectory.GetItemAssetsAsync();
 
             var rows = new List<IReadOnlyList<string>>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             var truncated = false;
+
+            // A pure-number query: surface the item whose ID is exactly that number first, so a
+            // numeric lookup always shows the matching item even when many IDs contain those digits.
+            var trimmed = query.Trim();
+            if (trimmed.Length > 0 && trimmed.All(char.IsDigit))
+            {
+                foreach (var asset in assets)
+                {
+                    if (string.Equals(asset.ItemAssetId, trimmed, StringComparison.Ordinal))
+                    {
+                        rows.Add(new[] { asset.ItemAssetId ?? string.Empty, asset.ItemName ?? string.Empty });
+                        seen.Add(trimmed);
+                        break;
+                    }
+                }
+            }
+
             foreach (var asset in assets)
             {
                 var assetId = asset.ItemAssetId ?? string.Empty;
                 var itemName = asset.ItemName ?? string.Empty;
+                if (seen.Contains(assetId))
+                {
+                    continue;
+                }
+
                 var match = assetId.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0
                     || itemName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
                 if (!match)
@@ -336,13 +394,26 @@ namespace well404.Shop
             }
 
             var message = rows.Count == 0
-                ? "没有匹配的物品。"
-                : (truncated ? $"结果过多，仅显示前 {SearchLimit} 条，请细化关键词。" : null);
-            return WebActionResult.Table(new[] { "物品ID", "名称" }, rows, message);
+                ? "No matching items."
+                : (truncated ? $"Too many results; showing the first {SearchLimit}. Refine your keyword." : null);
+            // The "Item ID" cell (first column) is each row's key, so the quick-add button passes it.
+            // The popup makes the admin set the prices up front (no silent zero-price drafts).
+            return WebActionResult.Table(new[] { "Item ID", "Name" }, rows, message)
+                .WithRowAction(QuickAddActionId, "Add to shop", null, new[]
+                {
+                    new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
+                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
+                });
         }
 
+        // ----- helpers -----
+
+        /// <summary>The raw editable form of an item ref, e.g. <c>81x3</c>.</summary>
+        private static string Raw(ushort itemId, int amount)
+            => itemId.ToString(CultureInfo.InvariantCulture) + "x" + amount.ToString(CultureInfo.InvariantCulture);
+
         /// <summary>
-        /// Parses an "items" string into item/amount pairs. Entries are comma/semicolon/newline
+        /// Parses a "contents" string into item/amount pairs. Entries are comma/semicolon/newline
         /// separated; each is <c>itemId</c> or <c>itemId×amount</c> (× may be <c>x</c>, <c>X</c>,
         /// <c>×</c> or <c>*</c>; amount defaults to 1). Returns null with <paramref name="error"/>
         /// set on a malformed entry.
@@ -369,13 +440,13 @@ namespace well404.Shop
 
                 if (!ushort.TryParse(idPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId) || itemId == 0)
                 {
-                    error = $"物品ID 无效：{token}";
+                    error = $"Invalid item ID: {token}";
                     return null;
                 }
 
                 if (!int.TryParse(amountPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount) || amount < 1)
                 {
-                    error = $"数量无效：{token}（格式 物品ID×数量，如 15x2）";
+                    error = $"Invalid amount: {token} (format itemId×amount, e.g. 15x2)";
                     return null;
                 }
 

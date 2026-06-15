@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Plugin project. Most settings are inherited from the repo-root
+    Directory.Build.props and Directory.Packages.props.
+
+    The project file name is well404.Essentials.csproj, so RootNamespace and
+    AssemblyName both default to "well404.Essentials" and stay EQUAL — this is
+    REQUIRED for IConfiguration / IStringLocalizer to resolve correctly.
+    Do not override them with different values.
+  -->
+
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <Description>Essentials</Description>
+    <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageTags>openmod openmod-plugin unturned</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenMod.Unturned" />
+    <!-- Teleport fees are OPTIONAL: this package supplies only the IEconomyProvider
+         abstraction. The concrete provider (e.g. well404.Economy) is resolved at
+         runtime via LifetimeScope.ResolveOptional<IEconomyProvider>(). There is NO
+         ProjectReference to well404.Economy, so Essentials has no hard dependency on
+         any economy plugin — without one, all teleport fees are simply skipped. -->
+    <PackageReference Include="OpenMod.Extensions.Economy.Abstractions" />
+    <PackageReference Include="Legacy2CPSWorkaround">
+      <PrivateAssets>All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="config.yaml" />
+    <EmbeddedResource Include="translations.yaml" />
+  </ItemGroup>
+
+  <!-- Optional web-panel integration (settings + warps/gifts editing). The
+       IWebPanelRegistry abstraction lives in the shared library; the plugin injects it
+       optionally (ResolveOptional), so there is no hard dependency on well404.WebPanel.
+       UnturnedMods.Shared is NEVER published to NuGet, so it must be:
+         (1) kept OUT of this package's nuspec dependencies via PrivateAssets="all"
+             (otherwise `openmod install` fails trying to resolve it from nuget.org), and
+         (2) bundled into lib/ as a plain dll via the IncludeSharedInPackage target. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" PrivateAssets="all" />
+  </ItemGroup>
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeSharedInPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+  <Target Name="IncludeSharedInPackage">
+    <ItemGroup>
+      <BuildOutputInPackage Include="$(OutputPath)UnturnedMods.Shared.dll" />
+    </ItemGroup>
+  </Target>
+
+</Project>

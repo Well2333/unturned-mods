@@ -25,15 +25,15 @@ namespace well404.Economy
         {
             var balances = new WebPanelAction(
                 id: "balances",
-                label: "所有余额",
+                label: "All balances",
                 kind: WebActionKind.Collection,
                 handler: request => SetBalanceAsync(economy, userManager, request),
                 fields: new[]
                 {
-                    new WebField("player", "玩家", WebFieldType.Text, required: true, placeholder: "名字或 SteamID(17位)"),
-                    new WebField("amount", "余额", WebFieldType.Number, required: true)
+                    new WebField("player", "Player", WebFieldType.Text, required: true, placeholder: "Name or SteamID (17 digits)"),
+                    new WebField("amount", "Balance", WebFieldType.Number, required: true)
                 },
-                description: "数据库后端列全部账户，经验后端仅在线玩家。点条目编辑其余额，「新增」设置某玩家余额。",
+                description: "The database backend lists every account; the experience backend lists online players only. Click a row to edit its balance; Add sets a player's balance.",
                 recordsLoader: () => LoadBalanceRecordsAsync(economy, userManager),
                 deleteHandler: request => DeleteBalanceAsync(economy, request),
                 keyField: "player",
@@ -41,17 +41,17 @@ namespace well404.Economy
 
             var currency = new WebPanelAction(
                 id: "currency",
-                label: "货币与后端",
+                label: "Currency & backend",
                 kind: WebActionKind.Settings,
                 handler: request => Task.FromResult(SaveCurrency(configStore, request)),
                 fields: new[]
                 {
-                    new WebField("name", "货币名", WebFieldType.Text),
-                    new WebField("symbol", "符号", WebFieldType.Text),
-                    new WebField("startingBalance", "初始余额", WebFieldType.Number),
-                    new WebField("backend", "后端", WebFieldType.Select, options: new[] { "database", "experience" })
+                    new WebField("name", "Currency name", WebFieldType.Text),
+                    new WebField("symbol", "Symbol", WebFieldType.Text),
+                    new WebField("startingBalance", "Starting balance", WebFieldType.Number),
+                    new WebField("backend", "Backend", WebFieldType.Select, options: new[] { "database", "experience" })
                 },
-                description: "修改货币显示与存储后端。",
+                description: "Change the currency display and storage backend.",
                 loader: () => Load(configStore, s => new Dictionary<string, string>
                 {
                     ["name"] = s.Currency.Name,
@@ -62,21 +62,21 @@ namespace well404.Economy
 
             var killRewards = new WebPanelAction(
                 id: "killrewards",
-                label: "击杀奖励（经济来源）",
+                label: "Kill rewards (income)",
                 kind: WebActionKind.Settings,
                 handler: request => Task.FromResult(SaveKillRewards(configStore, request)),
                 fields: new[]
                 {
-                    new WebField("enabled", "总开关", WebFieldType.Select, options: new[] { "开", "关" }),
-                    new WebField("player", "击杀玩家", WebFieldType.Number, placeholder: "0=禁用"),
-                    new WebField("zombie", "击杀僵尸", WebFieldType.Number, placeholder: "0=禁用"),
-                    new WebField("megaZombie", "击杀Boss僵尸", WebFieldType.Number, placeholder: "0=禁用"),
-                    new WebField("animal", "击杀动物", WebFieldType.Number, placeholder: "0=禁用")
+                    new WebField("enabled", "Master switch", WebFieldType.Boolean),
+                    new WebField("player", "Kill a player", WebFieldType.Number, placeholder: "0 = disabled"),
+                    new WebField("zombie", "Kill a zombie", WebFieldType.Number, placeholder: "0 = disabled"),
+                    new WebField("megaZombie", "Kill a mega zombie", WebFieldType.Number, placeholder: "0 = disabled"),
+                    new WebField("animal", "Kill an animal", WebFieldType.Number, placeholder: "0 = disabled")
                 },
-                description: "击杀获得货币的各来源金额。设为 0 禁用该来源。",
+                description: "How much currency each kill source grants. 0 disables that source.",
                 loader: () => Load(configStore, s => new Dictionary<string, string>
                 {
-                    ["enabled"] = OnOff(s.KillRewards.Enabled),
+                    ["enabled"] = Bool(s.KillRewards.Enabled),
                     ["player"] = Num(s.KillRewards.Player),
                     ["zombie"] = Num(s.KillRewards.Zombie),
                     ["megaZombie"] = Num(s.KillRewards.MegaZombie),
@@ -85,25 +85,25 @@ namespace well404.Economy
 
             var transfer = new WebPanelAction(
                 id: "transfer",
-                label: "转账设置",
+                label: "Transfers",
                 kind: WebActionKind.Settings,
                 handler: request => Task.FromResult(SaveTransfer(configStore, request)),
                 fields: new[]
                 {
-                    new WebField("enabled", "总开关", WebFieldType.Select, options: new[] { "开", "关" }),
-                    new WebField("minAmount", "最小转账额", WebFieldType.Number),
-                    new WebField("taxPercent", "税率(%)", WebFieldType.Number, placeholder: "0-100")
+                    new WebField("enabled", "Master switch", WebFieldType.Boolean),
+                    new WebField("minAmount", "Min transfer", WebFieldType.Number),
+                    new WebField("taxPercent", "Tax (%)", WebFieldType.Number, placeholder: "0-100")
                 },
-                description: "玩家 /pay 转账的开关、最小额与税率比例。",
+                description: "The /pay toggle, minimum amount and tax percentage.",
                 loader: () => Load(configStore, s => new Dictionary<string, string>
                 {
-                    ["enabled"] = OnOff(s.Transfer.Enabled),
+                    ["enabled"] = Bool(s.Transfer.Enabled),
                     ["minAmount"] = Num(s.Transfer.MinAmount),
                     ["taxPercent"] = Num(s.Transfer.TaxPercent)
                 }));
 
             return new WebPanelModule(
-                ModuleId, "经济 / 余额",
+                ModuleId, "Economy / Balances",
                 new[] { balances, currency, killRewards, transfer },
                 icon: "💰");
         }
@@ -128,7 +128,7 @@ namespace well404.Economy
                 if (backend == "database" || backend == "experience") s.Backend = backend;
             });
 
-            return WebActionResult.Ok("已保存货币与后端设置。");
+            return WebActionResult.Ok("Saved currency & backend settings.");
         }
 
         private static WebActionResult SaveKillRewards(EconomyConfigStore store, WebActionRequest request)
@@ -148,7 +148,7 @@ namespace well404.Economy
                 if (animal != null) s.KillRewards.Animal = animal.Value;
             });
 
-            return WebActionResult.Ok("已保存击杀奖励（经济来源）设置。");
+            return WebActionResult.Ok("Saved kill-reward settings.");
         }
 
         private static WebActionResult SaveTransfer(EconomyConfigStore store, WebActionRequest request)
@@ -164,18 +164,18 @@ namespace well404.Economy
                 if (taxPercent != null) s.Transfer.TaxPercent = taxPercent.Value;
             });
 
-            return WebActionResult.Ok("已保存转账设置。");
+            return WebActionResult.Ok("Saved transfer settings.");
         }
 
-        /// <summary>Maps a 不变/开/关 select value to keep(null) / true / false.</summary>
+        /// <summary>Maps a boolean-field value to true / false / keep(null) when absent.</summary>
         private static bool? ParseToggle(string? value)
         {
-            if (value == "开") return true;
-            if (value == "关") return false;
+            if (value == "true") return true;
+            if (value == "false") return false;
             return null;
         }
 
-        private static string OnOff(bool value) => value ? "开" : "关";
+        private static string Bool(bool value) => value ? "true" : "false";
 
         private static string Num(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 
@@ -221,18 +221,18 @@ namespace well404.Economy
             var amount = request.GetDecimal("amount");
             if (search == null || amount == null)
             {
-                return WebActionResult.Fail("请填写玩家与余额。");
+                return WebActionResult.Fail("Enter a player and a balance.");
             }
 
             var target = await PlayerResolver.ResolveAsync(userManager, search);
             if (target == null)
             {
-                return WebActionResult.Fail($"找不到玩家：{search}");
+                return WebActionResult.Fail($"Player not found: {search}");
             }
 
             await economy.SetBalanceAsync(target.Id, KnownActorTypes.Player, amount.Value);
             return WebActionResult.Ok(
-                $"已将 {target.DisplayName} 的余额设为 {economy.CurrencySymbol}{amount.Value.ToString(CultureInfo.InvariantCulture)}。");
+                $"Set {target.DisplayName}'s balance to {economy.CurrencySymbol}{amount.Value.ToString(CultureInfo.InvariantCulture)}.");
         }
 
         private static async Task<WebActionResult> DeleteBalanceAsync(EconomyProvider economy, WebActionRequest request)
@@ -240,12 +240,12 @@ namespace well404.Economy
             var key = request.Get("key");
             if (key == null)
             {
-                return WebActionResult.Fail("缺少账户 ID。");
+                return WebActionResult.Fail("Missing account ID.");
             }
 
             await UniTask.SwitchToMainThread();
             await economy.DeleteAccountAsync(key, KnownActorTypes.Player);
-            return WebActionResult.Ok($"已删除账户 {key}。");
+            return WebActionResult.Ok($"Deleted account {key}.");
         }
     }
 }
