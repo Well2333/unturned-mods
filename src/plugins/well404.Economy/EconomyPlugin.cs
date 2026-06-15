@@ -24,6 +24,8 @@ namespace well404.Economy
 
         private IWebPanelRegistry? m_WebPanelRegistry;
         private IPlayerMenuRegistry? m_PlayerMenuRegistry;
+        // Captured at load so unload never resolves from the (by-then disposed) Autofac scope.
+        private IPlayerCommandRegistry? m_PlayerCommandRegistry;
 
         public EconomyPlugin(
             IConfiguration configuration,
@@ -58,8 +60,9 @@ namespace well404.Economy
             m_WebPanelRegistry?.UnregisterModule(EconomyWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
             m_PlayerMenuRegistry?.UnregisterMenu(EconomyPlayerMenu.MenuId);
-            LifetimeScope.ResolveOptional<IPlayerCommandRegistry>()?.Unregister("well404.economy");
             m_PlayerMenuRegistry = null;
+            m_PlayerCommandRegistry?.Unregister("well404.economy");
+            m_PlayerCommandRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
 
@@ -113,7 +116,8 @@ namespace well404.Economy
             registry.RegisterMenu(menu);
             m_PlayerMenuRegistry = registry;
 
-            LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.economy", new[]
+            m_PlayerCommandRegistry = LifetimeScope.Resolve<IPlayerCommandRegistry>();
+            m_PlayerCommandRegistry.Register("well404.economy", new[]
             {
                 new PlayerCommandInfo("/balance", "Check your current account balance.", "well404.Economy:commands.balance", "Economy"),
                 new PlayerCommandInfo("/pay <player> <amount>", "Transfer money from your account to another online player.", "well404.Economy:commands.pay", "Economy")

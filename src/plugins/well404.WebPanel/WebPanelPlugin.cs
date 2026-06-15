@@ -38,6 +38,12 @@ namespace well404.WebPanel
         private ITunnelProvider? m_Tunnel;
         private CancellationTokenSource? m_TunnelMonitorCts;
 
+        // Registry singletons are captured at load so OnUnloadAsync never resolves from the Autofac
+        // scope — at full server shutdown that scope is already disposed (ObjectDisposedException).
+        private IWebPanelRegistry? m_WebPanelRegistry;
+        private IPlayerMenuRegistry? m_PlayerMenuRegistry;
+        private IPlayerCommandRegistry? m_PlayerCommandRegistry;
+
         public WebPanelPlugin(
             IConfiguration configuration,
             IStringLocalizer stringLocalizer,
@@ -79,12 +85,15 @@ namespace well404.WebPanel
             var playerRegistry = LifetimeScope.Resolve<IPlayerMenuRegistry>();
             var translations = LifetimeScope.Resolve<IWebTranslationRegistry>();
             var sessions = LifetimeScope.Resolve<PlayerWebSessionManager>();
+            m_WebPanelRegistry = registry;
+            m_PlayerMenuRegistry = playerRegistry;
 
             // Panel content owned by this plugin: the player home/intro tab, its admin editor, and
             // this plugin's own translations + /menu command help.
             translations.AddBundle(WebPanelI18n.Zh, WebPanelI18n.ZhTable);
             var introStore = new IntroStore(WorkingDirectory);
             var commands = LifetimeScope.Resolve<IPlayerCommandRegistry>();
+            m_PlayerCommandRegistry = commands;
             playerRegistry.RegisterMenu(new IntroPlayerMenu(
                 introStore, commands, translations,
                 LifetimeScope.Resolve<IPermissionChecker>(), LifetimeScope.Resolve<IUserManager>()));
@@ -176,9 +185,12 @@ namespace well404.WebPanel
             m_Server?.Dispose();
             m_Server = null;
 
-            LifetimeScope.Resolve<IPlayerMenuRegistry>().UnregisterMenu(IntroPlayerMenu.MenuId);
-            LifetimeScope.Resolve<IWebPanelRegistry>().UnregisterModule(WebPanelIntroModule.ModuleId);
-            LifetimeScope.Resolve<IPlayerCommandRegistry>().Unregister("well404.webpanel");
+            m_PlayerMenuRegistry?.UnregisterMenu(IntroPlayerMenu.MenuId);
+            m_PlayerMenuRegistry = null;
+            m_WebPanelRegistry?.UnregisterModule(WebPanelIntroModule.ModuleId);
+            m_WebPanelRegistry = null;
+            m_PlayerCommandRegistry?.Unregister("well404.webpanel");
+            m_PlayerCommandRegistry = null;
 
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
@@ -196,6 +208,17 @@ namespace well404.WebPanel
             }
 
             tunnel = ResolveEffectiveTunnel(tunnel);
+
+            // For a Cloudflare Quick Tunnel, make sure a cloudflared binary is actually runnable —
+            // download a portable copy into the plugin's data dir when it is missing (never onto the
+            // host system). For type: custom the admin owns the command, so we leave it untouched.
+            if (string.Equals(tunnel.Type, "cloudflare", StringComparison.OrdinalIgnoreCase))
+            {
+                tunnel.Command = await CloudflaredDownloader
+                    .EnsureAsync(tunnel.Command, tunnel.AutoDownload, WorkingDirectory, m_Logger, ct)
+                    .ConfigureAwait(false);
+            }
+
             var provider = new ProcessTunnelProvider(tunnel, m_Logger);
             try
             {
@@ -346,6 +369,7 @@ namespace well404.WebPanel
                 Enabled = t.Enabled,
                 Type = "cloudflare",
                 Command = string.IsNullOrWhiteSpace(t.Command) ? "cloudflared" : t.Command,
+                AutoDownload = t.AutoDownload,
                 Args = "tunnel --url http://127.0.0.1:{port} --no-autoupdate",
                 UrlPattern = "https://[a-z0-9-]+\\.trycloudflare\\.com",
                 ApiUrl = string.Empty,

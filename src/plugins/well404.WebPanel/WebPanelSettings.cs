@@ -86,6 +86,15 @@ namespace well404.WebPanel
         public string Command { get; set; } = "cloudflared";
 
         /// <summary>
+        /// Only for <c>type: cloudflare</c>. When <see cref="Command"/> ("cloudflared") is not found on
+        /// disk or <c>PATH</c>, download a <b>portable</b> copy of the latest official release into the
+        /// plugin's data directory and run that — it is never installed system-wide / onto <c>PATH</c>.
+        /// Cached and reused across restarts. Supported on Windows and Linux (x64/arm64); on other
+        /// platforms (e.g. macOS) install cloudflared manually. Default true.
+        /// </summary>
+        public bool AutoDownload { get; set; } = true;
+
+        /// <summary>
         /// Arguments for <see cref="Command"/>. The literal <c>{port}</c> is replaced with the panel
         /// port. Default targets a Cloudflare Quick Tunnel; for ngrok use <c>http {port}</c>.
         /// </summary>

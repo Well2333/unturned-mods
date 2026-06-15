@@ -38,6 +38,13 @@ web:
     # The tunnel binary (or a full path to it). For cloudflare this is the only field that matters.
     command: "cloudflared"
 
+    # Only for type: "cloudflare". If `command` isn't found on disk or PATH, download a PORTABLE
+    # cloudflared (latest official release) into this plugin's data dir and run that — it is NEVER
+    # installed system-wide or added to PATH, and is cached/reused across restarts. Supported on
+    # Windows and Linux (x64/arm64); on other platforms (e.g. macOS) install cloudflared yourself.
+    # Set false to require a pre-installed cloudflared instead.
+    autoDownload: true
+
     # The following four only apply when type: "custom". `{port}` is replaced with the panel port.
     args: "http {port}"
     urlPattern: "https://[a-z0-9-]+\\.ngrok[a-z0-9.-]*"   # regex to pull the URL out of output/api

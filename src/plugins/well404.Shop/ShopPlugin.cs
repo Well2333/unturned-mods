@@ -23,6 +23,8 @@ namespace well404.Shop
 
         private IWebPanelRegistry? m_WebPanelRegistry;
         private IPlayerMenuRegistry? m_PlayerMenuRegistry;
+        // Captured at load so unload never resolves from the (by-then disposed) Autofac scope.
+        private IPlayerCommandRegistry? m_PlayerCommandRegistry;
 
         public ShopPlugin(
             IConfiguration configuration,
@@ -56,8 +58,9 @@ namespace well404.Shop
             m_WebPanelRegistry?.UnregisterModule(ShopWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
             m_PlayerMenuRegistry?.UnregisterMenu(ShopPlayerMenu.MenuId);
-            LifetimeScope.ResolveOptional<IPlayerCommandRegistry>()?.Unregister("well404.shop");
             m_PlayerMenuRegistry = null;
+            m_PlayerCommandRegistry?.Unregister("well404.shop");
+            m_PlayerCommandRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
 
@@ -114,7 +117,8 @@ namespace well404.Shop
             registry.RegisterMenu(menu);
             m_PlayerMenuRegistry = registry;
 
-            LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.shop", new[]
+            m_PlayerCommandRegistry = LifetimeScope.Resolve<IPlayerCommandRegistry>();
+            m_PlayerCommandRegistry.Register("well404.shop", new[]
             {
                 new PlayerCommandInfo("/shop", "Browse the server shop and see item prices.", "well404.Shop:commands.shop", "Shop"),
                 new PlayerCommandInfo("/buy <id> [amount]", "Buy a plain item by its item id, or a bundle by its id, with your money.", "well404.Shop:commands.buy", "Shop"),

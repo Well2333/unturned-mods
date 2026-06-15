@@ -31,6 +31,8 @@ namespace well404.Essentials
 
         private IWebPanelRegistry? m_WebPanelRegistry;
         private IPlayerMenuRegistry? m_PlayerMenuRegistry;
+        // Captured at load so unload never resolves from the (by-then disposed) Autofac scope.
+        private IPlayerCommandRegistry? m_PlayerCommandRegistry;
 
         public EssentialsPlugin(
             IConfiguration configuration,
@@ -64,8 +66,9 @@ namespace well404.Essentials
             m_WebPanelRegistry?.UnregisterModule(EssentialsWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
             m_PlayerMenuRegistry?.UnregisterMenu(EssentialsPlayerMenu.MenuId);
-            LifetimeScope.ResolveOptional<IPlayerCommandRegistry>()?.Unregister("well404.essentials");
             m_PlayerMenuRegistry = null;
+            m_PlayerCommandRegistry?.Unregister("well404.essentials");
+            m_PlayerCommandRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
 
@@ -122,7 +125,8 @@ namespace well404.Essentials
 
             // Descriptions and the group heading are English source strings (the i18n key convention
             // used across the panel); Chinese comes from WebI18n.ZhTable, English falls back to the key.
-            LifetimeScope.Resolve<IPlayerCommandRegistry>().Register("well404.essentials", new[]
+            m_PlayerCommandRegistry = LifetimeScope.Resolve<IPlayerCommandRegistry>();
+            m_PlayerCommandRegistry.Register("well404.essentials", new[]
             {
                 new PlayerCommandInfo("/home", "Teleport back to the home you saved. After a short warm-up you return to that spot.", "well404.Essentials:commands.home", "Utilities"),
                 new PlayerCommandInfo("/home set", "Save your current position as your home, so /home brings you back here.", "well404.Essentials:commands.home", "Utilities"),

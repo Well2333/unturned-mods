@@ -26,6 +26,8 @@ namespace well404.Vault
 
         private IPlayerMenuRegistry? m_PlayerMenuRegistry;
         private IWebPanelRegistry? m_WebPanelRegistry;
+        // Captured at load so unload never resolves from the (by-then disposed) Autofac scope.
+        private IPlayerCommandRegistry? m_PlayerCommandRegistry;
 
         public VaultPlugin(
             IConfiguration configuration,
@@ -62,7 +64,8 @@ namespace well404.Vault
             m_PlayerMenuRegistry = null;
             m_WebPanelRegistry?.UnregisterModule(VaultWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
-            LifetimeScope.ResolveOptional<IPlayerCommandRegistry>()?.Unregister("well404.vault");
+            m_PlayerCommandRegistry?.Unregister("well404.vault");
+            m_PlayerCommandRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
 
@@ -83,7 +86,8 @@ namespace well404.Vault
                 translations));
             m_PlayerMenuRegistry = registry;
 
-            LifetimeScope.ResolveOptional<IPlayerCommandRegistry>()?.Register("well404.vault", new[]
+            m_PlayerCommandRegistry = LifetimeScope.ResolveOptional<IPlayerCommandRegistry>();
+            m_PlayerCommandRegistry?.Register("well404.vault", new[]
             {
                 new PlayerCommandInfo("/vault", "Open the personal vault — store, take and list your items.", "well404.Vault:commands.vault", "Vault"),
                 new PlayerCommandInfo("/vault store <id> [amount]", "Store items from your backpack into the vault (by item id).", "well404.Vault:commands.vault.store", "Vault"),

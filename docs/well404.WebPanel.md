@@ -83,13 +83,21 @@ web:
 
 ### 内置反代 / 隧道（`web.tunnel`，可选)
 
-开启后,插件会拉起一个**你已安装**的隧道工具(不内置、不下载二进制),把面板端口安全地
-反代到公网,并自动把得到的公网地址用于玩家 `/menu` 链接与管理面地址。两种类型:
+开启后,插件会拉起一个隧道工具,把面板端口安全地反代到公网,并自动把得到的公网地址用于
+玩家 `/menu` 链接与管理面地址。两种类型:
 
 | `type` | 说明 |
 | --- | --- |
-| `cloudflare` | Cloudflare Quick Tunnel(无需账号)。装好 `cloudflared` 即可,参数/URL 解析已内置;只需在 `command` 指定二进制路径(默认 `cloudflared`)。得到随机 `https://<…>.trycloudflare.com`。 |
-| `custom` | 你完全自定义 `command` / `args` / `urlPattern` / `apiUrl`(`{port}` 会被替换为面板端口)。适配 ngrok 等任意工具。 |
+| `cloudflare` | Cloudflare Quick Tunnel(无需账号)。参数/URL 解析已内置;只需在 `command` 指定二进制路径(默认 `cloudflared`)。**找不到 `cloudflared` 时会自动下载便携版**(见下)。得到随机 `https://<…>.trycloudflare.com`。 |
+| `custom` | 你完全自定义 `command` / `args` / `urlPattern` / `apiUrl`(`{port}` 会被替换为面板端口)。适配 ngrok 等任意工具;`custom` 不会自动下载,需你自行安装。 |
+
+**自动下载便携版 cloudflared(`autoDownload`,默认开,仅 `type: cloudflare`)**:当 `command`
+(默认 `cloudflared`)在磁盘和 `PATH` 中都找不到时,插件会从 Cloudflare 官方仓库下载**最新版**
+的**便携二进制**到本插件数据目录(`cloudflared/` 子目录),并直接运行它——**绝不**安装到系统、
+也不写入 `PATH`;下载结果会缓存复用,重启不再重复下载。支持 **Windows / Linux(x64、arm64)**;
+其它平台(如 macOS,发行包为需解压的 `.tgz`)请自行安装 `cloudflared` 并用 `command` 指定路径,
+或设 `autoDownload: false` 要求使用预装的 `cloudflared`。下载失败也不会影响面板本地使用,只是隧道
+未启用(日志会给出提示)。
 
 `custom` + ngrok 示例:
 
