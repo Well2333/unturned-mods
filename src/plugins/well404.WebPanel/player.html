@@ -71,6 +71,13 @@
   .flash.ok { background:var(--ok); color:#fff; }
   .flash.err { background:var(--err); color:#fff; }
   .empty { color:var(--muted); text-align:center; padding:50px 16px; }
+  /* In-page input prompt (replaces window.prompt, which Steam's in-game browser suppresses) */
+  .pmodal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:60; }
+  .pmodal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; min-width:260px; max-width:92%; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .pmodal .ptitle { font-size:15px; color:var(--fg); margin-bottom:12px; }
+  .pmodal input { width:100%; box-sizing:border-box; background:var(--bg); border:1px solid var(--line); color:var(--fg); border-radius:7px; padding:10px 12px; font-size:16px; }
+  .pmodal .pmbtns { display:flex; gap:8px; margin-top:14px; justify-content:flex-end; }
+  button.act.ghost { background:transparent; }
 </style>
 </head>
 <body>
@@ -102,12 +109,14 @@ const STR = {
         empty:"(nothing here)", noToken:"Missing session token. Type /menu in-game to reopen the panel.",
         sessionEnded:"Session expired — reopen the panel in-game with /menu.",
         staleNote:"This page does not refresh on its own — tap ↻ to get the latest data.",
-        refresh:"Refresh", reqFailed:"Request failed", details:"Details" },
+        refresh:"Refresh", reqFailed:"Request failed", details:"Details",
+        confirm:"OK", cancel:"Cancel" },
   zh: { title:"🎮 玩家面板", loading:"加载中…", noFeatures:"暂时没有可用的功能。",
         empty:"（暂无内容）", noToken:"缺少会话令牌。请在游戏内输入 /menu 重新打开面板。",
         sessionEnded:"会话已过期，请在游戏内用 /menu 重新打开面板。",
         staleNote:"本页不会自动刷新——点 ↻ 获取最新数据。",
-        refresh:"刷新", reqFailed:"请求失败", details:"详情" }
+        refresh:"刷新", reqFailed:"请求失败", details:"详情",
+        confirm:"确定", cancel:"取消" }
 };
 function T(k){ return (STR[lang] && STR[lang][k]) || STR.en[k] || k; }
 
@@ -313,13 +322,33 @@ function buildCard(menu, card) {
   return node;
 }
 
+// An in-page numeric prompt. Steam's in-game browser silently ignores window.prompt(), so we
+// render our own overlay with an input. Resolves to the trimmed string, or null if cancelled.
+function askValue(label, dflt) {
+  return new Promise(resolve => {
+    const overlay = el("div", { class:"pmodal-overlay" });
+    const input = el("input", { type:"number", inputmode:"numeric", min:"1", step:"1", value: dflt || "" });
+    const close = (val) => { overlay.remove(); document.removeEventListener("keydown", onKey); resolve(val); };
+    const onKey = (e) => { if (e.key === "Enter") close(input.value.trim()); else if (e.key === "Escape") close(null); };
+    const ok = el("button", { class:"act", text:T("confirm"), onclick: () => close(input.value.trim()) });
+    const cancel = el("button", { class:"act ghost", text:T("cancel"), onclick: () => close(null) });
+    overlay.append(el("div", { class:"pmodal" },
+      el("div", { class:"ptitle", text: label }), input,
+      el("div", { class:"pmbtns" }, cancel, ok)));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+    document.addEventListener("keydown", onKey);
+    document.body.append(overlay);
+    input.focus(); input.select();
+  });
+}
+
 async function invoke(menu, card, button, btnNode) {
   let value = null;
   if (button.promptLabel) {
     // An explicit empty promptDefault ("") opens the box empty so the player must type a value
     // (e.g. a specific quantity); only an absent default falls back to "1".
     const dflt = (button.promptDefault === null || button.promptDefault === undefined) ? "1" : button.promptDefault;
-    const entered = window.prompt(button.promptLabel, dflt);
+    const entered = await askValue(button.promptLabel, dflt);
     if (entered === null) return;
     value = entered.trim();
   }
