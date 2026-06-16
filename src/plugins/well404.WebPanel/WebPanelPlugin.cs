@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -40,6 +42,9 @@ namespace well404.WebPanel
         private ITunnelProvider? m_Tunnel;
         // Drives every background task this plugin starts (tunnel bring-up, monitor, post-host warning).
         private CancellationTokenSource? m_BackgroundCts;
+        // The configured tunnel command (when a tunnel is enabled), so unload/startup can clean up the
+        // cloudflared we spawned even if it wasn't tracked in m_Tunnel yet (startup race / crash).
+        private string? m_TunnelCommand;
 
         // Registry singletons are captured at load so OnUnloadAsync never resolves from the Autofac
         // scope — at full server shutdown that scope is already disposed (ObjectDisposedException).
@@ -128,14 +133,47 @@ namespace well404.WebPanel
 
             m_BackgroundCts = new CancellationTokenSource();
 
-            try
+            // Remember the tunnel command so unload can also clean up the cloudflared we spawn.
+            m_TunnelCommand = web.Tunnel != null && web.Tunnel.Enabled ? web.Tunnel.Command : null;
+
+            // A cloudflared we launched inherits this process's listening socket (Mono spawns children
+            // with handle inheritance). If a previous run left one alive (e.g. a hard shutdown/crash),
+            // it keeps the panel port bound and our bind below fails with "address already in use".
+            // Kill any such leftover that we own BEFORE binding, so a restart self-heals.
+            if (m_TunnelCommand != null)
             {
-                server.Start();
+                KillOwnTunnelProcesses(m_TunnelCommand);
             }
-            catch (Exception ex)
+
+            Exception? startError = null;
+            for (var attempt = 1; attempt <= 2; attempt++)
+            {
+                try
+                {
+                    server.Start();
+                    startError = null;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    startError = ex;
+                    // Port still busy on the first try → a leftover may not have fully released it yet.
+                    // Re-kill and wait a moment, then retry once.
+                    if (attempt == 1 && m_TunnelCommand != null)
+                    {
+                        m_Logger.LogWarning(
+                            "WebPanel: HTTP listener bind on {Prefix} failed ({Err}); killing any leftover "
+                            + "cloudflared and retrying once ...", prefix, ex.Message);
+                        KillOwnTunnelProcesses(m_TunnelCommand);
+                        await Task.Delay(1500);
+                    }
+                }
+            }
+
+            if (startError != null)
             {
                 server.Dispose();
-                m_Logger.LogError(ex,
+                m_Logger.LogError(startError,
                     "WebPanel: failed to start HTTP listener on {Prefix}. Is the port already in use, or the "
                     + "address not assigned to this host?", prefix);
                 RecordStartupIssue(
@@ -306,6 +344,14 @@ namespace well404.WebPanel
             m_Tunnel?.Stop();
             m_Tunnel?.Dispose();
             m_Tunnel = null;
+            // Belt-and-suspenders: make sure no cloudflared we launched is left holding the panel port
+            // (it inherited the listening socket), even if it wasn't tracked in m_Tunnel above.
+            if (m_TunnelCommand != null)
+            {
+                KillOwnTunnelProcesses(m_TunnelCommand);
+                m_TunnelCommand = null;
+            }
+
             m_Server?.Dispose();
             m_Server = null;
 
@@ -515,6 +561,76 @@ namespace well404.WebPanel
                 AutoRestart = t.AutoRestart,
                 HealthCheckSeconds = t.HealthCheckSeconds
             };
+        }
+
+        /// <summary>
+        /// Terminates any running cloudflared process that WE launched (matched by executable path:
+        /// the auto-downloaded portable binary, or an explicit path in <paramref name="command"/>).
+        /// Such a process inherits this server's listening socket, so a leftover from a previous run
+        /// keeps the panel port bound; killing it lets a restart re-bind. Best-effort; never throws.
+        /// </summary>
+        private void KillOwnTunnelProcesses(string? command)
+        {
+            try
+            {
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+                var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                void AddCandidate(string? path)
+                {
+                    if (string.IsNullOrWhiteSpace(path)) return;
+                    try { candidates.Add(Path.GetFullPath(path)); } catch { /* malformed path */ }
+                }
+
+                // The auto-downloaded portable copy (the common case).
+                AddCandidate(Path.Combine(WorkingDirectory, "cloudflared", isWindows ? "cloudflared.exe" : "cloudflared"));
+                // An explicit path the admin configured (only when it actually is a path, to avoid
+                // matching/killing an unrelated system-wide cloudflared serving someone else's tunnel).
+                if (!string.IsNullOrWhiteSpace(command) &&
+                    (command!.IndexOf(Path.DirectorySeparatorChar) >= 0 ||
+                     command.IndexOf(Path.AltDirectorySeparatorChar) >= 0 ||
+                     Path.IsPathRooted(command)))
+                {
+                    AddCandidate(command);
+                    if (isWindows && !command.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddCandidate(command + ".exe");
+                    }
+                }
+
+                Process[] procs;
+                try { procs = Process.GetProcessesByName("cloudflared"); }
+                catch { return; }
+
+                var killed = 0;
+                foreach (var p in procs)
+                {
+                    try
+                    {
+                        string? path = null;
+                        try { path = p.MainModule?.FileName; } catch { /* access denied / exited */ }
+                        if (path != null && candidates.Contains(Path.GetFullPath(path)))
+                        {
+                            p.Kill();
+                            p.WaitForExit(3000);
+                            killed++;
+                        }
+                    }
+                    catch { /* already gone / not killable */ }
+                    finally { p.Dispose(); }
+                }
+
+                if (killed > 0)
+                {
+                    m_Logger.LogWarning(
+                        "WebPanel: terminated {Count} leftover cloudflared process(es) holding the panel port "
+                        + "from a previous run.", killed);
+                }
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: error while cleaning up leftover cloudflared processes.");
+            }
         }
 
         private const string TokenAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";

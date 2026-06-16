@@ -8,4 +8,4 @@ menu:
   # Shown in the Steam overlay confirmation dialog before the browser opens.
   prompt: "Open your personal web panel?"
   opened: "A link to your web panel has been sent — confirm it in the Steam overlay to open."
-  unavailable: "The web panel has no public address configured, so a player link can't be created. Ask an admin to set web.publicBaseUrl."
+  unavailable: "Can't create your panel link yet — no public address is available. If the server just started and uses the built-in tunnel, it may still be starting; try /menu again in a few seconds. Otherwise ask an admin to enable the tunnel or set web.publicBaseUrl."
