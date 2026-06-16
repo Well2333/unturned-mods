@@ -165,7 +165,7 @@ namespace well404.WebPanel
                             "WebPanel: HTTP listener bind on {Prefix} failed ({Err}); killing any leftover "
                             + "cloudflared and retrying once ...", prefix, ex.Message);
                         KillOwnTunnelProcesses(m_TunnelCommand);
-                        await Task.Delay(1500);
+                        await Task.Delay(1500).ConfigureAwait(false);
                     }
                 }
             }
@@ -212,7 +212,16 @@ namespace well404.WebPanel
             // links and logs the public admin URL; failures are re-surfaced after the server is hosted.
             if (web.Tunnel != null && web.Tunnel.Enabled)
             {
-                _ = BringUpTunnelAsync(web, token, sessions, m_BackgroundCts.Token);
+                // Tell the session service a tunnel is coming up, so a /menu issued during the
+                // startup window waits for the public URL instead of failing with "no public address".
+                sessions.BeginTunnel();
+                // Run the whole tunnel bring-up on a thread-pool context, NOT inline on the UniTask
+                // main-thread sync context. That context does not pump plain Task continuations, so an
+                // await that completes synchronously here (e.g. cloudflared already cached, so EnsureAsync
+                // returns without really awaiting) would strand every later await — the tunnel would
+                // silently never come up. Task.Run starts it with a null sync context, so it can't happen.
+                var bgCt = m_BackgroundCts.Token;
+                _ = Task.Run(() => BringUpTunnelAsync(web, token, sessions, bgCt));
             }
             else
             {
@@ -248,6 +257,8 @@ namespace well404.WebPanel
 
             if (url == null)
             {
+                // Unblock any /menu that is waiting for the tunnel — it won't come.
+                sessions.SetTunnelUnavailable();
                 RecordStartupIssue(
                     "内置反代(tunnel)未能启动:cloudflared 下载/启动失败(见上方日志)。玩家 /menu 链接与公网管理面"
                     + "地址本次不可用;面板仍可经本地地址访问。可配置 web.tunnel.downloadMirrors / 系统代理后重试,"
@@ -401,7 +412,7 @@ namespace well404.WebPanel
             var provider = new ProcessTunnelProvider(tunnel, m_Logger);
             try
             {
-                var url = await provider.StartAsync(web.Port, ct);
+                var url = await provider.StartAsync(web.Port, ct).ConfigureAwait(false);
                 if (url == null)
                 {
                     provider.Stop();

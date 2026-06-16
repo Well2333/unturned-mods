@@ -5,7 +5,6 @@ using Microsoft.Extensions.Localization;
 using OpenMod.API.Commands;
 using OpenMod.Core.Commands;
 using OpenMod.Unturned.Users;
-using UnturnedMods.Shared.WebPanel;
 
 namespace well404.WebPanel.Commands
 {
@@ -21,12 +20,15 @@ namespace well404.WebPanel.Commands
     [CommandActor(typeof(UnturnedUser))]
     public class CommandMenu : Command
     {
-        private readonly IPlayerWebSessionService m_Sessions;
+        // Inject the concrete type (not IPlayerWebSessionService) so we can use CreateLinkAsync, which
+        // is intentionally NOT on the shared interface — adding to it would require shipping a new
+        // UnturnedMods.Shared.dll in every plugin, and a partial upgrade could load a mismatched copy.
+        private readonly PlayerWebSessionManager m_Sessions;
         private readonly IStringLocalizer m_StringLocalizer;
 
         public CommandMenu(
             IServiceProvider serviceProvider,
-            IPlayerWebSessionService sessions,
+            PlayerWebSessionManager sessions,
             IStringLocalizer stringLocalizer) : base(serviceProvider)
         {
             m_Sessions = sessions;
@@ -38,7 +40,10 @@ namespace well404.WebPanel.Commands
             var user = (UnturnedUser)Context.Actor;
             var menuId = Context.Parameters.Length >= 1 ? Context.Parameters[0] : null;
 
-            var url = m_Sessions.CreateLink(user.Id, user.DisplayName, menuId);
+            // Async variant: if the built-in tunnel is still coming up just after server start, this
+            // waits briefly for the public URL instead of failing immediately (the common cause of the
+            // "no public address" message right after a restart).
+            var url = await m_Sessions.CreateLinkAsync(user.Id, user.DisplayName, menuId);
             if (url == null)
             {
                 // No reachable public base URL configured (see web.publicBaseUrl).

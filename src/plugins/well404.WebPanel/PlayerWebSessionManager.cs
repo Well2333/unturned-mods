@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,10 +43,23 @@ namespace well404.WebPanel
 
         private volatile string? m_TunnelBaseUrl;
 
+        // Completes when the initial tunnel bring-up resolves (URL obtained, or gave up). Lets
+        // CreateLinkAsync wait briefly so a /menu right after startup doesn't fail on the window
+        // where the tunnel is still coming up. Null when no tunnel is being brought up.
+        private volatile TaskCompletionSource<bool>? m_TunnelReady;
+
+        /// <summary>How long CreateLinkAsync waits for the tunnel to come up before giving up.</summary>
+        private const int TunnelWaitSeconds = 25;
+
         public PlayerWebSessionManager(IPluginAccessor<WebPanelPlugin> pluginAccessor)
         {
             m_PluginAccessor = pluginAccessor;
         }
+
+        /// <summary>Marks that a tunnel is being brought up, so CreateLinkAsync waits for its first
+        /// result instead of immediately reporting "no public address". Called by the plugin at load.</summary>
+        public void BeginTunnel()
+            => m_TunnelReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         /// <summary>
         /// Sets (or clears, with null) the live tunnel base URL. When present it takes precedence
@@ -53,7 +67,17 @@ namespace well404.WebPanel
         /// it is assigned dynamically at startup. Set by the plugin once the tunnel is up.
         /// </summary>
         public void SetTunnelBaseUrl(string? baseUrl)
-            => m_TunnelBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl!.Trim().TrimEnd('/');
+        {
+            m_TunnelBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl!.Trim().TrimEnd('/');
+            if (m_TunnelBaseUrl != null)
+            {
+                m_TunnelReady?.TrySetResult(true);
+            }
+        }
+
+        /// <summary>Marks the tunnel bring-up as concluded without a URL (download/start failed), so
+        /// CreateLinkAsync stops waiting and falls back to web.publicBaseUrl (or reports unavailable).</summary>
+        public void SetTunnelUnavailable() => m_TunnelReady?.TrySetResult(false);
 
         private WebServerSettings? ReadSettings()
         {
@@ -82,11 +106,48 @@ namespace well404.WebPanel
 
             // A live tunnel URL wins over static config; otherwise derive from settings.
             var baseUrl = m_TunnelBaseUrl ?? ResolveBaseUrl(settings);
-            if (baseUrl == null)
+            return baseUrl == null ? null : BuildLink(baseUrl, steamId, displayName, settings, menuId);
+        }
+
+        public async Task<string?> CreateLinkAsync(string steamId, string displayName, string? menuId = null)
+        {
+            if (string.IsNullOrEmpty(steamId))
             {
                 return null;
             }
 
+            var settings = ReadSettings();
+            if (settings == null)
+            {
+                return null;
+            }
+
+            var baseUrl = m_TunnelBaseUrl ?? ResolveBaseUrl(settings);
+            if (baseUrl == null)
+            {
+                // No address yet — if a tunnel is still coming up (just after startup), wait briefly
+                // for its first result so /menu works without the player having to retry. ConfigureAwait
+                // (false) keeps the continuation off the Unity/UniTask main-thread context.
+                var ready = m_TunnelReady;
+                if (ready != null && !ready.Task.IsCompleted)
+                {
+                    await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(TunnelWaitSeconds)))
+                        .ConfigureAwait(false);
+                }
+
+                baseUrl = m_TunnelBaseUrl ?? ResolveBaseUrl(settings);
+                if (baseUrl == null)
+                {
+                    return null;
+                }
+            }
+
+            return BuildLink(baseUrl, steamId, displayName, settings, menuId);
+        }
+
+        /// <summary>Mints a session token and assembles the full player-surface URL.</summary>
+        private string BuildLink(string baseUrl, string steamId, string displayName, WebServerSettings settings, string? menuId)
+        {
             // Links are valid for at least 15 minutes (the floor); past that they stay valid only
             // while the player is online (see Validate). So the "expiry" stored here is the floor.
             var minutes = Math.Max(settings.PlayerSessionMinutes, 15);
