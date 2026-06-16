@@ -505,7 +505,10 @@ namespace well404.WebPanel
                 AutoDownload = t.AutoDownload,
                 DownloadMirrors = t.DownloadMirrors,
                 DownloadAttempts = t.DownloadAttempts,
-                Args = "tunnel --url http://127.0.0.1:{port} --no-autoupdate",
+                // --http-host-header makes cloudflared send "Host: 127.0.0.1:{port}" to the local panel.
+                // Without it, cloudflared forwards the public trycloudflare Host, which a bindAddress of
+                // 127.0.0.1 (the default) does NOT match, so HttpListener answers "400 (Invalid host)".
+                Args = "tunnel --url http://127.0.0.1:{port} --http-host-header 127.0.0.1:{port} --no-autoupdate",
                 UrlPattern = "https://[a-z0-9-]+\\.trycloudflare\\.com",
                 ApiUrl = string.Empty,
                 ReadyTimeoutSeconds = t.ReadyTimeoutSeconds > 0 ? t.ReadyTimeoutSeconds : 30,

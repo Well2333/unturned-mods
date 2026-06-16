@@ -115,6 +115,10 @@ web:
   管理面地址。下载/启动失败不影响面板本地访问,只是隧道未启用。
 - **启动后醒目提醒**:若 WebPanel 启动期间出现任何问题(HTTP 监听失败、隧道未起来等),会在**服务器
   完成开服(servercode 弹出)之后**再用一条醒目的 `ERR` 横幅日志重新提示管理员,避免被刷屏淹没。
+- **默认 `127.0.0.1` 绑定也能经隧道访问**:cloudflared 以 `--http-host-header 127.0.0.1:{port}` 调起,
+  转发到本地时发送 `Host: 127.0.0.1:{port}`,匹配默认绑定的监听前缀;否则 cloudflared 转发的是公网
+  Host,`HttpListener` 会因 Host 不匹配回 `400 (Invalid host)`,导致经隧道访问全部 400。无需把
+  `bindAddress` 改成 `0.0.0.0`/开放端口即可经隧道访问。
 
 `custom` + ngrok 示例:
 
