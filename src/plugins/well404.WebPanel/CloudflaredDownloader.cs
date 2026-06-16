@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,19 +38,20 @@ namespace well404.WebPanel
 
         /// <summary>
         /// Built-in default download sources, tried top to bottom (first that works wins). GitHub
-        /// release proxies first (reachable where github.com is blocked/slow), direct GitHub last.
-        /// Each entry may be a full template containing <c>{asset}</c>, or a bare prefix that gets the
-        /// canonical GitHub release URL appended. Overridable via <c>web.tunnel.downloadMirrors</c>.
-        /// NOTE: jsDelivr (cdn.jsdelivr.net) only mirrors a repo's committed files, NOT release
-        /// binaries, so it cannot serve cloudflared and is deliberately not a default.
+        /// itself is preferred; the rest are GitHub-release proxies that were verified to actually
+        /// stream the binary (HTTP 206), ordered by measured stability/speed — for environments where
+        /// github.com is blocked or slow. Each entry may be a full template containing <c>{asset}</c>,
+        /// or a bare prefix that gets the canonical GitHub release URL appended. Overridable via
+        /// <c>web.tunnel.downloadMirrors</c>. NOTE: jsDelivr (cdn.jsdelivr.net) only mirrors a repo's
+        /// committed git-tree files, NOT GitHub *release assets*, so it returns 404 for cloudflared and
+        /// is deliberately not a default.
         /// </summary>
         private static readonly string[] DefaultMirrors =
         {
-            "https://ghproxy.net/",
-            "https://gh-proxy.com/",
-            "https://mirror.ghproxy.com/",
-            "https://ghproxy.com/",
-            "", // direct github.com
+            "",                                                                               // 1) GitHub itself (preferred)
+            "https://cdn.jsdelivr.net/gh/Well2333/asset-mirror@main/cloudflared/{asset}.gz",  // 2) jsDelivr (gzip mirror, decompressed after download)
+            "https://gh-proxy.com/",                                                          // 3) proxy — streams content
+            "https://gh.ddlc.top/",                                                           // 4) proxy — streams content
         };
 
         /// <summary>
@@ -95,37 +99,47 @@ namespace well404.WebPanel
             var urls = BuildCandidateUrls(asset, mirrors);
             var attempts = attemptsPerSource > 0 ? attemptsPerSource : 2;
 
+            // Connectivity probe (parallel, short timeout) so we don't burn the full download timeout +
+            // retries on a dead/blocked source (e.g. direct github.com behind the GFW). Reachable
+            // sources are downloaded first; unreachable ones are kept as a last resort, since the probe
+            // can have false negatives (a source that rejects a ranged/partial request, etc.).
             logger.LogInformation(
-                "WebPanel: cloudflared not found — downloading a portable copy into {Dir} (NOT installed "
-                + "system-wide). Trying {Sources} source(s), {Attempts} attempt(s) each.",
-                Path.GetDirectoryName(portable), urls.Count, attempts);
+                "WebPanel: cloudflared not found — will download a portable copy into {Dir} (NOT installed "
+                + "system-wide). Probing {N} source(s) for reachability ...", Path.GetDirectoryName(portable), urls.Count);
 
-            for (var s = 0; s < urls.Count; s++)
+            var probes = await Task.WhenAll(urls.Select(u => ProbeReachableAsync(u, cancellationToken))).ConfigureAwait(false);
+            var reachable = new List<string>();
+            var unreachable = new List<string>();
+            for (var i = 0; i < urls.Count; i++)
             {
-                var url = urls[s];
-                for (var attempt = 1; attempt <= attempts; attempt++)
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        return null;
-                    }
+                (probes[i] ? reachable : unreachable).Add(urls[i]);
+                logger.LogInformation("WebPanel:   [{State}] {Url}", probes[i] ? "reachable" : "no-route ", urls[i]);
+            }
 
-                    try
-                    {
-                        logger.LogInformation(
-                            "WebPanel: cloudflared download — source {S}/{N} attempt {A}/{Attempts}: {Url}",
-                            s + 1, urls.Count, attempt, attempts, url);
-                        await DownloadAsync(url, portable, cancellationToken).ConfigureAwait(false);
-                        MakeExecutable(portable, logger);
-                        logger.LogInformation("WebPanel: portable cloudflared ready at {Path} (from {Url}).", portable, url);
-                        return portable;
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(
-                            "WebPanel: cloudflared download failed (source {S}/{N} attempt {A}/{Attempts}, {Url}): {Err}",
-                            s + 1, urls.Count, attempt, attempts, url, ex.Message);
-                    }
+            logger.LogInformation(
+                "WebPanel: {R}/{N} source(s) reachable; downloading from those first ({A} attempt(s) each), "
+                + "{U} unreachable kept as a last resort.", reachable.Count, urls.Count, attempts, unreachable.Count);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
+            // Phase 1: sources that passed the probe.
+            if (await TryDownloadAnyAsync(reachable, portable, attempts, "reachable", logger, cancellationToken).ConfigureAwait(false))
+            {
+                return portable;
+            }
+
+            // Phase 2: last resort — sources that failed the probe, attempted directly.
+            if (unreachable.Count > 0)
+            {
+                logger.LogWarning(
+                    "WebPanel: no reachable source produced cloudflared — trying {U} unreachable source(s) directly "
+                    + "as a last resort.", unreachable.Count);
+                if (await TryDownloadAnyAsync(unreachable, portable, attempts, "last-resort", logger, cancellationToken).ConfigureAwait(false))
+                {
+                    return portable;
                 }
             }
 
@@ -136,15 +150,75 @@ namespace well404.WebPanel
             return null;
         }
 
+        /// <summary>Tries each URL in order (with <paramref name="attempts"/> retries), returning true on
+        /// the first success. <paramref name="phase"/> only labels the log lines.</summary>
+        private static async Task<bool> TryDownloadAnyAsync(
+            IReadOnlyList<string> urls, string portable, int attempts, string phase, ILogger logger, CancellationToken cancellationToken)
+        {
+            for (var s = 0; s < urls.Count; s++)
+            {
+                var url = urls[s];
+                for (var attempt = 1; attempt <= attempts; attempt++)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return false;
+                    }
+
+                    try
+                    {
+                        logger.LogInformation(
+                            "WebPanel: cloudflared download [{Phase}] {S}/{N} attempt {A}/{Attempts}: {Url}",
+                            phase, s + 1, urls.Count, attempt, attempts, url);
+                        await DownloadAsync(url, portable, cancellationToken).ConfigureAwait(false);
+                        MakeExecutable(portable, logger);
+                        logger.LogInformation("WebPanel: portable cloudflared ready at {Path} (from {Url}).", portable, url);
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(
+                            "WebPanel: cloudflared download failed ([{Phase}] {S}/{N} attempt {A}/{Attempts}, {Url}): {Err}",
+                            phase, s + 1, urls.Count, attempt, attempts, url, ex.Message);
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Quick reachability check: a short-timeout ranged GET (1 byte) that follows redirects;
+        /// any 2xx means the source can serve the asset. Never throws — returns false on any error/timeout.</summary>
+        private static async Task<bool> ProbeReachableAsync(string url, CancellationToken cancellationToken)
+        {
+            try
+            {
+                using var http = new HttpClient(CreateHandler()) { Timeout = TimeSpan.FromSeconds(8) };
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("well404.WebPanel");
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Range = new RangeHeaderValue(0, 0);   // ask for 1 byte; sources reply 206 (or 200)
+                using var response = await http
+                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                    .ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         /// <summary>Expands the mirror list (or built-in defaults) into concrete asset URLs.</summary>
         private static List<string> BuildCandidateUrls(string asset, IReadOnlyList<string>? mirrors)
         {
             var sources = new List<string>();
             if (mirrors != null)
             {
+                // Keep "" / whitespace entries — a blank entry is the sentinel for a DIRECT github.com
+                // download (so a user can pin GitHub's priority in their own list). Only null is skipped.
                 foreach (var m in mirrors)
                 {
-                    if (!string.IsNullOrWhiteSpace(m))
+                    if (m != null)
                     {
                         sources.Add(m.Trim());
                     }
@@ -277,9 +351,10 @@ namespace well404.WebPanel
             return null;
         }
 
-        /// <summary>Streams <paramref name="url"/> to <paramref name="destination"/> via a temp file,
-        /// then atomically moves it into place so a reused copy is never partially written. Honours the
-        /// system / environment HTTP(S) proxy.</summary>
+        /// <summary>Streams <paramref name="url"/> to <paramref name="destination"/> via a temp file —
+        /// gunzipping it on the way if the URL ends in <c>.gz</c> (mirrors such as jsDelivr store the
+        /// binary gzip-compressed to fit the 50 MB limit) — then atomically moves it into place so a
+        /// reused copy is never partially written. Honours the system / environment HTTP(S) proxy.</summary>
         private static async Task DownloadAsync(string url, string destination, CancellationToken cancellationToken)
         {
             var dir = Path.GetDirectoryName(destination);
@@ -288,18 +363,10 @@ namespace well404.WebPanel
                 Directory.CreateDirectory(dir);
             }
 
+            var isGzip = url.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
             var temp = destination + ".download";
 
-            var handler = new HttpClientHandler();
-            var proxy = ResolveProxyFromEnvironment();
-            if (proxy != null)
-            {
-                handler.UseProxy = true;
-                handler.Proxy = proxy;
-            }
-            // else: handler.UseProxy defaults to true and picks up the system proxy (Windows/WinHTTP).
-
-            using (var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) })
+            using (var http = new HttpClient(CreateHandler()) { Timeout = TimeSpan.FromSeconds(60) })
             {
                 http.DefaultRequestHeaders.UserAgent.ParseAdd("well404.WebPanel");
                 using var response = await http
@@ -309,13 +376,21 @@ namespace well404.WebPanel
 
                 using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
                 using var file = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None);
-                await source.CopyToAsync(file, 81920, cancellationToken).ConfigureAwait(false);
+                if (isGzip)
+                {
+                    using var gzip = new GZipStream(source, CompressionMode.Decompress);
+                    await gzip.CopyToAsync(file, 81920, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await source.CopyToAsync(file, 81920, cancellationToken).ConfigureAwait(false);
+                }
             }
 
             if (new FileInfo(temp).Length == 0)
             {
                 try { File.Delete(temp); } catch { /* best effort */ }
-                throw new IOException("downloaded file was empty");
+                throw new IOException("downloaded file was empty (after decompression)");
             }
 
             if (File.Exists(destination))
@@ -324,6 +399,22 @@ namespace well404.WebPanel
             }
 
             File.Move(temp, destination);
+        }
+
+        /// <summary>An <see cref="HttpClientHandler"/> that uses an explicit env-var proxy when one is set,
+        /// otherwise the default system proxy (Windows/WinHTTP). Shared by the probe and the download.</summary>
+        private static HttpClientHandler CreateHandler()
+        {
+            var handler = new HttpClientHandler();
+            var proxy = ResolveProxyFromEnvironment();
+            if (proxy != null)
+            {
+                handler.UseProxy = true;
+                handler.Proxy = proxy;
+            }
+            // else: handler.UseProxy defaults to true and picks up the system proxy.
+
+            return handler;
         }
 
         /// <summary>Reads a proxy from the usual environment variables, or null to use the system proxy.</summary>

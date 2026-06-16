@@ -50,16 +50,20 @@ web:
     # proxy is honoured. Each entry is EITHER a full URL template with `{asset}` (the platform file
     # name, e.g. cloudflared-windows-amd64.exe), OR a bare proxy prefix that gets the canonical GitHub
     # release URL appended (e.g. "https://ghproxy.com/"), OR "" for a direct github.com download.
-    # Leave empty ([]) to use the built-in defaults (GitHub-release proxies first, then direct GitHub).
-    # NOTE: jsDelivr only mirrors a repo's committed files, NOT release binaries, so it CANNOT serve
-    # cloudflared — use a GitHub-release proxy here instead.
+    # Leave empty ([]) to use the built-in defaults: GitHub itself first, then a jsDelivr CDN mirror,
+    # then proxies verified to actually stream the binary. The jsDelivr entry points at a small
+    # auto-updated mirror repo (Well2333/asset-mirror) that stores each release binary GZIP-compressed
+    # (so even the >50 MB Windows build fits jsDelivr's 50 MB limit); the plugin gunzips a source whose
+    # URL ends in ".gz" after download. (Plain jsDelivr CANNOT serve GitHub *release assets* directly —
+    # that's why the mirror repo exists.)
     downloadMirrors: []
-    # Example (put your most reliable mirror first):
+    # Example (put your most reliable source first; "" = direct github.com):
     #   downloadMirrors:
-    #     - "https://ghproxy.net/"
+    #     - ""                          # GitHub itself
+    #     - "https://cdn.jsdelivr.net/gh/Well2333/asset-mirror@main/cloudflared/{asset}.gz"   # jsDelivr (gzip)
     #     - "https://gh-proxy.com/"
-    #     - "https://github.com/cloudflare/cloudflared/releases/latest/download/{asset}"
-    #     - ""   # direct github.com (last resort)
+    #     - "https://gh.ddlc.top/"
+    #     - "https://your-mirror/{asset}"   # or any full template with {asset} (append .gz to gunzip)
     downloadAttempts: 2   # retries per source before moving to the next
 
     # The following four only apply when type: "custom". `{port}` is replaced with the panel port.

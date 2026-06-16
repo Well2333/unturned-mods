@@ -97,13 +97,20 @@ web:
 缓存复用,重启不再重复下载。支持 **Windows / Linux(x64、arm64)**;其它平台(如 macOS,发行包为
 需解压的 `.tgz`)请自行安装 `cloudflared` 并用 `command` 指定路径,或设 `autoDownload: false`。
 
-- **多镜像 + 重试 + 代理**:下载源由 `downloadMirrors` 控制,**按顺序逐个尝试、先成功者胜**,每个源
-  重试 `downloadAttempts` 次(默认 2);自动遵循系统代理与 `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY`
-  环境变量。每个条目可以是含 `{asset}`(平台文件名,如 `cloudflared-windows-amd64.exe`)的完整 URL
-  模板,或一个会被拼到官方 GitHub release 地址前的**代理前缀**(如 `https://ghproxy.com/`),或空串
-  `""` 表示直连 github.com。留空 `[]` 用内置默认(若干 GitHub release 代理在前、直连在后)。
-  > 注意:**jsDelivr 只镜像仓库内的提交文件、不镜像 release 二进制**,无法用于下载 cloudflared;
-  > 这里请填 GitHub release 代理。
+- **先连通性探测再下载**:正式下载前会对所有源做一次**并发连通性探测**(短超时的 1 字节请求),
+  **只对探测通过的源按序下载**,避免在被墙/失效的源上白白耗满下载超时与重试;若可连通的源全部下载
+  失败、或没有任何源连通,才会把**未连通的源当作兜底**再直接尝试一次。
+- **多镜像 + 重试 + 代理 + jsDelivr CDN**:下载源由 `downloadMirrors` 控制,**按顺序逐个尝试、先成功
+  者胜**,每个源重试 `downloadAttempts` 次(默认 2);自动遵循系统代理与
+  `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY` 环境变量。每个条目可以是含 `{asset}`(平台文件名,如
+  `cloudflared-windows-amd64.exe`)的完整 URL 模板,或一个会被拼到官方 GitHub release 地址前的
+  **代理前缀**(如 `https://gh-proxy.com/`),或空串 `""` 表示直连 github.com。**URL 以 `.gz` 结尾的
+  源会在下载后自动 gunzip**。留空 `[]` 用内置默认:**GitHub 本体 → jsDelivr CDN 镜像 → 其它代理**。
+  > **关于 jsDelivr**:它只服务仓库 git 树里的文件、不服务 GitHub *release 资产*,且单文件上限 50MB
+  > (cloudflared 的 Windows 版超了)。所以这里走一个**自建镜像仓库
+  > [`Well2333/asset-mirror`](https://github.com/Well2333/asset-mirror)**:其 GitHub Action 每天检测
+  > cloudflared 新版,拉取各平台二进制、`gzip` 压缩后提交(压到 ~18MB,稳进 50MB),再由 jsDelivr 全球
+  > CDN 分发;插件下载后自动解压。这样在被墙网络下也有一个稳定来源。
 - **不阻塞启动**:隧道(含下载)在**后台**进行,服务器启动不会被下载卡住;隧道就绪后会单独打印公网
   管理面地址。下载/启动失败不影响面板本地访问,只是隧道未启用。
 - **启动后醒目提醒**:若 WebPanel 启动期间出现任何问题(HTTP 监听失败、隧道未起来等),会在**服务器
