@@ -86,10 +86,10 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
   `PackageReadmeFile`;无自带 README 的项目回退到仓库根 README。本地 `dotnet pack` 与 CI
   `publish.yml` 走同一套 props,行为一致。README 内的链接用**绝对 URL**(nuget.org 不渲染
   相对路径)。
-- **引用 `UnturnedMods.Shared`(未发布到 NuGet 的共享库)必须**:`ProjectReference` 加
-  `PrivateAssets="all"`(避免在 nuspec 里产生无法解析的依赖)**且**用
-  `IncludeSharedInPackage` 目标把 `UnturnedMods.Shared.dll` 打进 `lib/`。否则
-  `openmod install` 会因解析不到 `UnturnedMods.Shared` 而失败。模板已内置正确写法。
+- **引用 `UnturnedMods.Shared` 必须**使用普通（不带 `PrivateAssets`）ProjectReference，使 NuGet
+  生成对 `well404.UnturnedMods.Shared` 的真实依赖。**禁止**用 `BuildOutputInPackage` 将
+  `UnturnedMods.Shared.dll` 内嵌进各插件包；OpenMod 会逐包加载 lib，重复副本会分裂跨插件
+  接口类型。手动平铺部署仍由 `scripts/build.sh` 自动复制该 DLL。模板已内置正确写法。
 - **表达「插件依赖另一个已发布插件」**(如 Shop 依赖 Economy):对那个可打包项目用
   **不带 PrivateAssets** 的 `ProjectReference`,NuGet 会自动在 nuspec 写入
   `<dependency>`(版本下限 = 被引用项目当前 `<Version>`),`openmod install` 据此自动级联

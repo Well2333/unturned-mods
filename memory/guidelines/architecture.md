@@ -39,12 +39,11 @@ unturned-mods/
 - **命名即约束**：插件项目文件名 = 插件 Id，从而自动满足
   `RootNamespace == AssemblyName`（OpenMod 的硬性要求）。
 - **共享库 `UnturnedMods.Shared`**：放置公共基类、扩展方法、工具与**跨插件抽象**
-  （如 `IWebPanelRegistry`）。注意：插件引用它时，编译出的 `UnturnedMods.Shared.dll`
-  需与插件一起部署到 `openmod/plugins`。**`scripts/build.sh` 会平铺 `ProjectReference`
-  产物**（`project_deps` 按「项目文件名 = AssemblyName」约定取 dll 名），所以引用 Shared
-  的插件部署时会自动带上 `UnturnedMods.Shared.dll`。**NuGet 发布**：Shared 不是独立发布的包，
-  故引用它的插件 `.csproj` 用 `TargetsForTfmSpecificBuildOutput` + `BuildOutputInPackage` 把
-  `UnturnedMods.Shared.dll` 打进自身 nupkg 的 `lib/`，否则 `openmod install` 装出来会缺该 dll。
+  （如 `IWebPanelRegistry`）。手动平铺部署时，`scripts/build.sh` 会把 ProjectReference 产物
+  `UnturnedMods.Shared.dll` 一并复制到 `openmod/plugins`。NuGet 部署必须通过唯一的
+  `well404.UnturnedMods.Shared` 依赖包：各插件保留普通（非 PrivateAssets）ProjectReference，
+  由 pack 生成真实依赖，**严禁再把 Shared.dll 内嵌进每个插件包**。OpenMod 会逐个加载每个
+  nupkg 的 lib 程序集；重复内嵌会产生多个 Shared 程序集身份，使跨插件 registry 接口互不兼容。
 - **脚手架 `scripts/new-plugin.sh`**：保证每个新插件结构、约束一致，降低 AI
   逐个手写时的偏差。
 

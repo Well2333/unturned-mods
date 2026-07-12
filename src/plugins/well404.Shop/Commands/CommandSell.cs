@@ -45,9 +45,8 @@ namespace well404.Shop.Commands
 
             var user = (UnturnedUser)Context.Actor;
             var id = Context.Parameters[0];
-            var amount = Context.Parameters.Length >= 2 ? await Context.Parameters.GetAsync<int>(1) : 1;
-
-            if (amount <= 0)
+            var amountArgument = Context.Parameters.Length >= 2 ? Context.Parameters[1] : null;
+            if (!ShopCommandAmount.TryParse(amountArgument, out var amount))
             {
                 throw new UserFriendlyException(m_StringLocalizer["errors:invalid_amount"]);
             }

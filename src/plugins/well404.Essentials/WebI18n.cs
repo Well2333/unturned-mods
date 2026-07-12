@@ -49,6 +49,7 @@ namespace well404.Essentials
             ["That player is no longer online."] = "该玩家已不在线。",
             ["You already have a teleport request to {0}."] = "你已经向 {0} 发起过传送请求。",
             ["Teleport request sent to {0}."] = "已向 {0} 发送传送请求。",
+            ["Teleported to {0}."] = "已传送到 {0} 身边。",
             ["That request is no longer pending."] = "该请求已不存在。",
             ["Accepted {0}'s teleport request."] = "已接受 {0} 的传送请求。",
             ["Teleport request denied."] = "已拒绝传送请求。",

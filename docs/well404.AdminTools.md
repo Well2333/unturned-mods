@@ -1,6 +1,6 @@
 # well404.AdminTools
 
-面向**管理员**的工具插件：godmode、踢出、临时封禁/解封。
+面向**管理员**的工具插件：godmode、全身装备维修、踢出、临时封禁/解封。
 每项功能都有命令；装了 [`well404.WebPanel`](well404.WebPanel.md) 时也进管理面板(中英双语，随面板语言切换)。
 
 ## 依赖
@@ -11,10 +11,11 @@
 
 | 命令 | 语法 | 命令权限 | 说明 |
 | --- | --- | --- | --- |
-| `/god` | `[玩家] [on\|off]` | `well404.AdminTools:god` | 切换无敌(无玩家参数时作用于自己)。开关式，重启清除 |
-| `/kick` | `<玩家> [原因]` | `well404.AdminTools:kick` | 踢出在线玩家 |
-| `/ban` | `<玩家> [分钟] [原因]` | `well404.AdminTools:ban` | 封禁玩家；分钟留空=永久 |
-| `/unban` | `<SteamID>` | `well404.AdminTools:unban` | 按 SteamID 解封 |
+| `/god` | `[玩家] [on\|off]` | `well404.AdminTools:commands.god` | 切换无敌(无玩家参数时作用于自己)。开关式，重启清除 |
+| `/repair` | `<玩家>` | `well404.AdminTools:commands.repair` | 将指定在线玩家身上、背包及枪械附件的耐久恢复到 100% |
+| `/kick` | `<玩家> [原因]` | `well404.AdminTools:commands.kick` | 踢出在线玩家 |
+| `/ban` | `<玩家> [分钟] [原因]` | `well404.AdminTools:commands.ban` | 封禁玩家；分钟留空=永久 |
+| `/unban` | `<SteamID>` | `well404.AdminTools:commands.unban` | 按 SteamID 解封 |
 
 ## Web 面板模块「管理员工具」(🛡️)
 
@@ -22,12 +23,14 @@
 | --- | --- | --- |
 | 在线玩家 | 表 | 当前在线玩家(名字、SteamID、是否无敌) |
 | 无敌 | 表单 | 对在线玩家开/关无敌 |
+| 维修装备 | 表单 | 将指定在线玩家所有有耐久的装备与枪械附件恢复到 100% |
 | 踢出 / 封禁 / 解封 | 表单 | 踢出、按分钟封禁(留空=永久)、按 SteamID 解封 |
 
 > 面板结果消息(如「已为 X 开启无敌」)随面板语言本地化。
 
 ## 实现要点(给开发者)
 
+- **维修**：只处理 `ItemWeaponAsset`、`ItemClothingAsset`、`ItemCaliberAsset` 且显示品质的装备；覆盖快捷栏、背包/衣物容器页、穿戴栏和枪械附件，排除当前打开的外部容器。
 - **无敌**:`GodModeService` 维护一组 SteamID,`GodModeDamageListener`(`IEventListener<UnturnedPlayerDamagingEvent>`)
   在受伤前取消伤害。内存态,重启清除。
 - **封禁/解封**:封禁走 OpenMod `IUserManager.BanAsync(user, reason, endTime?)`;解封走 SDG `SteamBlacklist.unban`。

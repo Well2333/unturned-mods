@@ -19,7 +19,11 @@ if [[ $# -lt 1 ]]; then
 fi
 
 PLUGIN_ID="$1"
-CSPROJ="$REPO_ROOT/src/plugins/$PLUGIN_ID/$PLUGIN_ID.csproj"
+if [[ "$PLUGIN_ID" == "well404.UnturnedMods.Shared" ]]; then
+  CSPROJ="$REPO_ROOT/src/Shared/UnturnedMods.Shared/UnturnedMods.Shared.csproj"
+else
+  CSPROJ="$REPO_ROOT/src/plugins/$PLUGIN_ID/$PLUGIN_ID.csproj"
+fi
 
 if [[ ! -f "$CSPROJ" ]]; then
   echo "Error: no such plugin project: $CSPROJ" >&2

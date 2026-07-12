@@ -30,22 +30,11 @@
     <EmbeddedResource Include="translations.yaml" />
   </ItemGroup>
 
-  <!-- Uncomment BOTH blocks below to share code from the cross-plugin library.
-       UnturnedMods.Shared is NEVER published to NuGet, so it must be:
-         (1) kept OUT of this package's nuspec dependencies via PrivateAssets="all"
-             (otherwise `openmod install` fails trying to resolve it from nuget.org), and
-         (2) bundled into lib/ as a plain dll via the IncludeSharedInPackage target.
+  <!-- Uncomment to reference the published shared-abstractions project. NuGet emits a real
+       well404.UnturnedMods.Shared dependency; do not mark it PrivateAssets or bundle its dll.
   <ItemGroup>
-    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" />
   </ItemGroup>
-  <PropertyGroup>
-    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeSharedInPackage</TargetsForTfmSpecificBuildOutput>
-  </PropertyGroup>
-  <Target Name="IncludeSharedInPackage">
-    <ItemGroup>
-      <BuildOutputInPackage Include="$(OutputPath)UnturnedMods.Shared.dll" />
-    </ItemGroup>
-  </Target>
   -->
 
 </Project>

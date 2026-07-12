@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
     <Description>Shop</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -49,28 +49,9 @@
     <ProjectReference Include="..\well404.Economy\well404.Economy.csproj" />
   </ItemGroup>
 
-  <!-- For the optional web-panel integration (catalog editing + item search): the
-       IWebPanelRegistry abstraction lives in the shared library. The shop injects it
-       optionally, so it has no hard dependency on well404.WebPanel.
-       UnturnedMods.Shared.dll is deployed alongside (scripts/build.sh flattens it). -->
+  <!-- Published shared abstractions: a real NuGet dependency, never a private bundled copy. -->
   <ItemGroup>
-    <!-- PrivateAssets="all" keeps UnturnedMods.Shared OUT of this package's nuspec
-         dependencies. It is never published to NuGet, so a declared dependency makes
-         `openmod install` fail resolving it from nuget.org. The dll is still copied to
-         OutputPath and bundled into lib/ by IncludeSharedInPackage below. -->
-    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" />
   </ItemGroup>
-
-  <!-- UnturnedMods.Shared is not a published NuGet package, so bundle its compiled dll
-       into this plugin's package (lib/) — otherwise `openmod install` would deploy the
-       plugin without it. (scripts/build.sh already handles the flat local deploy.) -->
-  <PropertyGroup>
-    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeSharedInPackage</TargetsForTfmSpecificBuildOutput>
-  </PropertyGroup>
-  <Target Name="IncludeSharedInPackage">
-    <ItemGroup>
-      <BuildOutputInPackage Include="$(OutputPath)UnturnedMods.Shared.dll" />
-    </ItemGroup>
-  </Target>
 
 </Project>

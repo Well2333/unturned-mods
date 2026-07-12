@@ -44,6 +44,8 @@
 
 ### 发布一个插件新版本的标准动作
 
+> 若插件依赖的新 Shared 版本尚未发布，先发布 `well404.UnturnedMods.Shared`，等待 NuGet 可解析后再发布插件。
+
 1. `scripts/plugin-version.sh <PluginId> <newVersion>` 递增版本（SemVer）。
 2. 提交版本递增，并按两步提交流程写变更记录。
 3. `scripts/release-plugin.sh <PluginId> --notes "..."` 创建 Release（tag
@@ -86,16 +88,13 @@
 
 ## 已知注意事项
 
-- **共享库 `UnturnedMods.Shared` 标记 `IsPackable=false`，不单独发布。** 一旦某个
-  插件通过 `ProjectReference` 引用它并要打包发布，需要把 `UnturnedMods.Shared.dll`
-  **嵌入插件包**（而非作为 NuGet 依赖），否则安装方会缺少该依赖。届时在该插件
-  `.csproj` 处理（如把引用程序集加入包的 lib，或改为源码共享），并更新本规范。
+- **共享库以 `well404.UnturnedMods.Shared` 独立发布**。所有插件通过普通 ProjectReference
+  生成真实 NuGet 依赖；Shared 必须先于依赖它的新插件版本发布。严禁把 Shared.dll 分别内嵌
+  到插件包，否则 OpenMod 逐包加载时会产生重复程序集身份并破坏跨插件服务/registry。
 - 部署到服务器仍是 `openmod install <PackageId>` 或手动放 dll 到 `openmod/plugins`，
   与发布到 NuGet 是两件事。
 - **第三方 NuGet 依赖**（如 `well404.Economy` 依赖 `LiteDB`）会作为包依赖写入
   `.nuspec`，`openmod install` 会自动拉取。但**手动 dll 部署**时必须把这些依赖 dll
   （如 `LiteDB.dll`）一并放入 `openmod/plugins`，否则运行时缺失。
-- **插件间依赖走抽象、不走 ProjectReference**：`well404.Shop` 不引用
-  `well404.Economy`，而是注入共享抽象 `IEconomyProvider`（由 Economy 以全局服务实现）。
-  因此 Shop 运行时需要任一实现了 `IEconomyProvider` 的经济插件在场（见
-  [architecture.md](architecture.md)）。
+- **业务插件间优先走抽象**；确属硬依赖时用普通 ProjectReference 生成包依赖。当前 Shop
+  对 Economy 是硬依赖，安装 Shop 会自动安装 Economy；Shared 是所有插件的运行时程序集依赖。

@@ -20,24 +20,24 @@ openmod reload
 
 | 命令 | 语法 | 命令权限 | 说明 |
 | --- | --- | --- | --- |
-| `/home` | | `well404.Essentials:home` | 传送回家（需先 `/home set`） |
-| `/home set` | | `well404.Essentials:home.set` | 把当前位置设为家（单个家，覆盖旧家） |
-| `/tp` | `<玩家>` | `well404.Essentials:tp` | 传送到玩家。同队**直接**传送；跨队发出请求 |
-| `/tpa` | `[玩家]` | `well404.Essentials:tpa` | 接受请求（不带参=最新一条；带参=指定玩家） |
-| `/tpd` | `[玩家]` | `well404.Essentials:tpd` | 拒绝请求 |
-| `/party` | | `well404.Essentials:party` | 查看队伍成员 |
-| `/party invite` | `<玩家>` | `well404.Essentials:party.invite` | 邀请玩家入队 |
-| `/party accept` | `[玩家]` | `well404.Essentials:party.accept` | 接受邀请（不带参=最新） |
-| `/party deny` | `[玩家]` | `well404.Essentials:party.deny` | 拒绝邀请 |
-| `/party leave` | | `well404.Essentials:party.leave` | 离开队伍 |
-| `/party kick` | `<玩家>` | `well404.Essentials:party.kick` | 踢出队员（仅队长 ADMIN） |
-| `/warp` | `<名称>` | `well404.Essentials:warp` | 传送到传送点（还需 per-warp 权限，见下） |
-| `/warp set` | `<名称> [冷却秒]` | `well404.Essentials:warp.set` | 新建/覆盖传送点（管理命令） |
-| `/warp delete`（`del`） | `<名称>` | `well404.Essentials:warp.delete` | 删除传送点（管理命令） |
-| `/warps` | | `well404.Essentials:warps` | 列出你有权限使用的传送点 |
-| `/gift` | `[id]` | `well404.Essentials:gift` | 不带参=列出可领；带参=领取 |
-| `/sleep` | | `well404.Essentials:sleep` | 睡觉投票，达比例切换昼夜 |
-| `/back` | | `well404.Essentials:back` | 回到死亡点并短暂无敌 |
+| `/home` | | `well404.Essentials:commands.home` | 传送回家（需先 `/home set`） |
+| `/home set` | | `well404.Essentials:commands.home.set` | 把当前位置设为家（单个家，覆盖旧家） |
+| `/tp` | `<玩家>` | `well404.Essentials:commands.tp` | 传送到玩家。同队**直接**传送；跨队发出请求 |
+| `/tpa` | `[玩家]` | `well404.Essentials:commands.tpa` | 接受请求（不带参=最新一条；带参=指定玩家） |
+| `/tpd` | `[玩家]` | `well404.Essentials:commands.tpd` | 拒绝请求 |
+| `/party` | | `well404.Essentials:commands.party` | 查看队伍成员 |
+| `/party invite` | `<玩家>` | `well404.Essentials:commands.party.invite` | 邀请玩家入队 |
+| `/party accept` | `[玩家]` | `well404.Essentials:commands.party.accept` | 接受邀请（不带参=最新） |
+| `/party deny` | `[玩家]` | `well404.Essentials:commands.party.deny` | 拒绝邀请 |
+| `/party leave` | | `well404.Essentials:commands.party.leave` | 离开队伍 |
+| `/party kick` | `<玩家>` | `well404.Essentials:commands.party.kick` | 踢出队员（仅队长 ADMIN） |
+| `/warp` | `<名称>` | `well404.Essentials:commands.warp` | 传送到传送点（还需 per-warp 权限，见下） |
+| `/warp set` | `<名称> [冷却秒]` | `well404.Essentials:commands.warp.set` | 新建/覆盖传送点（管理命令） |
+| `/warp delete`（`del`） | `<名称>` | `well404.Essentials:commands.warp.delete` | 删除传送点（管理命令） |
+| `/warps` | | `well404.Essentials:commands.warps` | 列出你有权限使用的传送点 |
+| `/gift` | `[id]` | `well404.Essentials:commands.gift` | 不带参=列出可领；带参=领取 |
+| `/sleep` | | `well404.Essentials:commands.sleep` | 睡觉投票，达比例切换昼夜 |
+| `/back` | | `well404.Essentials:commands.back` | 回到死亡点并短暂无敌 |
 
 ### 自定义权限节点
 
