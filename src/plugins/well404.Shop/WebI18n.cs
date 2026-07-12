@@ -18,6 +18,11 @@ namespace well404.Shop
             ["Quantity to sell"] = "出售数量",
             ["Items"] = "单品",
             ["Bundles"] = "礼包",
+            ["Quick sell"] = "一键售卖",
+            ["Sell all"] = "全部售卖",
+            ["Quick actions"] = "快捷操作",
+            ["Sell every sellable plain item in your inventory at once. Bundles are not included."]
+                = "一键出售背包中所有商店可回收的普通商品；礼包不包含在内。",
             ["You must be online to buy or sell."] = "你需要在线才能购买或出售物品。",
             ["Item not found."] = "找不到该商品。",
             ["Enter a valid quantity."] = "请输入有效的数量。",
@@ -29,6 +34,9 @@ namespace well404.Shop
             ["{0} is not sellable."] = "{0} 不可出售。",
             ["You don't have enough {0} in your inventory."] = "你的背包里没有足够的 {0}。",
             ["Sold {0}× {1} for {2}."] = "已出售 {0}× {1}，获得 {2}。",
+            ["The shop has no items eligible for quick sell."] = "商店中没有可一键售卖的商品。",
+            ["No sellable items were found in your inventory."] = "你的背包中没有可出售的商品。",
+            ["Sold {0} item(s) for {1}."] = "已一键出售 {0} 件物品，获得 {1}。",
 
             // ---- admin module chrome ----
             // Plain items (referenced by game item id; name auto-resolved)

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using OpenMod.Extensions.Games.Abstractions.Items;
@@ -123,6 +124,53 @@ namespace well404.Shop
             }
 
             return true;
+        }
+
+        /// <summary>Removes all inventory items matching the supplied catalog item ids.</summary>
+        public async Task<IReadOnlyDictionary<ushort, int>> TakeAllAsync(
+            UnturnedUser user, IEnumerable<ushort> itemIds)
+        {
+            await UniTask.SwitchToMainThread();
+            var wanted = new HashSet<ushort>(itemIds);
+            var removals = new List<PendingRemoval>();
+            foreach (var page in user.Player.Inventory.Pages)
+            {
+                foreach (var item in page.Items)
+                {
+                    if (!ushort.TryParse(item.Item.Asset.ItemAssetId, NumberStyles.None,
+                            CultureInfo.InvariantCulture, out var itemId) || !wanted.Contains(itemId))
+                    {
+                        continue;
+                    }
+                    var amount = (int)item.Item.State.ItemAmount;
+                    if (amount > 0)
+                    {
+                        removals.Add(new PendingRemoval(itemId, amount, item));
+                    }
+                }
+            }
+
+            var removed = new Dictionary<ushort, int>();
+            foreach (var removal in removals)
+            {
+                await removal.Item.DestroyAsync();
+                removed.TryGetValue(removal.ItemId, out var previous);
+                removed[removal.ItemId] = previous + removal.Amount;
+            }
+            return removed;
+        }
+
+        private sealed class PendingRemoval
+        {
+            public PendingRemoval(ushort itemId, int amount, IInventoryItem item)
+            {
+                ItemId = itemId;
+                Amount = amount;
+                Item = item;
+            }
+            public ushort ItemId { get; }
+            public int Amount { get; }
+            public IInventoryItem Item { get; }
         }
     }
 }

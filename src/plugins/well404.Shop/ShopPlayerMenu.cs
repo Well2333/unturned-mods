@@ -66,6 +66,12 @@ namespace well404.Shop
             var bundlesGroup = m_Tr.Resolve("Bundles", lang);
 
             var cards = new List<PlayerCard>();
+            var quickSellEntries = ShopQuickSell.EligibleEntries(m_Catalog.Entries);
+            if (quickSellEntries.Count > 0)
+            {
+                cards.Add(ShopQuickSell.CreateCard(text => m_Tr.Resolve(text, lang)));
+            }
+
             foreach (var entry in m_Catalog.Entries)
             {
                 var buttons = new List<PlayerButton>();
@@ -110,6 +116,16 @@ namespace well404.Shop
             PlayerMenuContext context, string actionId, string cardKey, string? value)
         {
             var lang = context.Language;
+            if (actionId == ShopQuickSell.ActionId && cardKey == ShopQuickSell.CardKey)
+            {
+                var quickSellUser = await ResolveOnlineAsync(context.SteamId);
+                if (quickSellUser == null)
+                {
+                    return PlayerActionResult.Fail(m_Tr.Resolve("You must be online to trade.", lang));
+                }
+                return await SellAllAsync(quickSellUser, lang);
+            }
+
             var entry = m_Catalog.Find(cardKey);
             if (entry == null)
             {
@@ -189,6 +205,31 @@ namespace well404.Shop
             await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_sell:" + entry.Id);
             return PlayerActionResult.Ok(m_Tr.Format(lang, "Sold {0}× {1} for {2}.",
                 amount, name, m_Economy.CurrencySymbol + Money(total)));
+        }
+
+        private async Task<PlayerActionResult> SellAllAsync(UnturnedUser user, string lang)
+        {
+            var eligible = ShopQuickSell.EligibleEntries(m_Catalog.Entries);
+            if (eligible.Count == 0)
+            {
+                return PlayerActionResult.Fail(m_Tr.Resolve("The shop has no items eligible for quick sell.", lang));
+            }
+
+            var removed = await m_ShopService.TakeAllAsync(user, eligible.Keys);
+            var total = ShopQuickSell.CalculateTotal(eligible, removed);
+            var itemCount = 0;
+            foreach (var amount in removed.Values)
+            {
+                itemCount += amount;
+            }
+            if (itemCount == 0 || total <= 0m)
+            {
+                return PlayerActionResult.Fail(m_Tr.Resolve("No sellable items were found in your inventory.", lang));
+            }
+
+            await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_sell_all");
+            return PlayerActionResult.Ok(m_Tr.Format(lang, "Sold {0} item(s) for {1}.",
+                itemCount, m_Economy.CurrencySymbol + Money(total)));
         }
 
         private async Task<UnturnedUser?> ResolveOnlineAsync(string steamId)
