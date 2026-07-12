@@ -1,11 +1,14 @@
 using System;
+using System.Threading.Tasks;
 using Autofac;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using OpenMod.API.Eventing;
 using OpenMod.API.Plugins;
 using OpenMod.API.Users;
+using OpenMod.Core.Plugins.Events;
 using OpenMod.Extensions.Economy.Abstractions;
 using OpenMod.Unturned.Plugins;
 using OpenMod.Unturned.Users;
@@ -50,8 +53,23 @@ namespace well404.Economy
                 settings.Currency.Name, settings.Currency.Symbol, settings.Backend,
                 settings.KillRewards.Enabled ? "enabled" : "disabled");
 
-            RegisterWebPanel();
-            RegisterPlayerMenu();
+            RegisterWebPanelExtensions();
+        }
+
+        /// <summary>Registers every optional WebPanel contribution that is not registered yet.
+        /// Called both during normal load and after later plugins load, because on an OpenMod reload
+        /// WebPanel may be activated after Economy.</summary>
+        internal void RegisterWebPanelExtensions()
+        {
+            if (m_WebPanelRegistry == null)
+            {
+                RegisterWebPanel();
+            }
+
+            if (m_PlayerMenuRegistry == null)
+            {
+                RegisterPlayerMenu();
+            }
         }
 
         protected override async UniTask OnUnloadAsync()
@@ -123,6 +141,22 @@ namespace well404.Economy
                 new PlayerCommandInfo("/pay <player> <amount>", "Transfer money from your account to another online player.", "well404.Economy:commands.pay", "Economy")
             });
             m_Logger.LogInformation("Economy: registered the player wallet menu with the web panel.");
+        }
+    }
+
+    public sealed class WebPanelRegistrationListener : IEventListener<PluginLoadedEvent>
+    {
+        private readonly IPluginAccessor<EconomyPlugin> m_PluginAccessor;
+
+        public WebPanelRegistrationListener(IPluginAccessor<EconomyPlugin> pluginAccessor)
+        {
+            m_PluginAccessor = pluginAccessor;
+        }
+
+        public Task HandleEventAsync(object? sender, PluginLoadedEvent @event)
+        {
+            m_PluginAccessor.Instance?.RegisterWebPanelExtensions();
+            return Task.CompletedTask;
         }
     }
 }

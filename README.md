@@ -53,8 +53,9 @@ scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
 ```
 
 构建产物为各插件的 `.nupkg`（`GeneratePackageOnBuild=true`）。部署到服务器：
-`openmod install <PackageId>`，或将插件 dll 及依赖放入 `openmod/plugins/` 后
-`openmod reload`。
+`openmod install <PackageId>`，或将插件 dll 及依赖放入 `openmod/plugins/`。**安装/更新
+插件二进制或 `UnturnedMods.Shared.dll` 后必须完整重启服务器**；`openmod reload` 只适合
+在没有替换 DLL 的情况下重载配置与插件生命周期，不能作为 Mono 上的二进制热更新手段。
 
 **各插件的详细用法、配置示例与本地调试见 [`docs/`](docs/README.md)。**
 

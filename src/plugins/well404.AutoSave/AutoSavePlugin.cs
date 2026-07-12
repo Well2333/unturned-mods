@@ -6,7 +6,9 @@ using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using OpenMod.API.Eventing;
 using OpenMod.API.Plugins;
+using OpenMod.Core.Plugins.Events;
 using OpenMod.Unturned.Plugins;
 using UnturnedMods.Shared.WebPanel;
 
@@ -28,6 +30,7 @@ namespace well404.AutoSave
         private readonly object m_SchedulerLock = new object();
 
         private AutoSaveConfigStore? m_ConfigStore;
+        private BackupService? m_BackupService;
         private SaveService? m_SaveService;
         private SchedulerLoop? m_SchedulerLoop;
         private CancellationTokenSource? m_SchedulerCts;
@@ -59,6 +62,7 @@ namespace well404.AutoSave
             var saveService = new SaveService(backupService, stateStore, configStore, m_Logger);
 
             m_ConfigStore = configStore;
+            m_BackupService = backupService;
             m_SaveService = saveService;
             m_SchedulerLoop = new SchedulerLoop(m_Logger);
 
@@ -67,7 +71,7 @@ namespace well404.AutoSave
 
             // Paths are resolved per run (the server id is not known until the level is up), so the
             // web module is given a factory rather than a captured value.
-            RegisterWebPanel(configStore, saveService, backupService, SavePaths.Capture);
+            RegisterWebPanelExtension();
 
             var settings = configStore.Current;
             m_Logger.LogInformation(
@@ -117,8 +121,19 @@ namespace well404.AutoSave
 
             m_WebPanelRegistry?.UnregisterModule(AutoSaveWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
+            m_BackupService = null;
 
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
+        }
+
+        internal void RegisterWebPanelExtension()
+        {
+            if (m_WebPanelRegistry != null || m_ConfigStore == null || m_SaveService == null || m_BackupService == null)
+            {
+                return;
+            }
+
+            RegisterWebPanel(m_ConfigStore, m_SaveService, m_BackupService, SavePaths.Capture);
         }
 
         private void OnSettingsChanged()
@@ -188,6 +203,22 @@ namespace well404.AutoSave
 
             registry.RegisterModule(AutoSaveWebPanelModule.Create(configStore, saveService, backupService, pathsFactory, translations));
             m_WebPanelRegistry = registry;
+        }
+    }
+
+    public sealed class WebPanelRegistrationListener : IEventListener<PluginLoadedEvent>
+    {
+        private readonly IPluginAccessor<AutoSavePlugin> m_PluginAccessor;
+
+        public WebPanelRegistrationListener(IPluginAccessor<AutoSavePlugin> pluginAccessor)
+        {
+            m_PluginAccessor = pluginAccessor;
+        }
+
+        public Task HandleEventAsync(object? sender, PluginLoadedEvent @event)
+        {
+            m_PluginAccessor.Instance?.RegisterWebPanelExtension();
+            return Task.CompletedTask;
         }
     }
 }

@@ -1,11 +1,14 @@
 using System;
+using System.Threading.Tasks;
 using Autofac;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using OpenMod.API.Eventing;
 using OpenMod.API.Plugins;
 using OpenMod.API.Users;
+using OpenMod.Core.Plugins.Events;
 using OpenMod.Extensions.Economy.Abstractions;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Plugins;
@@ -48,8 +51,20 @@ namespace well404.Shop
                 "Shop loaded with {Items} item(s) and {Bundles} bundle(s); discounts {State}.",
                 settings.Items.Count, settings.Bundles.Count, settings.Discounts.Enabled ? "enabled" : "disabled");
 
-            RegisterWebPanel();
-            RegisterPlayerMenu();
+            RegisterWebPanelExtensions();
+        }
+
+        internal void RegisterWebPanelExtensions()
+        {
+            if (m_WebPanelRegistry == null)
+            {
+                RegisterWebPanel();
+            }
+
+            if (m_PlayerMenuRegistry == null)
+            {
+                RegisterPlayerMenu();
+            }
         }
 
         protected override async UniTask OnUnloadAsync()
@@ -125,6 +140,22 @@ namespace well404.Shop
                 new PlayerCommandInfo("/sell <id> [amount]", "Sell a plain item by its item id, or a bundle by its id, back to the shop for money.", "well404.Shop:commands.sell", "Shop")
             });
             m_Logger.LogInformation("Shop: registered the player shop menu with the web panel.");
+        }
+    }
+
+    public sealed class WebPanelRegistrationListener : IEventListener<PluginLoadedEvent>
+    {
+        private readonly IPluginAccessor<ShopPlugin> m_PluginAccessor;
+
+        public WebPanelRegistrationListener(IPluginAccessor<ShopPlugin> pluginAccessor)
+        {
+            m_PluginAccessor = pluginAccessor;
+        }
+
+        public Task HandleEventAsync(object? sender, PluginLoadedEvent @event)
+        {
+            m_PluginAccessor.Instance?.RegisterWebPanelExtensions();
+            return Task.CompletedTask;
         }
     }
 }
