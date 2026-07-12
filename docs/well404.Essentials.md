@@ -43,8 +43,8 @@ openmod reload
 
 | 权限 | 作用 |
 | --- | --- |
-| `well404.essentials.warps.<名称>` | 使用某个传送点。**每个传送点单独授权**（小写名称）。`/warps` 也只列出你有此权限的项 |
-| `well404.essentials.cooldown.exempt` | 免除所有传送冷却 |
+| `well404.Essentials:well404.essentials.warps.<名称>` | 使用某个传送点。**每个传送点单独授权**（小写名称；插件会随传送点自动注册）。`/warps` 也只列出你有此权限的项 |
+| `well404.Essentials:well404.essentials.cooldown.exempt` | 免除所有传送冷却 |
 | 礼包 `permission` 字段（管理员自定义，如 `well404.essentials.gift.vip`） | 领取该 VIP 专属礼包 |
 
 ## 传送流程（home / tp / warp / back 共用）
@@ -152,7 +152,7 @@ gifts:
 - **传送点 / 礼包**：集合式 CRUD（点选编辑、新增、删除）。
 - **检索游戏物品**：按名称或 ID 查物品，便于填礼包内容；输入**纯数字**时优先列出该**精确 ID** 的物品。
 
-> 在 WebUI 新建传送点后，记得给玩家授予对应的 `well404.essentials.warps.<名称>` 权限。
+> 在 WebUI 新建传送点后，插件会立即注册其权限；请给玩家授予对应的 `well404.Essentials:well404.essentials.warps.<名称>` 权限。
 
 ## 玩家网页「实用工具」菜单（可选）
 

@@ -51,6 +51,8 @@ namespace well404.WebPanel
         private IWebPanelRegistry? m_WebPanelRegistry;
         private IPlayerMenuRegistry? m_PlayerMenuRegistry;
         private IPlayerCommandRegistry? m_PlayerCommandRegistry;
+        private PlayerWebSessionManager? m_PlayerSessions;
+        private long m_TunnelGeneration;
 
         // Problems noticed during load (panel/tunnel) that get re-surfaced prominently AFTER the server
         // finishes hosting, so the admin sees them below the noisy startup log rather than buried in it.
@@ -102,6 +104,7 @@ namespace well404.WebPanel
             var playerRegistry = LifetimeScope.Resolve<IPlayerMenuRegistry>();
             var translations = LifetimeScope.Resolve<IWebTranslationRegistry>();
             var sessions = LifetimeScope.Resolve<PlayerWebSessionManager>();
+            m_PlayerSessions = sessions;
             m_WebPanelRegistry = registry;
             m_PlayerMenuRegistry = playerRegistry;
 
@@ -214,17 +217,19 @@ namespace well404.WebPanel
             {
                 // Tell the session service a tunnel is coming up, so a /menu issued during the
                 // startup window waits for the public URL instead of failing with "no public address".
-                sessions.BeginTunnel();
+                m_TunnelGeneration = sessions.BeginTunnel();
                 // Run the whole tunnel bring-up on a thread-pool context, NOT inline on the UniTask
                 // main-thread sync context. That context does not pump plain Task continuations, so an
                 // await that completes synchronously here (e.g. cloudflared already cached, so EnsureAsync
                 // returns without really awaiting) would strand every later await — the tunnel would
                 // silently never come up. Task.Run starts it with a null sync context, so it can't happen.
                 var bgCt = m_BackgroundCts.Token;
-                _ = Task.Run(() => BringUpTunnelAsync(web, token, sessions, bgCt));
+                var tunnelGeneration = m_TunnelGeneration;
+                _ = Task.Run(() => BringUpTunnelAsync(web, token, sessions, tunnelGeneration, bgCt));
             }
             else
             {
+                sessions.DisableTunnel();
                 m_TunnelInitialDone.TrySetResult(true);
             }
 
@@ -235,30 +240,54 @@ namespace well404.WebPanel
         /// <summary>
         /// Brings the outbound tunnel up off the load path: starts it (downloading cloudflared if
         /// needed), and on success publishes the public admin URL and — when AutoRestart is on — keeps
-        /// it alive. A failure is recorded as a startup issue for the post-host warning. Always signals
-        /// <see cref="m_TunnelInitialDone"/> once the first attempt resolves.
+        /// it alive. With auto-restart enabled, an initial failure is retried until success or unload.
+        /// A terminal failure is recorded as a startup issue for the post-host warning.
         /// </summary>
         private async Task BringUpTunnelAsync(
-            WebServerSettings web, string token, PlayerWebSessionManager sessions, CancellationToken ct)
+            WebServerSettings web, string token, PlayerWebSessionManager sessions,
+            long tunnelGeneration, CancellationToken ct)
         {
             string? url = null;
-            try
+            var effective = ResolveEffectiveTunnel(web.Tunnel);
+            while (!ct.IsCancellationRequested)
             {
-                url = await StartTunnelAsync(web, sessions, ct).ConfigureAwait(false);
+                try
+                {
+                    url = await StartTunnelAsync(web, sessions, tunnelGeneration, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    m_Logger.LogError(ex, "WebPanel: tunnel bring-up threw unexpectedly.");
+                }
+
+                if (url != null || !effective.AutoRestart || ct.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                m_Logger.LogWarning(
+                    "WebPanel: initial tunnel start did not yield a public URL; retrying in 3 seconds.");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
-            catch (Exception ex)
-            {
-                m_Logger.LogError(ex, "WebPanel: tunnel bring-up threw unexpectedly.");
-            }
-            finally
-            {
-                m_TunnelInitialDone.TrySetResult(true);
-            }
+
+            m_TunnelInitialDone.TrySetResult(true);
 
             if (url == null)
             {
+                if (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+
                 // Unblock any /menu that is waiting for the tunnel — it won't come.
-                sessions.SetTunnelUnavailable();
+                sessions.SetTunnelUnavailable(tunnelGeneration);
                 RecordStartupIssue(
                     "内置反代(tunnel)未能启动:cloudflared 下载/启动失败(见上方日志)。玩家 /menu 链接与公网管理面"
                     + "地址本次不可用;面板仍可经本地地址访问。可配置 web.tunnel.downloadMirrors / 系统代理后重试,"
@@ -269,10 +298,10 @@ namespace well404.WebPanel
             m_Logger.LogInformation(
                 "WebPanel: tunnel public admin panel at {AdminUrl} — keep this URL secret.", url + "/" + token + "/");
 
-            var effective = ResolveEffectiveTunnel(web.Tunnel);
             if (effective.AutoRestart && !ct.IsCancellationRequested)
             {
-                await MonitorTunnelAsync(web, token, sessions, url, effective, ct).ConfigureAwait(false);
+                await MonitorTunnelAsync(
+                    web, token, sessions, url, effective, tunnelGeneration, ct).ConfigureAwait(false);
             }
         }
 
@@ -355,6 +384,13 @@ namespace well404.WebPanel
             m_Tunnel?.Stop();
             m_Tunnel?.Dispose();
             m_Tunnel = null;
+            if (m_TunnelGeneration != 0)
+            {
+                m_PlayerSessions?.EndTunnel(m_TunnelGeneration);
+                m_TunnelGeneration = 0;
+            }
+
+            m_PlayerSessions = null;
             // Belt-and-suspenders: make sure no cloudflared we launched is left holding the panel port
             // (it inherited the listening socket), even if it wasn't tracked in m_Tunnel above.
             if (m_TunnelCommand != null)
@@ -380,7 +416,9 @@ namespace well404.WebPanel
         /// Starts the optional outbound tunnel and, on success, publishes its public base URL to the
         /// player-link generator. Returns the URL (no trailing slash) or null if disabled / failed.
         /// </summary>
-        private async Task<string?> StartTunnelAsync(WebServerSettings web, PlayerWebSessionManager sessions, CancellationToken ct = default)
+        private async Task<string?> StartTunnelAsync(
+            WebServerSettings web, PlayerWebSessionManager sessions,
+            long tunnelGeneration, CancellationToken ct = default)
         {
             var tunnel = web.Tunnel;
             if (tunnel == null || !tunnel.Enabled)
@@ -415,15 +453,25 @@ namespace well404.WebPanel
                 var url = await provider.StartAsync(web.Port, ct).ConfigureAwait(false);
                 if (url == null)
                 {
+                    var reason = provider.IsRunning ? "ready timeout elapsed" : "process exited before publishing a URL";
                     provider.Stop();
                     m_Logger.LogWarning(
-                        "WebPanel: tunnel '{Command}' did not report a public URL within {Timeout}s; player "
-                        + "links fall back to web.publicBaseUrl.", tunnel.Command, tunnel.ReadyTimeoutSeconds);
+                        "WebPanel: tunnel '{Command}' did not report a public URL ({Reason}; configured timeout "
+                        + "{Timeout}s); player links fall back to web.publicBaseUrl while it retries.",
+                        tunnel.Command, reason, tunnel.ReadyTimeoutSeconds);
+                    return null;
+                }
+
+                // Unload may race with the URL line from cloudflared. Do not publish or retain a
+                // provider after this plugin instance has already been cancelled.
+                if (ct.IsCancellationRequested)
+                {
+                    provider.Stop();
                     return null;
                 }
 
                 m_Tunnel = provider;
-                sessions.SetTunnelBaseUrl(url);
+                sessions.SetTunnelBaseUrl(tunnelGeneration, url);
                 m_Logger.LogInformation(
                     "WebPanel: tunnel up at {Url} (player /menu links and the admin URL use it).", url);
                 return url;
@@ -445,7 +493,7 @@ namespace well404.WebPanel
         /// </summary>
         private async Task MonitorTunnelAsync(
             WebServerSettings web, string token, PlayerWebSessionManager sessions,
-            string initialUrl, TunnelSettings effective, CancellationToken ct)
+            string initialUrl, TunnelSettings effective, long tunnelGeneration, CancellationToken ct)
         {
             var intervalSeconds = effective.HealthCheckSeconds > 0 ? effective.HealthCheckSeconds : 60;
             var probeEnabled = effective.HealthCheckSeconds > 0;
@@ -509,7 +557,8 @@ namespace well404.WebPanel
                 m_Tunnel?.Dispose();
                 m_Tunnel = null;
 
-                var newUrl = await StartTunnelAsync(web, sessions, ct).ConfigureAwait(false);
+                var newUrl = await StartTunnelAsync(
+                    web, sessions, tunnelGeneration, ct).ConfigureAwait(false);
                 probeProven = false;
                 probeFailures = 0;
                 if (newUrl != null)

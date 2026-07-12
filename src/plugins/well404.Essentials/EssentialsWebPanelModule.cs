@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using UnturnedMods.Shared.WebPanel;
+using well404.Essentials.Warps;
 
 namespace well404.Essentials
 {
@@ -22,7 +23,10 @@ namespace well404.Essentials
 
         private const int SearchLimit = 100;
 
-        public static WebPanelModule Create(EssentialsConfigStore store, IItemDirectory itemDirectory)
+        public static WebPanelModule Create(
+            EssentialsConfigStore store,
+            WarpService warpService,
+            IItemDirectory itemDirectory)
         {
             var teleport = new WebPanelAction(
                 id: "teleport",
@@ -82,7 +86,7 @@ namespace well404.Essentials
                 id: "warps",
                 label: "Warps",
                 kind: WebActionKind.Collection,
-                handler: request => Task.FromResult(SaveWarp(store, request)),
+                handler: request => Task.FromResult(SaveWarp(warpService, request)),
                 fields: new[]
                 {
                     new WebField("name", "Name", WebFieldType.Text, required: true, placeholder: "Name used by /warp"),
@@ -92,9 +96,9 @@ namespace well404.Essentials
                     new WebField("yaw", "Yaw", WebFieldType.Number),
                     new WebField("cooldownSeconds", "Cooldown seconds", WebFieldType.Number, placeholder: "0 = use global cooldown")
                 },
-                description: "Players teleport with /warp <name> and also need permission well404.essentials.warps.<name>. Capture coordinates in-game with /warp set.",
+                description: "Players teleport with /warp <name> and also need permission well404.Essentials:well404.essentials.warps.<name>. Capture coordinates in-game with /warp set.",
                 recordsLoader: () => Task.FromResult(LoadWarpRecords(store)),
-                deleteHandler: request => Task.FromResult(RemoveWarp(store, request)),
+                deleteHandler: request => Task.FromResult(RemoveWarp(warpService, request)),
                 keyField: "name");
 
             var gifts = new WebPanelAction(
@@ -201,7 +205,7 @@ namespace well404.Essentials
             return records;
         }
 
-        private static WebActionResult SaveWarp(EssentialsConfigStore store, WebActionRequest request)
+        private static WebActionResult SaveWarp(WarpService warps, WebActionRequest request)
         {
             var name = request.Get("name");
             if (name == null)
@@ -217,7 +221,7 @@ namespace well404.Essentials
                 return WebActionResult.Fail("Enter X / Y / Z coordinates.");
             }
 
-            store.UpsertWarp(new WarpEntry
+            warps.Upsert(new WarpEntry
             {
                 Name = name,
                 X = x.Value,
@@ -230,7 +234,7 @@ namespace well404.Essentials
             return WebActionResult.Ok($"Saved warp {name}. Remember to grant players the permission {Warps.WarpService.PermissionFor(name)}.");
         }
 
-        private static WebActionResult RemoveWarp(EssentialsConfigStore store, WebActionRequest request)
+        private static WebActionResult RemoveWarp(WarpService warps, WebActionRequest request)
         {
             var name = request.Get("key");
             if (name == null)
@@ -238,7 +242,7 @@ namespace well404.Essentials
                 return WebActionResult.Fail("Missing name.");
             }
 
-            return store.RemoveWarp(name)
+            return warps.Delete(name)
                 ? WebActionResult.Ok($"Deleted warp {name}.")
                 : WebActionResult.Fail($"Warp not found: {name}.");
         }

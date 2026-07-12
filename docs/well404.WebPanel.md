@@ -119,6 +119,9 @@ web:
 - **不残留进程占用端口**:插件启动绑定端口前、以及卸载时,都会清理**它自己启动的** cloudflared 进程
   (按二进制路径匹配)。Windows 上 Mono 会让子进程**继承**面板的监听套接字,若上次是崩溃/强杀导致
   cloudflared 成为孤儿,它会一直占住端口,使下次启动报 `address already in use`;现在重启会自动清掉它。
+- **支持 `openmod reload` 后重新建隧道**:玩家链接状态按插件加载代次隔离，reload 会清除旧的
+  Quick Tunnel URL，并等待 cloudflared 报告新 URL；旧实例的迟到回调不会把新状态标成不可用。
+  `autoRestart: true` 时，reload 后首次启动若暂时未取得 public URL，也会每 3 秒重新尝试。
 - **默认 `127.0.0.1` 绑定也能经隧道访问**:cloudflared 以 `--http-host-header 127.0.0.1:{port}` 调起,
   转发到本地时发送 `Host: 127.0.0.1:{port}`,匹配默认绑定的监听前缀;否则 cloudflared 转发的是公网
   Host,`HttpListener` 会因 Host 不匹配回 `400 (Invalid host)`,导致经隧道访问全部 400。无需把

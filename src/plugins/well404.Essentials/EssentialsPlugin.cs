@@ -6,6 +6,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using OpenMod.API.Plugins;
 using OpenMod.API.Users;
+using OpenMod.Core.Permissions;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Plugins;
 using OpenMod.Unturned.Users;
@@ -20,6 +21,7 @@ using well404.Essentials.Tp;
 using well404.Essentials.Warps;
 
 [assembly: PluginMetadata("well404.Essentials", DisplayName = "Essentials")]
+[assembly: RegisterPermission("well404.essentials.cooldown.exempt", Description = "Exempts a player from Essentials teleport cooldowns.")]
 
 namespace well404.Essentials
 {
@@ -86,8 +88,9 @@ namespace well404.Essentials
             }
 
             var store = LifetimeScope.Resolve<EssentialsConfigStore>();
+            var warps = LifetimeScope.Resolve<WarpService>();
             var itemDirectory = LifetimeScope.Resolve<IItemDirectory>();
-            registry.RegisterModule(EssentialsWebPanelModule.Create(store, itemDirectory));
+            registry.RegisterModule(EssentialsWebPanelModule.Create(store, warps, itemDirectory));
             m_WebPanelRegistry = registry;
             m_Logger.LogInformation("Essentials: registered the management module with the web panel.");
         }

@@ -111,8 +111,8 @@ namespace well404.Essentials
             ["Name used by /warp"] = "/warp 用的名称",
             ["Yaw"] = "朝向(yaw)",
             ["0 = use global cooldown"] = "0=用全局冷却",
-            ["Players teleport with /warp <name> and also need permission well404.essentials.warps.<name>. Capture coordinates in-game with /warp set."]
-                = "玩家用 /warp <名称> 传送，还需要权限 well404.essentials.warps.<名称>。坐标可在游戏内用 /warp set 采集。",
+            ["Players teleport with /warp <name> and also need permission well404.Essentials:well404.essentials.warps.<name>. Capture coordinates in-game with /warp set."]
+                = "玩家用 /warp <名称> 传送，还需要权限 well404.Essentials:well404.essentials.warps.<名称>。坐标可在游戏内用 /warp set 采集。",
             ["Gift packs"] = "礼包",
             ["Gift ID"] = "礼包ID",
             ["Unique ID used by /gift"] = "/gift 用的唯一ID",

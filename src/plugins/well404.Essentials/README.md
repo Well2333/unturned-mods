@@ -69,8 +69,8 @@ OpenMod 会按命令路径自动派生命令权限（如 `well404.Essentials:hom
 
 | 权限 | 作用 |
 | --- | --- |
-| `well404.essentials.warps.<名称>` | 使用某个传送点（每个传送点单独授权） |
-| `well404.essentials.cooldown.exempt` | 免除传送冷却 |
+| `well404.Essentials:well404.essentials.warps.<名称>` | 使用某个传送点（每个传送点单独授权；插件会随传送点自动注册） |
+| `well404.Essentials:well404.essentials.cooldown.exempt` | 免除传送冷却 |
 | 礼包的 `permission` 字段（自定义） | 领取该 VIP 专属礼包 |
 
 ## 配置 (config.yaml)

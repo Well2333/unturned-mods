@@ -42,14 +42,13 @@ namespace well404.WebPanel
             new ConcurrentDictionary<string, PlayerSession>(StringComparer.Ordinal);
 
         private volatile string? m_TunnelBaseUrl;
+        private readonly object m_TunnelStateLock = new object();
+        private long m_TunnelGeneration;
 
         // Completes when the initial tunnel bring-up resolves (URL obtained, or gave up). Lets
         // CreateLinkAsync wait briefly so a /menu right after startup doesn't fail on the window
         // where the tunnel is still coming up. Null when no tunnel is being brought up.
         private volatile TaskCompletionSource<bool>? m_TunnelReady;
-
-        /// <summary>How long CreateLinkAsync waits for the tunnel to come up before giving up.</summary>
-        private const int TunnelWaitSeconds = 25;
 
         public PlayerWebSessionManager(IPluginAccessor<WebPanelPlugin> pluginAccessor)
         {
@@ -58,26 +57,82 @@ namespace well404.WebPanel
 
         /// <summary>Marks that a tunnel is being brought up, so CreateLinkAsync waits for its first
         /// result instead of immediately reporting "no public address". Called by the plugin at load.</summary>
-        public void BeginTunnel()
-            => m_TunnelReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        public long BeginTunnel()
+        {
+            lock (m_TunnelStateLock)
+            {
+                m_TunnelGeneration++;
+                m_TunnelBaseUrl = null;
+                m_TunnelReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                return m_TunnelGeneration;
+            }
+        }
 
         /// <summary>
         /// Sets (or clears, with null) the live tunnel base URL. When present it takes precedence
         /// over <c>web.publicBaseUrl</c>, so player links use the current public address even when
         /// it is assigned dynamically at startup. Set by the plugin once the tunnel is up.
         /// </summary>
-        public void SetTunnelBaseUrl(string? baseUrl)
+        public void SetTunnelBaseUrl(long generation, string? baseUrl)
         {
-            m_TunnelBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl!.Trim().TrimEnd('/');
-            if (m_TunnelBaseUrl != null)
+            lock (m_TunnelStateLock)
             {
-                m_TunnelReady?.TrySetResult(true);
+                if (generation != m_TunnelGeneration)
+                {
+                    return;
+                }
+
+                m_TunnelBaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl!.Trim().TrimEnd('/');
+                if (m_TunnelBaseUrl != null)
+                {
+                    m_TunnelReady?.TrySetResult(true);
+                }
             }
         }
 
         /// <summary>Marks the tunnel bring-up as concluded without a URL (download/start failed), so
         /// CreateLinkAsync stops waiting and falls back to web.publicBaseUrl (or reports unavailable).</summary>
-        public void SetTunnelUnavailable() => m_TunnelReady?.TrySetResult(false);
+        public void SetTunnelUnavailable(long generation)
+        {
+            lock (m_TunnelStateLock)
+            {
+                if (generation == m_TunnelGeneration)
+                {
+                    m_TunnelReady?.TrySetResult(false);
+                }
+            }
+        }
+
+        /// <summary>Clears tunnel state only when it still belongs to the unloading plugin instance.
+        /// The generation check prevents a late old-instance callback from erasing a new reload's URL.</summary>
+        public void EndTunnel(long generation)
+        {
+            lock (m_TunnelStateLock)
+            {
+                if (generation != m_TunnelGeneration)
+                {
+                    return;
+                }
+
+                m_TunnelGeneration++;
+                m_TunnelBaseUrl = null;
+                m_TunnelReady?.TrySetResult(false);
+                m_TunnelReady = null;
+            }
+        }
+
+        /// <summary>Clears a URL retained by the global singleton when the reloaded config disables
+        /// the built-in tunnel.</summary>
+        public void DisableTunnel()
+        {
+            lock (m_TunnelStateLock)
+            {
+                m_TunnelGeneration++;
+                m_TunnelBaseUrl = null;
+                m_TunnelReady?.TrySetResult(false);
+                m_TunnelReady = null;
+            }
+        }
 
         private WebServerSettings? ReadSettings()
         {
@@ -131,7 +186,9 @@ namespace well404.WebPanel
                 var ready = m_TunnelReady;
                 if (ready != null && !ready.Task.IsCompleted)
                 {
-                    await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(TunnelWaitSeconds)))
+                    var configuredTimeout = settings.Tunnel?.ReadyTimeoutSeconds ?? 30;
+                    var waitSeconds = Math.Max(configuredTimeout, 30) + 5;
+                    await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(waitSeconds)))
                         .ConfigureAwait(false);
                 }
 

@@ -43,7 +43,7 @@ sleep:
   requiredRatio: 0.5
 
 # Travel points. /warp <name> teleports here; /warp set <name> [cooldown] adds one.
-# Each warp also needs the per-warp permission `well404.essentials.warps.<name>`.
+# Each warp also needs `well404.Essentials:well404.essentials.warps.<name>`.
 warps: []
 # Example:
 # warps:
