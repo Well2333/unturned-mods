@@ -1,6 +1,6 @@
 # well404.Economy
 
-> Unturned / OpenMod 货币经济插件 —— 以全局 `IEconomyProvider` 对外供币,后端可选 LiteDB 账本或原生经验值。
+> Unturned / OpenMod 货币经济插件 —— 以全局 `IEconomyProvider` 对外供币,后端可选 SQLite 事务账本或原生经验值。
 
 `well404.Economy` 是 **well404 OpenMod 插件家族** 的经济核心。它实现 OpenMod 的
 `IEconomyProvider` 抽象并注册为全局服务,任何其他插件(商店、签到等)都能注入它来收发货币。
@@ -8,7 +8,7 @@
 ## 功能
 
 - 💰 玩家货币账户,余额查询与管理命令
-- 🗄️ 两种后端:`database`(LiteDB 单文件账本,纯托管、无原生依赖)或 `experience`(原生 Unturned 经验值)
+- 🗄️ 两种后端:`database`(SQLite 单文件事务账本)或 `experience`(原生 Unturned 经验值)
 - 🔁 玩家间转账 `/pay`,可设最低额度与手续费税率
 - ⚔️ 击杀奖励:玩家 / 僵尸 / 巨型僵尸 / 动物可分别配置奖励金额
 - 🌐 可选 Web 管理面板集成(配合 [well404.WebPanel](https://www.nuget.org/packages/well404.WebPanel/))
@@ -40,8 +40,7 @@ currency:
   symbol: "$"           # 货币符号
   startingBalance: 0    # 新账户初始余额(仅 database 后端)
 backend: "database"     # database | experience
-database:
-  fileName: "economy.db"   # LiteDB 文件名(位于插件目录)
+# database 后端固定写入插件目录下的 economy.sqlite3
 transfer:
   enabled: true         # 是否允许 /pay 转账
   minAmount: 1          # 单笔最低转账额
@@ -53,6 +52,9 @@ killRewards:
   megaZombie: 0         # 击杀巨型僵尸奖励
   animal: 0             # 击杀动物奖励
 ```
+
+> 2.0.0 不读取或迁移旧 LiteDB `economy.db`，数据库后端会创建全新的 `economy.sqlite3`。
+> `backend: experience` 时不会创建、读取或写入 SQLite；已有文件只为切回数据库后端保留。
 
 ## Web 管理面板
 

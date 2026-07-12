@@ -25,13 +25,9 @@ currency:
   startingBalance: 0
 
 # 货币存储后端：
-#   database   - serverless LiteDB 单文件账本（在线/离线玩家均可）
+#   database   - SQLite 单文件事务账本（在线/离线玩家均可）
 #   experience - 直接用原生 Unturned 经验值（仅在线玩家）
 backend: "database"
-
-database:
-  # LiteDB 文件，生成在本插件目录下
-  fileName: "economy.db"
 
 transfer:
   enabled: true         # 是否允许 /pay 转账
@@ -51,9 +47,12 @@ killRewards:
 
 | 后端 | 说明 | 离线玩家 |
 | --- | --- | --- |
-| `database` | LiteDB 单文件账本，键 `ownerType:ownerId`，并记录交易流水。 | 支持 |
+| `database` | SQLite 单文件事务账本，使用规范化账户表并记录交易流水。 | 支持 |
 | `experience` | 余额即玩家的 Unturned 经验值；转账/买卖直接增减 XP。 | **不支持**（在线才有 XP） |
 
+> SQLite 文件固定为插件目录下的 `economy.sqlite3`。2.0.0 不读取或迁移旧 `economy.db`（LiteDB）。
+> `backend: experience` 时不会创建、读取或写入该 SQLite 文件；已有文件仅为切回 `database` 保留。
+>
 > 切换 `backend` 后两套余额各自独立（DB 账本与 XP 是两个数）。`experience` 模式下对
 > 离线玩家的操作会返回「玩家需在线」的提示。
 

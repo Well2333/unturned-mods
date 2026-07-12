@@ -93,8 +93,8 @@
   到插件包，否则 OpenMod 逐包加载时会产生重复程序集身份并破坏跨插件服务/registry。
 - 部署到服务器仍是 `openmod install <PackageId>` 或手动放 dll 到 `openmod/plugins`，
   与发布到 NuGet 是两件事。
-- **第三方 NuGet 依赖**（如 `well404.Economy` 依赖 `LiteDB`）会作为包依赖写入
+- **第三方 NuGet 依赖**（如 `well404.Economy` 依赖 `Microsoft.Data.Sqlite.Core`）会作为包依赖写入
   `.nuspec`，`openmod install` 会自动拉取。但**手动 dll 部署**时必须把这些依赖 dll
-  （如 `LiteDB.dll`）一并放入 `openmod/plugins`，否则运行时缺失。
+  （如 `Microsoft.Data.Sqlite.dll`、`SQLitePCLRaw.core.dll` 和 provider dll）一并放入 `openmod/plugins`，否则运行时缺失。
 - **业务插件间优先走抽象**；确属硬依赖时用普通 ProjectReference 生成包依赖。当前 Shop
   对 Economy 是硬依赖，安装 Shop 会自动安装 Economy；Shared 是所有插件的运行时程序集依赖。

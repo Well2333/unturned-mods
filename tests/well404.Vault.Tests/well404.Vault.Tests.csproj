@@ -1,14 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
-  <!--
-    Unit tests for the game-runtime-free logic of the plugins (the SQLite ledger
-    and the discount calculation). Targets net8.0 (a real test host) rather than
-    the netstandard2.1 the plugins ship as, and is never packed.
-
-    These tests deliberately only touch types that do NOT depend on the Unturned
-    game assemblies, so they run on a plain .NET host with no game installed.
-  -->
-
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -16,7 +6,6 @@
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
@@ -25,10 +14,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
-
   <ItemGroup>
-    <ProjectReference Include="..\..\src\plugins\well404.Economy\well404.Economy.csproj" />
-    <ProjectReference Include="..\..\src\plugins\well404.Shop\well404.Shop.csproj" />
+    <ProjectReference Include="..\..\src\plugins\well404.Vault\well404.Vault.csproj" />
   </ItemGroup>
-
 </Project>

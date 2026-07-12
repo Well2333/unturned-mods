@@ -39,7 +39,7 @@ namespace well404.AutoSave.Tests
         [InlineData("Server/Adminlist.dat")]
         [InlineData("Config.txt")]
         [InlineData("OpenMod/openmod.users.yaml")]
-        [InlineData("OpenMod/plugins/well404.Economy/economy.db")]
+        [InlineData("OpenMod/plugins/well404.Economy/economy.sqlite3")]
         public void Keeps_RealSaveData(string path)
         {
             Assert.False(Default().IsExcluded(path));

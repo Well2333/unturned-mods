@@ -33,7 +33,7 @@ namespace well404.Economy
         private readonly IUserManager m_UserManager;
 
         private readonly object m_Lock = new object();
-        private LiteDbCurrencyBackend? m_DbBackend;
+        private SqliteCurrencyBackend? m_DbBackend;
         private ExperienceCurrencyBackend? m_XpBackend;
 
         public EconomyProvider(
@@ -71,12 +71,15 @@ namespace well404.Economy
                 }
             }
 
-            var path = Path.Combine(Plugin.WorkingDirectory, settings.Database.FileName);
+            // Do not reuse the former configurable LiteDB path: an existing economy.db
+            // is not a SQLite database and this major version performs no migration.
+            var path = Path.Combine(Plugin.WorkingDirectory, "economy.sqlite3");
+
             lock (m_Lock)
             {
                 if (m_DbBackend == null || !string.Equals(m_DbBackend.FilePath, path, StringComparison.Ordinal))
                 {
-                    m_DbBackend = new LiteDbCurrencyBackend(path, settings.Currency.StartingBalance);
+                    m_DbBackend = new SqliteCurrencyBackend(path, settings.Currency.StartingBalance);
                 }
                 else
                 {

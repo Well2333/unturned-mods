@@ -27,10 +27,6 @@ namespace well404.Economy
             sb.Append("backend: ").Append(Quote(settings.Backend)).Append('\n');
             sb.Append('\n');
 
-            sb.Append("database:\n");
-            sb.Append("  fileName: ").Append(Quote(settings.Database.FileName)).Append('\n');
-            sb.Append('\n');
-
             sb.Append("transfer:\n");
             sb.Append("  enabled: ").Append(Bool(settings.Transfer.Enabled)).Append('\n');
             sb.Append("  minAmount: ").Append(Num(settings.Transfer.MinAmount)).Append('\n');

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Autofac;
 using Cysharp.Threading.Tasks;
@@ -49,7 +50,7 @@ namespace well404.Vault
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_start"]);
 
             var vault = LifetimeScope.Resolve<VaultService>();
-            await vault.InitializeAsync(DataStore);
+            await vault.InitializeAsync(Path.Combine(WorkingDirectory, "vault.sqlite3"));
 
             RegisterWebPanelExtensions();
 

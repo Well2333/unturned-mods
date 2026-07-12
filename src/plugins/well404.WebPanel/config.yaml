@@ -5,7 +5,8 @@
 # register their own management modules into it, so this plugin stays generic.
 
 web:
-  # Interface to listen on:
+ ---- Tunnel / reverse proxy (optional; exposes the panel without opening ports) ----
+# Interface to listen on:
   #   127.0.0.1  -> loopback only (default; reach it via an SSH tunnel / reverse proxy)
   #   0.0.0.0    -> all interfaces (public)
   #   192.168.x  -> a specific NIC address

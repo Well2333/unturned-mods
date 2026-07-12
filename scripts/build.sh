@@ -3,7 +3,7 @@
 # Local build / test / debug helper for the monorepo.
 #
 # Assembles each plugin's ready-to-deploy files — the plugin dll plus only the
-# dependencies an OpenMod server does NOT already ship (e.g. LiteDB.dll) — FLAT
+# dependencies an OpenMod server does NOT already ship (e.g. SQLitePCLRaw.core.dll) — FLAT
 # into the output directory. Flat layout is required: OpenMod's plugin loader
 # scans "<plugins>/*.dll" at the top level only (no subfolders), so a server's
 # openmod/plugins/ folder is exactly this output dir's layout.
@@ -145,7 +145,7 @@ for id in "${PLUGINS[@]}"; do
   copy_flat() {
     local name="$1"
     [[ -f "$staging/$name.dll" ]] || return 0
-    [[ -n "${WRITTEN[$name]:-}" ]] && return 0      # dedup shared deps (e.g. LiteDB)
+    [[ -n "${WRITTEN[$name]:-}" ]] && return 0      # dedup shared deps (e.g. SQLite)
     rm -f "$OUTPUT/$name.dll"                        # clean previous residue (safe: only our files)
     cp "$staging/$name.dll" "$OUTPUT/"
     WRITTEN[$name]=1
@@ -154,7 +154,13 @@ for id in "${PLUGINS[@]}"; do
 
   copy_flat "$id"
   while IFS= read -r dep; do
-    [[ -n "$dep" ]] && copy_flat "$dep"
+    [[ -z "$dep" ]] && continue
+    # NuGet package IDs usually match their primary assembly names. This one does not.
+    if [[ "$dep" == "Microsoft.Data.Sqlite.Core" ]]; then
+      copy_flat "Microsoft.Data.Sqlite"
+    else
+      copy_flat "$dep"
+    fi
   done < <(extra_deps "$proj")
   while IFS= read -r dep; do
     [[ -n "$dep" ]] && copy_flat "$dep"

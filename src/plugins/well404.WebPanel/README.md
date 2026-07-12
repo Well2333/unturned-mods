@@ -52,6 +52,32 @@ web:
 > 直接进入其玩家面板(`/p`),无需进游戏发 `/menu`——便于在浏览器里调试玩家菜单。藏在管理面密钥
 > 路径之后且默认关闭;**属玩家身份模拟,生产环境请保持关闭**。需玩家在线的动作(买卖/传送)仍提示「需要在线」。
 
+### Cloudflare 账号与永久域名
+
+内置 `type: "cloudflare"` 是随机地址的 Quick Tunnel。长期服务器应在 Cloudflare Dashboard
+创建 Named Tunnel，把固定域名（例如 `panel.example.com`）映射到
+`http://127.0.0.1:27020`，并将该 route 的 **HTTP Host Header** 设置为
+`127.0.0.1:27020`。然后让 `cloudflared` 作为 systemd / Windows 服务运行，WebPanel 配置为：
+
+```yaml
+web:
+  bindAddress: "127.0.0.1"
+  port: 27020
+  token: "请替换为至少32位的随机字符串"
+  tunnel:
+    enabled: false
+  publicBaseUrl: "https://panel.example.com"
+```
+
+不要把 Tunnel Token 写进 WebPanel 配置，也不要同时启用内置 Quick Tunnel。管理员地址为
+`https://panel.example.com/<web.token>/`，玩家执行 `/menu` 后会收到固定域名下的
+`/p?t=...` 链接。Linux 服务安装命令通常是
+`sudo cloudflared service install <TUNNEL_TOKEN>`；Windows 请以管理员身份运行 Cloudflare
+控制台给出的 `cloudflared.exe service install <TUNNEL_TOKEN>`。
+
+完整的逐步操作、Linux/Windows 验证、安全说明与 400/502/`/menu` 无公网 URL 排障见
+[仓库 WebPanel 文档](https://github.com/Well2333/unturned-mods/blob/main/docs/well404.WebPanel.md#使用-cloudflare-账号与永久域名named-tunnel推荐用于长期运行)。
+
 ### 安全说明
 
 - **路径式 token**:管理面始终在 `http://host:port/<token>/` 下,token 即鉴权;路径不对一律 404(不泄露面板是否存在)。

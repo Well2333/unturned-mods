@@ -127,6 +127,214 @@ web:
   Host,`HttpListener` 会因 Host 不匹配回 `400 (Invalid host)`,导致经隧道访问全部 400。无需把
   `bindAddress` 改成 `0.0.0.0`/开放端口即可经隧道访问。
 
+### 使用 Cloudflare 账号与永久域名（Named Tunnel，推荐用于长期运行）
+
+内置的 `type: "cloudflare"` 是**无需账号的 Quick Tunnel**：地址随机，重启后会变化。
+如果服务器要长期运行，建议在 Cloudflare 账号中创建 **Named Tunnel（命名隧道）**，把
+`panel.example.com` 之类的固定域名指向 WebPanel。Named Tunnel 由系统服务独立运行，
+WebPanel 仅负责监听本地端口和生成固定域名下的玩家链接。
+
+这种方式的优点：
+
+- 公网地址固定，服务器、WebPanel 或 `openmod reload` 后都不变；
+- `cloudflared` 由 systemd / Windows 服务管理，WebPanel reload 不会结束隧道；
+- 不开放 27020 入站端口，WebPanel 仍只监听 `127.0.0.1`；
+- Tunnel Token 不写入 OpenMod 配置，避免它出现在插件日志或管理页面中。
+
+> **不要同时开启两种隧道。** Named Tunnel 作为系统服务运行时，必须设置
+> `web.tunnel.enabled: false`。否则 WebPanel 还会额外启动一个随机 Quick Tunnel，
+> 日志和 `/menu` 可能改用随机地址。
+>
+> 当前 WebPanel 的 `type: "cloudflare"` 专用于 Quick Tunnel。不要把 Named Tunnel Token
+> 填进 `tunnel.args`；Named Tunnel 应由 Cloudflare 官方服务命令运行，固定公网地址交给
+> `web.publicBaseUrl`。
+
+#### 准备条件
+
+开始前确认：
+
+1. 你有一个已接入 Cloudflare DNS 的域名，例如 `example.com`；
+2. 可以登录该域名所在的 Cloudflare 账号；
+3. Cloudflare Tunnel 与 Unturned/WebPanel 运行在同一台服务器；若不在同一台机器，
+   后面的 Service URL 要改为 WebPanel 所在机器的内网地址；
+4. WebPanel 本地端口没有被其它程序占用，以下示例使用默认端口 `27020`；
+5. 服务器可以主动访问 Cloudflare。受限防火墙环境需要允许 `cloudflared` 建立出站连接。
+
+Cloudflare 官方流程参见
+[Set up Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/setup/) 和
+[Create a remotely-managed tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/)。
+
+#### 第 1 步：先配置并验证本地 WebPanel
+
+编辑：
+
+```text
+openmod/plugins/well404.WebPanel/config.yaml
+```
+
+使用以下关键配置；保留文件中其它配置项：
+
+```yaml
+web:
+  # 只允许本机访问，不需要改成 0.0.0.0，也不要开放 27020 入站端口。
+  bindAddress: "127.0.0.1"
+  port: 27020
+
+  # 管理面板固定密钥。请换成你自己的高强度随机值并妥善保管。
+  token: "请替换为至少32位的随机字符串"
+
+  # Named Tunnel 由操作系统服务运行；必须关闭插件内置 Quick Tunnel。
+  tunnel:
+    enabled: false
+
+  # 填稍后在 Cloudflare 创建的固定 HTTPS 域名，不要带末尾斜杠。
+  publicBaseUrl: "https://panel.example.com"
+```
+
+Linux 可以生成只含十六进制字符、适合放在 URL 路径中的随机 token：
+
+```bash
+openssl rand -hex 24
+```
+
+完整重启一次服务器，然后在服务器本机检查：
+
+```bash
+curl -i http://127.0.0.1:27020/
+curl -i http://127.0.0.1:27020/你的管理token/
+```
+
+第一条应返回 WebPanel 正在运行的提示，第二条应返回管理面 HTML。若本地都连接失败，
+先不要配置 Cloudflare，检查 OpenMod 日志、端口占用以及 `bindAddress` / `port`。
+
+#### 第 2 步：在 Cloudflare 创建 Named Tunnel
+
+1. 登录 Cloudflare Dashboard；
+2. 打开 **Networking → Tunnels**；
+3. 选择 **Create Tunnel**；
+4. 输入名称，例如 `unturned-webpanel`；
+5. 创建后选择服务器对应的操作系统和架构；
+6. Cloudflare 会显示该 Tunnel 专属的 **Install and Run** 命令，在服务器上执行它；
+7. 等待控制台中 Tunnel 状态变为 **Healthy**，再继续下一步。
+
+Linux 上，Cloudflare 给出的服务安装命令形式通常为：
+
+```bash
+sudo cloudflared service install <TUNNEL_TOKEN>
+```
+
+确认服务状态：
+
+```bash
+sudo systemctl status cloudflared
+sudo journalctl -u cloudflared -n 100 --no-pager
+```
+
+Windows 请在**管理员身份**的命令提示符或 PowerShell 中运行 Cloudflare 页面给出的命令，
+形式通常为：
+
+```powershell
+cloudflared.exe service install <TUNNEL_TOKEN>
+sc.exe query Cloudflared
+```
+
+`<TUNNEL_TOKEN>` 是连接服务器到 Tunnel 的凭据，等同密码：不要发给他人、不要提交到 Git、
+不要放入 WebPanel 的 `config.yaml`。若泄露，应在 Cloudflare 控制台轮换 Tunnel Token。
+
+#### 第 3 步：添加固定 Public Hostname
+
+进入刚创建的 Tunnel：
+
+1. 打开 **Routes**；
+2. 选择 **Add route → Published application**；
+3. 在 Hostname 中填写：
+   - Subdomain：`panel`
+   - Domain：`example.com`
+   - 最终得到：`panel.example.com`
+4. Service type 选择 **HTTP**；
+5. Service URL 填：
+
+```text
+http://127.0.0.1:27020
+```
+
+6. 展开 Additional application settings / HTTP settings；
+7. 把 **HTTP Host Header** 设置为：
+
+```text
+127.0.0.1:27020
+```
+
+8. 保存 route。
+
+**HTTP Host Header 不能省略。** WebPanel 默认只监听
+`http://127.0.0.1:27020/`，Cloudflare 如果把公网域名原样作为 `Host` 转给
+`HttpListener`，可能得到 `400 Invalid Host`。该参数会让请求使用与本地监听一致的 Host。
+Cloudflare 对此参数的定义见
+[Origin parameters: httpHostHeader](https://developers.cloudflare.com/tunnel/advanced/origin-parameters/)。
+Public Hostname 到本地 HTTP 服务的映射方式见
+[Published applications](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/)。
+
+如果 `cloudflared` 与 WebPanel 不在同一台机器，Service URL 和 HTTP Host Header 都应改成
+WebPanel 机器可达的内网地址，例如：
+
+```text
+Service URL:      http://192.168.1.20:27020
+HTTP Host Header: 192.168.1.20:27020
+```
+
+此时 WebPanel 的 `bindAddress` 也要绑定对应内网地址，并通过防火墙只允许
+`cloudflared` 所在机器访问，不能直接对公网开放。
+
+#### 第 4 步：验证永久链接
+
+等待 DNS 和 Tunnel route 生效，然后测试：
+
+```bash
+curl -i https://panel.example.com/
+curl -i https://panel.example.com/你的管理token/
+```
+
+验证结果：
+
+- `https://panel.example.com/你的管理token/` 能打开管理员面板；
+- 玩家进服执行 `/menu` 后，收到的链接以
+  `https://panel.example.com/p?t=...` 开头；
+- 重启 Unturned、执行 `openmod reload` 或重启 `cloudflared` 后，域名仍然不变；
+- OpenMod 日志不应再打印新的 `trycloudflare.com` 地址。
+
+最终地址格式：
+
+```text
+管理员面板：https://panel.example.com/<web.token>/
+玩家面板：  https://panel.example.com/p?t=<玩家临时令牌>
+```
+
+`publicBaseUrl` 只填域名根地址，**不要**把管理 token、`/p` 或结尾斜杠写进去。
+
+#### 第 5 步：日常维护与安全
+
+- 更新 WebPanel 不需要重建 Tunnel；只要端口和域名不变，原 route 继续生效；
+- 更新 `cloudflared` 时使用操作系统的软件包管理器或 Cloudflare 官方安装方式，然后重启服务；
+- `web.token` 是管理员面板密码，建议至少 32 个随机字符，禁止分享或出现在截图中；
+- Tunnel Token 只负责连接器身份，`web.token` 负责 WebPanel 管理员鉴权，两者不是同一个 token；
+- 玩家链接带一次性会话参数 `?t=...`，不要把玩家链接当作管理员链接；
+- 不要为了 Tunnel 把 `bindAddress` 改为 `0.0.0.0`，也不要在公网防火墙开放 27020；
+- 若使用 Cloudflare Access，注意对整个 `panel.example.com` 强制登录会同时拦截玩家
+  `/p` 页面；应先验证游戏内浏览器的登录流程，或只设计针对管理入口的独立访问策略。
+
+#### 常见故障排查
+
+| 现象 | 原因与处理 |
+| --- | --- |
+| Cloudflare 显示 Tunnel `Inactive` / `Down` | `cloudflared` 服务未运行或 Token 无效。Linux 检查 `systemctl status cloudflared` 和 `journalctl -u cloudflared`；Windows 检查 `sc.exe query Cloudflared`。 |
+| 公网返回 `502 Bad Gateway` | Tunnel 已连接，但 `cloudflared` 无法访问 WebPanel。先在服务器执行 `curl http://127.0.0.1:27020/`，再核对 Service URL 和端口。 |
+| 公网返回 `400 Invalid Host` | Public Hostname 的 **HTTP Host Header** 未设置或填写错误；设为与 Service URL 一致的 `127.0.0.1:27020`。 |
+| `/menu` 提示没有公网 URL | 检查 `web.publicBaseUrl: "https://panel.example.com"` 是否位于 `web:` 下，且没有误写到 `tunnel:` 内；保存后完整重启或 reload WebPanel。 |
+| 日志仍出现随机 `trycloudflare.com` | `web.tunnel.enabled` 仍为 `true`，或修改了错误服务器/实例的配置文件。设置为 `false` 后完整重启。 |
+| 固定域名能打开根路径，但管理面 404 | URL 缺少正确的 `web.token`，或 token 中包含未编码的特殊字符。建议使用 `openssl rand -hex 24` 生成。 |
+| 本地能访问、公网 DNS 解析失败 | Public Hostname route 尚未保存、域名不在同一 Cloudflare 账号，或 DNS 尚未生效。回到 Tunnel 的 Routes 页面确认 hostname。 |
+| reload 后域名正常但页面功能缺失 | 这不是 Tunnel 地址问题；检查各功能插件是否成功重新注册 WebPanel 模块，必要时完整重启服务器。 |
 `custom` + ngrok 示例:
 
 ```yaml

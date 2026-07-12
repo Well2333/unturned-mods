@@ -35,7 +35,7 @@
 
 二选一：
 
-- **从 NuGet 安装（推荐）**，自动解析依赖（如 LiteDB,以及 Shop 会带上 Economy）：
+- **从 NuGet 安装（推荐）**，自动解析依赖（如 SQLite,以及 Shop 会带上 Economy）：
 
   ```bash
   openmod install well404.Economy
@@ -70,14 +70,14 @@ scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
 ```
 
 **产物布局（扁平）**：`<输出目录>/<PluginId>.dll` + 非宿主第三方依赖（如
-`well404.Economy` 会带 `LiteDB.dll`；`well404.AutoSave` 会带 `Cronos.dll`、`SharpCompress.dll`、
+`well404.Economy` 会带 `Microsoft.Data.Sqlite.dll`、`SQLitePCLRaw.core.dll`、`SQLitePCLRaw.provider.sqlite3.dll`；`well404.AutoSave` 会带 `Cronos.dll`、`SharpCompress.dll`、
 `System.Text.Encoding.CodePages.dll`；`well404.Shop` 只有插件 dll），全部平铺。
 **必须扁平**：OpenMod 的插件加载器只扫描 `plugins/*.dll` 顶层（不递归子目录），所以
 服务器 `openmod/plugins/` 的布局就等于本输出目录。构建**前清除**上次同名残余、**后只
 留目标文件**（中间产物在临时目录丢弃）；默认 `build/` 全量构建时会清掉旧产物但保留
 版本控制的 `templates/`（构建产物已 `.gitignore`）。部署时把这些 dll 平铺复制进
 `openmod/plugins/`，OpenMod 会自动在 `plugins/<PluginId>/` 下生成各插件的
-`config.yaml`/`translations.yaml`（及如经济库 `economy.db`）。
+`config.yaml`/`translations.yaml`（及如SQLite 数据库 `economy.sqlite3`）。
 
 `scripts/build.sh --help` 查看全部选项。其他脚本：
 

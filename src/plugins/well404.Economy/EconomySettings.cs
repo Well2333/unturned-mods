@@ -13,8 +13,6 @@ namespace well404.Economy
         /// <summary>The active currency backend: <c>database</c> or <c>experience</c>.</summary>
         public string Backend { get; set; } = "database";
 
-        public DatabaseSettings Database { get; set; } = new DatabaseSettings();
-
         public TransferSettings Transfer { get; set; } = new TransferSettings();
 
         public KillRewardSettings KillRewards { get; set; } = new KillRewardSettings();
@@ -27,12 +25,6 @@ namespace well404.Economy
 
         /// <summary>Balance assumed for accounts that have never been touched (database backend only).</summary>
         public decimal StartingBalance { get; set; } = 0m;
-    }
-
-    public class DatabaseSettings
-    {
-        /// <summary>LiteDB file name, relative to the plugin working directory.</summary>
-        public string FileName { get; set; } = "economy.db";
     }
 
     public class TransferSettings

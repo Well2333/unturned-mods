@@ -8,13 +8,9 @@ currency:
   startingBalance: 0
 
 # Which backend stores balances:
-#   database   - a serverless LiteDB ledger (works for online and offline players)
+#   database   - a transactional SQLite ledger (works for online and offline players)
 #   experience - the native Unturned experience points (online players only)
 backend: "database"
-
-database:
-  # LiteDB file, created in this plugin's directory.
-  fileName: "economy.db"
 
 transfer:
   enabled: true

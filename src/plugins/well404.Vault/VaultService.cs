@@ -2,12 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using OpenMod.API.Permissions;
-using OpenMod.API.Persistence;
 using OpenMod.Unturned.Users;
 using SDG.Unturned;
 using UnityEngine;
@@ -58,21 +56,17 @@ namespace well404.Vault
     /// is per-player: a config base, raised by any permission tier the player holds, or set
     /// individually via a per-player override. Registered as a plugin-scoped singleton.
     ///
-    /// Threading: SDG inventory/asset access runs on the Unity main thread (callers switch first).
-    /// The in-memory model (<c>m_Data</c>) is touched from the main thread (store/take) AND from the
-    /// web/command threads (render/list/overrides), so every read and write of it is guarded by
-    /// <c>m_Lock</c>, and persistence is serialized through <c>m_SaveLock</c> over a cloned snapshot.
+    /// Threading: SDG inventory/asset access runs on the Unity main thread; SQLite access is
+    /// serialized by SqliteVaultStore and each mutation is committed transactionally.
     /// </summary>
     public class VaultService
     {
-        private const string DataKey = "vault";
-
         private readonly IConfiguration m_Configuration;
         private readonly IPermissionChecker m_PermissionChecker;
-        private readonly object m_Lock = new object();
-        private readonly SemaphoreSlim m_SaveLock = new SemaphoreSlim(1, 1);
-        private IDataStore? m_DataStore;
-        private VaultData m_Data = new VaultData();
+        private SqliteVaultStore? m_Store;
+
+        private SqliteVaultStore Store => m_Store
+            ?? throw new InvalidOperationException("The vault database is not initialized.");
 
         public VaultService(IConfiguration configuration, IPermissionChecker permissionChecker)
         {
@@ -85,48 +79,12 @@ namespace well404.Vault
         /// <summary>The configured base capacity (before tiers / per-player overrides), at least 1.</summary>
         public int BaseMaxSlots => Math.Max(1, Settings.MaxSlots);
 
-        /// <summary>Loads persisted data once. Called by the plugin on load (DataStore is plugin-owned).</summary>
-        public async Task InitializeAsync(IDataStore dataStore)
+        /// <summary>Creates the SQLite schema. Existing YAML data is intentionally ignored.</summary>
+        public Task InitializeAsync(string databasePath)
         {
-            m_DataStore = dataStore;
-            VaultData loaded;
-            if (await dataStore.ExistsAsync(DataKey))
-            {
-                loaded = await dataStore.LoadAsync<VaultData>(DataKey) ?? new VaultData();
-            }
-            else
-            {
-                loaded = new VaultData();
-            }
-
-            // Backfill the stack capacity for items stored before it was recorded, so the web view can
-            // show a fill ratio (e.g. 6/8). Only stacked items (ammo/magazines) have one. Runs on load
-            // before any concurrency, but we still publish under the lock for visibility.
-            var changed = false;
-            foreach (var list in loaded.Players.Values)
-            {
-                foreach (var item in list)
-                {
-                    if (item.MaxAmount == 0 && item.Amount > 1)
-                    {
-                        item.MaxAmount = MaxAmountOf(item.ItemId);
-                        if (item.MaxAmount != 0)
-                        {
-                            changed = true;
-                        }
-                    }
-                }
-            }
-
-            lock (m_Lock)
-            {
-                m_Data = loaded;
-            }
-
-            if (changed)
-            {
-                await SaveAsync();
-            }
+            m_Store = new SqliteVaultStore(databasePath);
+            m_Store.Initialize();
+            return Task.CompletedTask;
         }
 
         // ----- capacity -----
@@ -135,16 +93,10 @@ namespace well404.Vault
         /// the config base and every permission tier the player holds. Never below 1.</summary>
         public async Task<int> GetMaxSlotsAsync(UnturnedUser user)
         {
-            int overridden;
-            bool hasOverride;
-            lock (m_Lock)
+            var overridden = Store.GetOverride(user.Id);
+            if (overridden.HasValue)
             {
-                hasOverride = m_Data.Overrides.TryGetValue(user.Id, out overridden);
-            }
-
-            if (hasOverride)
-            {
-                return Math.Max(1, overridden);
+                return Math.Max(1, overridden.Value);
             }
 
             var settings = Settings;
@@ -160,70 +112,28 @@ namespace well404.Vault
             return best;
         }
 
-        /// <summary>Capacity known without the online user: a per-player override, else the config base. Never below 1.</summary>
+        /// <summary>Capacity known without the online user: a per-player override, else the config base.</summary>
         public int OverrideOrBase(string steamId)
-        {
-            lock (m_Lock)
-            {
-                if (m_Data.Overrides.TryGetValue(steamId, out var overridden))
-                {
-                    return Math.Max(1, overridden);
-                }
-            }
+            => Math.Max(1, Store.GetOverride(steamId) ?? Settings.MaxSlots);
 
-            return Math.Max(1, Settings.MaxSlots);
+        public IReadOnlyDictionary<string, int> Overrides => Store.GetOverrides();
+
+        public Task SetOverrideAsync(string steamId, int slots)
+        {
+            Store.SetOverride(steamId, Math.Max(1, slots));
+            return Task.CompletedTask;
         }
 
-        public IReadOnlyDictionary<string, int> Overrides
-        {
-            get { lock (m_Lock) { return new Dictionary<string, int>(m_Data.Overrides); } }
-        }
-
-        public async Task SetOverrideAsync(string steamId, int slots)
-        {
-            lock (m_Lock)
-            {
-                m_Data.Overrides[steamId] = Math.Max(1, slots);
-            }
-
-            await SaveAsync();
-        }
-
-        public async Task<bool> ClearOverrideAsync(string steamId)
-        {
-            bool removed;
-            lock (m_Lock)
-            {
-                removed = m_Data.Overrides.Remove(steamId);
-            }
-
-            if (removed)
-            {
-                await SaveAsync();
-            }
-
-            return removed;
-        }
+        public Task<bool> ClearOverrideAsync(string steamId)
+            => Task.FromResult(Store.ClearOverride(steamId));
 
         // ----- queries -----
 
         /// <summary>A snapshot of a player's stored items.</summary>
-        public IReadOnlyList<StoredItem> Get(string steamId)
-        {
-            lock (m_Lock)
-            {
-                return m_Data.Players.TryGetValue(steamId, out var list) ? list.ToList() : new List<StoredItem>();
-            }
-        }
+        public IReadOnlyList<StoredItem> Get(string steamId) => Store.Get(steamId);
 
         /// <summary>Grid cells currently used by a player's vault.</summary>
-        public int UsedSlots(string steamId)
-        {
-            lock (m_Lock)
-            {
-                return m_Data.Players.TryGetValue(steamId, out var list) ? list.Sum(x => x.SlotCost) : 0;
-            }
-        }
+        public int UsedSlots(string steamId) => Store.UsedSlots(steamId);
 
         /// <summary>The grid footprint of one item id (size_x × size_y), or 1 if the asset is unknown.</summary>
         public static int SlotCostOf(ushort itemId)
@@ -242,24 +152,17 @@ namespace well404.Vault
         /// <summary>The vault's contents collapsed into distinct variants (merging identical copies).</summary>
         public IReadOnlyList<ItemVariant> VaultVariants(string steamId)
         {
-            lock (m_Lock)
+            var result = new List<ItemVariant>();
+            foreach (var group in Store.Get(steamId)
+                .GroupBy(x => (x.ItemId, x.Amount, x.Quality, x.State))
+                .OrderBy(g => g.Key.ItemId))
             {
-                var result = new List<ItemVariant>();
-                if (!m_Data.Players.TryGetValue(steamId, out var list))
-                {
-                    return result;
-                }
-
-                foreach (var group in list
-                    .GroupBy(x => (x.ItemId, x.Amount, x.Quality, x.State))
-                    .OrderBy(g => g.Key.ItemId))
-                {
-                    var first = group.First();
-                    result.Add(new ItemVariant(first.ItemId, first.Amount, first.Quality, first.State, group.Count(), first.SlotCost, first.MaxAmount));
-                }
-
-                return result;
+                var first = group.First();
+                result.Add(new ItemVariant(first.ItemId, first.Amount, first.Quality, first.State,
+                    group.Count(), first.SlotCost, first.MaxAmount));
             }
+
+            return result;
         }
 
         /// <summary>The player's carried items collapsed into distinct variants.</summary>
@@ -382,12 +285,7 @@ namespace well404.Vault
 
             if (toAdd.Count > 0)
             {
-                lock (m_Lock)
-                {
-                    ListForLocked(user.Id).AddRange(toAdd);
-                }
-
-                await SaveAsync();
+                Store.AddItems(user.Id, toAdd);
             }
 
             return new StoreResult(toAdd.Count, capacityReached);
@@ -414,49 +312,18 @@ namespace well404.Vault
             }
 
             var taken = 0;
-            var mutated = false;
             for (var n = 0; n < amount; n++)
             {
-                StoredItem? entry = null;
-                lock (m_Lock)
-                {
-                    if (m_Data.Players.TryGetValue(user.Id, out var list))
-                    {
-                        var idx = list.FindIndex(x => matches(x));
-                        if (idx >= 0)
-                        {
-                            entry = list[idx];
-                        }
-                    }
-                }
-
+                var entry = Store.TakeFirst(user.Id, matches);
                 if (entry == null)
                 {
                     break;
                 }
 
-                var restored = GiveBack(player, entry);
-
-                // Always drop the entry from the vault (even if its state was corrupt and couldn't be
-                // restored) so the loop can't spin on it; only count items actually returned.
-                lock (m_Lock)
-                {
-                    if (m_Data.Players.TryGetValue(user.Id, out var list))
-                    {
-                        list.Remove(entry);
-                    }
-                }
-
-                mutated = true;
-                if (restored)
+                if (GiveBack(player, entry))
                 {
                     taken++;
                 }
-            }
-
-            if (mutated)
-            {
-                await SaveAsync();
             }
 
             return taken;
@@ -505,68 +372,5 @@ namespace well404.Vault
             return true;
         }
 
-        // Caller must hold m_Lock.
-        private List<StoredItem> ListForLocked(string steamId)
-        {
-            if (!m_Data.Players.TryGetValue(steamId, out var list))
-            {
-                list = new List<StoredItem>();
-                m_Data.Players[steamId] = list;
-            }
-
-            return list;
-        }
-
-        private async Task SaveAsync()
-        {
-            if (m_DataStore == null)
-            {
-                return;
-            }
-
-            // Serialize a stable clone so the data store never walks a graph another thread is mutating,
-            // and serialize concurrent saves so two writers can't interleave the file write.
-            VaultData snapshot;
-            lock (m_Lock)
-            {
-                snapshot = CloneData(m_Data);
-            }
-
-            await m_SaveLock.WaitAsync();
-            try
-            {
-                await m_DataStore.SaveAsync(DataKey, snapshot);
-            }
-            finally
-            {
-                m_SaveLock.Release();
-            }
-        }
-
-        private static VaultData CloneData(VaultData data)
-        {
-            var copy = new VaultData();
-            foreach (var pair in data.Players)
-            {
-                copy.Players[pair.Key] = pair.Value.Select(CloneItem).ToList();
-            }
-
-            foreach (var pair in data.Overrides)
-            {
-                copy.Overrides[pair.Key] = pair.Value;
-            }
-
-            return copy;
-        }
-
-        private static StoredItem CloneItem(StoredItem s) => new StoredItem
-        {
-            ItemId = s.ItemId,
-            Amount = s.Amount,
-            Quality = s.Quality,
-            State = s.State,
-            SlotCost = s.SlotCost,
-            MaxAmount = s.MaxAmount
-        };
     }
 }

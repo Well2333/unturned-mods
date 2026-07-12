@@ -34,9 +34,11 @@
          etc.) and well404.Shop can inject it without a hard project reference. -->
     <PackageVersion Include="OpenMod.Extensions.Economy.Abstractions" Version="3.8.10" />
 
-    <!-- LiteDB: pure-managed, single-file serverless database (the "SQLite-like"
-         backend for the economy ledger). No native dependencies. -->
-    <PackageVersion Include="LiteDB" Version="5.0.21" />
+    <!-- SQLite ADO.NET provider used by Economy and Vault. OpenMod does not extract
+         native runtime assets from dependency packages, so use the operating system sqlite3 library. -->
+    <PackageVersion Include="Microsoft.Data.Sqlite.Core" Version="8.0.28" />
+    <PackageVersion Include="SQLitePCLRaw.provider.sqlite3" Version="2.1.6" />
+    <PackageVersion Include="SQLitePCLRaw.core" Version="2.1.6" />
 
     <!-- well404.AutoSave dependencies. -->
     <!-- Cronos: pure-managed, zero-dependency cron expression parser (netstandard2.0). -->
