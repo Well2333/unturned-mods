@@ -21,8 +21,8 @@
   - `log` — tail 捕获的 `server.log`
   - `attach` — 进入实时控制台（`Ctrl-b d` 脱离）
 - 插件部署目录（**平铺**）：`.localserver/u3ds/Servers/Test/OpenMod/plugins/`
-  把插件 dll 及其非宿主依赖（含 `UnturnedMods.Shared.dll`）拷进去，再 `openmod reload`
-  或重启。可用 `scripts/build.sh <PluginId> -d .localserver/u3ds/Servers/Test/OpenMod/plugins`。
+  把插件 dll 及其非宿主依赖（含 `UnturnedMods.Shared.dll`）拷进去后**完整重启测试服**。
+  只有未替换 DLL、单纯验证同版本生命周期或配置重载时才执行 `openmod reload`。可用 `scripts/build.sh <PluginId> -d .localserver/u3ds/Servers/Test/OpenMod/plugins`。
 - 沙箱注意：本仓库 AI 运行环境对 `/tmp` 与套接字有限制。跑构建/服务器时用
   `dangerouslyDisableSandbox` 并把 `TMPDIR` 指到可写目录（如 `~/.tmpbuild`）；若联网
   受限，离线构建用 `dotnet restore --source ~/.nuget/packages` + `dotnet build --no-restore`，

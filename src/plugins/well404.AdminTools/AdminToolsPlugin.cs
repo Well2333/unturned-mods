@@ -1,10 +1,13 @@
 using System;
+using System.Threading.Tasks;
 using Autofac;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using OpenMod.API.Eventing;
 using OpenMod.API.Plugins;
+using OpenMod.Core.Plugins.Events;
 using OpenMod.Unturned.Plugins;
 using UnturnedMods.Shared.WebPanel;
 using well404.AdminTools;
@@ -40,7 +43,15 @@ namespace well404.AdminTools
         {
             await UniTask.SwitchToMainThread();
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_start"]);
-            RegisterWebPanel();
+            RegisterWebPanelExtension();
+        }
+
+        internal void RegisterWebPanelExtension()
+        {
+            if (m_WebPanelRegistry == null)
+            {
+                RegisterWebPanel();
+            }
         }
 
         protected override async UniTask OnUnloadAsync()
@@ -69,6 +80,22 @@ namespace well404.AdminTools
             registry.RegisterModule(AdminToolsWebPanelModule.Create(LifetimeScope.Resolve<AdminToolsService>(), translations));
             m_WebPanelRegistry = registry;
             m_Logger.LogInformation("AdminTools: registered the admin module with the web panel.");
+        }
+    }
+
+    public sealed class WebPanelRegistrationListener : IEventListener<PluginLoadedEvent>
+    {
+        private readonly IPluginAccessor<AdminToolsPlugin> m_PluginAccessor;
+
+        public WebPanelRegistrationListener(IPluginAccessor<AdminToolsPlugin> pluginAccessor)
+        {
+            m_PluginAccessor = pluginAccessor;
+        }
+
+        public Task HandleEventAsync(object? sender, PluginLoadedEvent @event)
+        {
+            m_PluginAccessor.Instance?.RegisterWebPanelExtension();
+            return Task.CompletedTask;
         }
     }
 }

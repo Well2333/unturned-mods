@@ -41,7 +41,7 @@
   openmod install well404.Economy
   openmod install well404.Shop      # 自动一并安装 well404.Economy
   openmod install well404.WebPanel  # 可选:可视化管理面板
-  openmod reload
+  # 安装或更新 DLL 后完整重启服务器；不要用 reload 代替二进制重启
   ```
 
 - **手动放 dll**：把插件 dll 及其第三方依赖 dll 放入服务器的 `openmod/plugins/`。
@@ -66,7 +66,7 @@ scripts/build.sh well404.Economy -c Debug
 
 # 直接输出/部署到本地测试服务器的 plugins 目录（-o 或 --deploy 覆盖输出目录）：
 scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
-# 然后在服务器控制台执行： openmod reload
+# 然后完整重启服务器（替换 DLL 后不要只执行 openmod reload）
 ```
 
 **产物布局（扁平）**：`<输出目录>/<PluginId>.dll` + 非宿主第三方依赖（如

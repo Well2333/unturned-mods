@@ -57,7 +57,10 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
   （如服务器 plugins 目录）、`--test` 跑测试。`build/` 产物已 `.gitignore`（保留
   `templates/`）。详见 `docs/README.md`。
 - 部署二选一：`openmod install <PackageId[@Version]>`，或把插件 `.dll` 及其
-  全部依赖 dll 放入服务器的 `openmod/plugins/`；之后 `openmod reload`。
+  全部依赖 dll 放入服务器的 `openmod/plugins/`。**首次安装、升级或替换任何 DLL（尤其
+  `UnturnedMods.Shared.dll`）后必须完整重启服务器**。Mono/OpenMod 的软
+  `openmod reload` 只用于未替换二进制时的配置/生命周期重载；它不能卸载已载入程序集，
+  用作二进制热更新会产生新旧类型并存、命令/权限源或跨插件服务缺失的混合状态。
 - **版本打标**：`scripts/build.sh` 构建前会删除 `src/**/obj/$CONFIG/**` 下的
   `*.AssemblyInfoInputs.cache`，强制按当前 `<Version>` + git HEAD 重新生成程序集的
   `AssemblyVersion`/`InformationalVersion`。否则旧 `obj/` 残留可能把**过期版本号**打进
@@ -104,7 +107,9 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
 - 插件在 `OnLoadAsync` 里 **可选注入** `IWebPanelRegistry`
   (`LifetimeScope.ResolveOptional<IWebPanelRegistry>()`),拿到则 `RegisterModule(...)`、
   `OnUnloadAsync` 里 `UnregisterModule(...)`;**没装 WebPanel 时返回 null,插件照常工作**——
-  即「可选依赖,不硬依赖」。
+  即「可选依赖,不硬依赖」。同时监听 `PluginLoadedEvent` 并调用同一个**幂等**注册方法，
+  以覆盖 WebPanel/全局服务晚于消费插件可用的加载顺序。成功后保存 registry 实例；卸载时
+  直接从该实例注销，禁止在 `OnUnloadAsync` 从可能已释放的 `LifetimeScope` Resolve。
 - 标量设置用 `WebActionKind.Settings`(进页面预填、页尾统一保存);列表/目录型设置
   (商品、传送点、礼包、玩家余额等)用 `WebActionKind.Collection` 做 CRUD;只读数据用
   `Table`,检索用 `Search`。

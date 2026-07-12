@@ -1,12 +1,15 @@
 using System;
+using System.Threading.Tasks;
 using Autofac;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using OpenMod.API.Eventing;
 using OpenMod.API.Plugins;
 using OpenMod.API.Users;
 using OpenMod.Core.Permissions;
+using OpenMod.Core.Plugins.Events;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Plugins;
 using OpenMod.Unturned.Users;
@@ -58,8 +61,20 @@ namespace well404.Essentials
                 "Essentials loaded: warmup {Warmup}s, {Warps} warp(s), {Gifts} gift(s).",
                 settings.Teleport.WarmupSeconds, settings.Warps.Count, settings.Gifts.Count);
 
-            RegisterWebPanel();
-            RegisterPlayerMenu();
+            RegisterWebPanelExtensions();
+        }
+
+        internal void RegisterWebPanelExtensions()
+        {
+            if (m_WebPanelRegistry == null)
+            {
+                RegisterWebPanel();
+            }
+
+            if (m_PlayerMenuRegistry == null)
+            {
+                RegisterPlayerMenu();
+            }
         }
 
         protected override async UniTask OnUnloadAsync()
@@ -144,6 +159,22 @@ namespace well404.Essentials
                 new PlayerCommandInfo("/sleep", "Cast a sleep vote; once enough online players have voted, the world toggles between day and night.", "well404.Essentials:commands.sleep", "Utilities")
             });
             m_Logger.LogInformation("Essentials: registered the player utilities menu with the web panel.");
+        }
+    }
+
+    public sealed class WebPanelRegistrationListener : IEventListener<PluginLoadedEvent>
+    {
+        private readonly IPluginAccessor<EssentialsPlugin> m_PluginAccessor;
+
+        public WebPanelRegistrationListener(IPluginAccessor<EssentialsPlugin> pluginAccessor)
+        {
+            m_PluginAccessor = pluginAccessor;
+        }
+
+        public Task HandleEventAsync(object? sender, PluginLoadedEvent @event)
+        {
+            m_PluginAccessor.Instance?.RegisterWebPanelExtensions();
+            return Task.CompletedTask;
         }
     }
 }

@@ -104,7 +104,10 @@ unturned-mods/
 - 消费方（如 `well404.Economy`）在 `OnLoadAsync` 里用
   **`LifetimeScope.ResolveOptional<IWebPanelRegistry>()`** 取得注册表——**可选注入**，
   没装 WebPanel 时返回 null、插件照常工作；拿到则 `RegisterModule(...)`，`OnUnloadAsync`
-  里 `UnregisterModule(...)`。注册表是全局单例，与插件加载顺序无关。
+  里 `UnregisterModule(...)`。此外必须监听 `PluginLoadedEvent` 并幂等重试注册：全局服务通常
+  在插件加载前已经可解析，但 `openmod reload`、不同安装组合与框架初始化顺序不能依赖这一
+  偶然时序。注册表按 id 覆盖，因此重复注册安全；插件仍须保存成功取得的 registry，并在
+  unload 时从该实例注销，禁止从已释放的插件作用域重新 Resolve。
 
 **铁律：宿主（well404.WebPanel）绝不内含任何具体插件的业务逻辑或 id 判断。** 两个内嵌
 SPA（`index.html` 管理面、`player.html` 玩家面）只按**通用描述符字段**渲染，**不得**出现

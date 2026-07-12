@@ -170,5 +170,6 @@ fi
 
 echo "==> Done. ${#WRITTEN[@]} file(s) in: $OUTPUT"
 echo "    Deploy by copying the dll(s) into the server's openmod/plugins/ (flat),"
-echo "    then run 'openmod reload'. (If a third-party dep has its own sub-deps, copy"
-echo "    those too, or use 'openmod install <PackageId>'.)"
+echo "    then fully restart the server; do not binary-hot-update with 'openmod reload'."
+echo "    If a third-party dep has its own sub-deps, copy those too,"
+echo "    or use 'openmod install <PackageId>' and then fully restart."

@@ -1,11 +1,14 @@
 using System;
+using System.Threading.Tasks;
 using Autofac;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using OpenMod.API.Eventing;
 using OpenMod.API.Plugins;
 using OpenMod.API.Users;
+using OpenMod.Core.Plugins.Events;
 using OpenMod.Unturned.Plugins;
 using UnturnedMods.Shared.WebPanel;
 
@@ -48,13 +51,26 @@ namespace well404.Vault
             var vault = LifetimeScope.Resolve<VaultService>();
             await vault.InitializeAsync(DataStore);
 
+            RegisterWebPanelExtensions();
+
+            m_Logger.LogInformation("Vault loaded: base capacity {Slots} grid cells.", vault.BaseMaxSlots);
+        }
+
+        internal void RegisterWebPanelExtensions()
+        {
+            var vault = LifetimeScope.Resolve<VaultService>();
             var translations = LifetimeScope.ResolveOptional<IWebTranslationRegistry>();
             translations?.AddBundle(VaultI18n.Zh, VaultI18n.ZhTable);
 
-            RegisterPlayerMenu(vault, translations);
-            RegisterWebPanel(vault);
+            if (m_PlayerMenuRegistry == null)
+            {
+                RegisterPlayerMenu(vault, translations);
+            }
 
-            m_Logger.LogInformation("Vault loaded: base capacity {Slots} grid cells.", vault.BaseMaxSlots);
+            if (m_WebPanelRegistry == null)
+            {
+                RegisterWebPanel(vault);
+            }
         }
 
         protected override async UniTask OnUnloadAsync()
@@ -109,6 +125,22 @@ namespace well404.Vault
 
             registry.RegisterModule(VaultWebPanelModule.Create(new VaultConfigStore(m_Configuration, WorkingDirectory), vault));
             m_WebPanelRegistry = registry;
+        }
+    }
+
+    public sealed class WebPanelRegistrationListener : IEventListener<PluginLoadedEvent>
+    {
+        private readonly IPluginAccessor<VaultPlugin> m_PluginAccessor;
+
+        public WebPanelRegistrationListener(IPluginAccessor<VaultPlugin> pluginAccessor)
+        {
+            m_PluginAccessor = pluginAccessor;
+        }
+
+        public Task HandleEventAsync(object? sender, PluginLoadedEvent @event)
+        {
+            m_PluginAccessor.Instance?.RegisterWebPanelExtensions();
+            return Task.CompletedTask;
         }
     }
 }
