@@ -48,6 +48,22 @@ namespace well404.AdminTools.Commands
         private static bool IsOn(string v) => string.Equals(v, "on", StringComparison.OrdinalIgnoreCase) || v == "1" || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
     }
 
+    [Command("repair")]
+    [CommandSyntax("<player>")]
+    [CommandDescription("Repairs all durability-bearing equipment on an online player to 100%.")]
+    public class CommandRepair : Command
+    {
+        private readonly AdminToolsService m_Admin;
+        public CommandRepair(IServiceProvider serviceProvider, AdminToolsService admin) : base(serviceProvider) => m_Admin = admin;
+
+        protected override async Task OnExecuteAsync()
+        {
+            if (Context.Parameters.Length < 1) throw new CommandWrongUsageException(Context);
+            var result = await m_Admin.RepairEquipmentAsync(Context.Parameters[0]);
+            await PrintAsync(result.Message);
+        }
+    }
+
     [Command("kick")]
     [CommandSyntax("<player> [reason]")]
     [CommandDescription("Kicks a player off the server.")]

@@ -136,6 +136,100 @@ namespace well404.AdminTools
             return removed ? AdminResult.Done("Unbanned {0}.", steamId) : AdminResult.Fail("{0} was not banned.", steamId);
         }
 
+        // ----- equipment repair ----------------------------------------------
+
+        public async Task<AdminResult> RepairEquipmentAsync(string playerSearch)
+        {
+            var user = await FindOnlineAsync(playerSearch);
+            if (user == null)
+            {
+                return AdminResult.Fail("Player not online: {0}", playerSearch);
+            }
+
+            await UniTask.SwitchToMainThread();
+            var player = user.Player.Player;
+            var repaired = 0;
+
+            // Slots, pockets and worn-container pages belong to the player. Exclude STORAGE,
+            // which is the external crate/vehicle page they may currently have open.
+            for (byte page = 0; page < PlayerInventory.STORAGE; page++)
+            {
+                var count = player.inventory.getItemCount(page);
+                for (byte index = 0; index < count; index++)
+                {
+                    var jar = player.inventory.getItem(page, index);
+                    if (jar == null)
+                    {
+                        continue;
+                    }
+
+                    if (jar.item.quality < 100 && IsRepairableEquipment(jar.item.id))
+                    {
+                        player.inventory.sendUpdateQuality(page, jar.x, jar.y, 100);
+                        repaired++;
+                    }
+
+                    repaired += RepairGunAttachments(player.inventory, page, jar);
+                }
+            }
+
+            repaired += RepairClothing(player.clothing.shirt, player.clothing.shirtQuality, () =>
+            { player.clothing.shirtQuality = 100; player.clothing.sendUpdateShirtQuality(); });
+            repaired += RepairClothing(player.clothing.pants, player.clothing.pantsQuality, () =>
+            { player.clothing.pantsQuality = 100; player.clothing.sendUpdatePantsQuality(); });
+            repaired += RepairClothing(player.clothing.vest, player.clothing.vestQuality, () =>
+            { player.clothing.vestQuality = 100; player.clothing.sendUpdateVestQuality(); });
+            repaired += RepairClothing(player.clothing.hat, player.clothing.hatQuality, () =>
+            { player.clothing.hatQuality = 100; player.clothing.sendUpdateHatQuality(); });
+            repaired += RepairClothing(player.clothing.mask, player.clothing.maskQuality, () =>
+            { player.clothing.maskQuality = 100; player.clothing.sendUpdateMaskQuality(); });
+            repaired += RepairClothing(player.clothing.backpack, player.clothing.backpackQuality, () =>
+            { player.clothing.backpackQuality = 100; player.clothing.sendUpdateBackpackQuality(); });
+            repaired += RepairClothing(player.clothing.glasses, player.clothing.glassesQuality, () =>
+            { player.clothing.glassesQuality = 100; player.clothing.sendUpdateGlassesQuality(); });
+
+            return repaired > 0
+                ? AdminResult.Done("Repaired {0} equipment item(s) for {1}.", repaired, user.DisplayName)
+                : AdminResult.Done("All equipment for {0} is already at 100%.", user.DisplayName);
+        }
+
+        private static int RepairGunAttachments(PlayerInventory inventory, byte page, ItemJar jar)
+        {
+            if (!(Assets.find(EAssetType.ITEM, jar.item.id) is ItemGunAsset) || jar.item.state == null || jar.item.state.Length < 12)
+            {
+                return 0;
+            }
+
+            var state = (byte[])jar.item.state.Clone();
+            var repaired = EquipmentRepair.RepairGunAttachmentQualities(state, IsRepairableEquipment);
+
+            if (repaired > 0)
+            {
+                inventory.sendUpdateInvState(page, jar.x, jar.y, state);
+            }
+
+            return repaired;
+        }
+
+        private static int RepairClothing(ushort itemId, byte quality, System.Action update)
+        {
+            if (itemId == 0 || quality >= 100 || !IsRepairableEquipment(itemId))
+            {
+                return 0;
+            }
+
+            update();
+            return 1;
+        }
+
+        private static bool IsRepairableEquipment(ushort itemId)
+        {
+            var asset = Assets.find(EAssetType.ITEM, itemId) as ItemAsset;
+            return asset != null
+                && asset.showQuality
+                && (asset is ItemWeaponAsset || asset is ItemClothingAsset || asset is ItemCaliberAsset);
+        }
+
         // ----- helpers -------------------------------------------------------
 
         public IReadOnlyList<UnturnedUser> OnlineUsers() => m_UserDirectory.GetOnlineUsers().ToList();

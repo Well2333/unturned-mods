@@ -78,7 +78,11 @@ jobs:
           mkdir -p "$OUT"
           if [ "${{ steps.target.outputs.mode }}" = "single" ]; then
             PLUGIN="${{ steps.target.outputs.plugin }}"
-            PROJ="src/plugins/$PLUGIN/$PLUGIN.csproj"
+            if [ "$PLUGIN" = "well404.UnturnedMods.Shared" ]; then
+              PROJ="src/Shared/UnturnedMods.Shared/UnturnedMods.Shared.csproj"
+            else
+              PROJ="src/plugins/$PLUGIN/$PLUGIN.csproj"
+            fi
             if [ ! -f "$PROJ" ]; then
               echo "::error::No such plugin project: $PROJ"; exit 1
             fi

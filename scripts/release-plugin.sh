@@ -9,7 +9,7 @@
 #
 # Requirements:
 #   - clean working tree (the version bump should already be committed)
-#   - gh CLI authenticated, NUGET_API_KEY secret configured in the repo
+#   - gh CLI authenticated; NuGet Trusted Publishing configured for publish.yml
 #
 # Example:
 #   scripts/plugin-version.sh well404.Economy 0.2.0
@@ -34,7 +34,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CSPROJ="$REPO_ROOT/src/plugins/$PLUGIN_ID/$PLUGIN_ID.csproj"
+if [[ "$PLUGIN_ID" == "well404.UnturnedMods.Shared" ]]; then
+  CSPROJ="$REPO_ROOT/src/Shared/UnturnedMods.Shared/UnturnedMods.Shared.csproj"
+else
+  CSPROJ="$REPO_ROOT/src/plugins/$PLUGIN_ID/$PLUGIN_ID.csproj"
+fi
 if [[ ! -f "$CSPROJ" ]]; then
   echo "Error: no such plugin project: $CSPROJ" >&2
   exit 1

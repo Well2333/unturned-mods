@@ -57,6 +57,22 @@ namespace well404.AdminTools
                 },
                 description: "Make an online player invincible (or turn it off). Cleared on restart.");
 
+            var repair = new WebPanelAction(
+                id: "repair",
+                label: "Repair equipment",
+                kind: WebActionKind.Form,
+                handler: async request =>
+                {
+                    var player = request.Get("player");
+                    if (player == null) return WebActionResult.Fail(tr.Resolve("Enter a player.", request.Language));
+                    return Map(await admin.RepairEquipmentAsync(player), request.Language);
+                },
+                fields: new[]
+                {
+                    new WebField("player", "Player", WebFieldType.Text, required: true, placeholder: "Name or SteamID")
+                },
+                description: "Restore all durability-bearing equipment on an online player to 100%.");
+
             var kick = new WebPanelAction(
                 id: "kick",
                 label: "Kick",
@@ -109,7 +125,7 @@ namespace well404.AdminTools
 
             return new WebPanelModule(
                 ModuleId, "Admin tools",
-                new[] { players, godmode, kick, ban, unban },
+                new[] { players, godmode, repair, kick, ban, unban },
                 icon: "🛡️");
         }
     }

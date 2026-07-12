@@ -188,7 +188,8 @@ namespace well404.Essentials
                 otherCount++;
                 cards.Add(new PlayerCard("p:" + other.SteamId.m_SteamID, "👤 " + other.DisplayName, null, null, new[]
                 {
-                    new PlayerButton("tpreq", L(lang, "Request teleport")),
+                    new PlayerButton("tpreq", L(lang, me.Player.Player.quests.isMemberOfSameGroupAs(other.Player.Player)
+                        ? "Teleport" : "Request teleport")),
                     new PlayerButton("pinvite", L(lang, "Invite to party"))
                 }));
             }
@@ -259,6 +260,15 @@ namespace well404.Essentials
                     var targetId = ParseId(cardKey, "p:");
                     var target = m_UserDirectory.FindUser(new CSteamID(targetId));
                     if (target == null) return PlayerActionResult.Fail(L(lang, "That player is no longer online."));
+
+                    if (me.Player.Player.quests.isMemberOfSameGroupAs(target.Player.Player))
+                    {
+                        var destination = LocationHelper.FromPlayer(target.Player);
+                        return await m_Teleport.TryTeleportAsync(me, destination, TeleportKind.Tp, "tp")
+                            ? PlayerActionResult.Ok(m_Tr.Format(lang, "Teleported to {0}.", target.DisplayName))
+                            : PlayerActionResult.Fail(L(lang, "Teleport didn't complete — check the in-game notice."));
+                    }
+
                     if (!m_Requests.Open(meId, targetId, settings.Tpa.ExpirationSeconds * 1000))
                         return PlayerActionResult.Fail(m_Tr.Format(lang, "You already have a teleport request to {0}.", target.DisplayName));
                     await Notify(target, "tp:request_received", new { player = me.DisplayName });

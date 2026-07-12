@@ -64,8 +64,8 @@ openmod install well404.Essentials
 
 ## 权限
 
-OpenMod 会按命令路径自动派生命令权限（如 `well404.Essentials:home`、
-`well404.Essentials:warp.set`）。此外本插件使用这些自定义权限节点：
+OpenMod 会按命令路径自动派生命令权限（如 `well404.Essentials:commands.home`、
+`well404.Essentials:commands.warp.set`）。此外本插件使用这些自定义权限节点：
 
 | 权限 | 作用 |
 | --- | --- |

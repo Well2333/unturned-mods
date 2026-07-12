@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <Description>Admin Tools</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -30,19 +30,9 @@
     <EmbeddedResource Include="translations.yaml" />
   </ItemGroup>
 
-  <!-- Shares the WebPanel abstractions (IWebPanelRegistry / IWebTranslationRegistry) from the
-       cross-plugin library. UnturnedMods.Shared is NEVER published to NuGet, so it is kept OUT of
-       this package's nuspec deps (PrivateAssets="all") and bundled into lib/ as a plain dll. -->
+  <!-- Shared abstractions are a published NuGet dependency, ensuring OpenMod loads one assembly identity. -->
   <ItemGroup>
-    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\..\Shared\UnturnedMods.Shared\UnturnedMods.Shared.csproj" />
   </ItemGroup>
-  <PropertyGroup>
-    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeSharedInPackage</TargetsForTfmSpecificBuildOutput>
-  </PropertyGroup>
-  <Target Name="IncludeSharedInPackage">
-    <ItemGroup>
-      <BuildOutputInPackage Include="$(OutputPath)UnturnedMods.Shared.dll" />
-    </ItemGroup>
-  </Target>
 
 </Project>
