@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/jpeg" href="/favicon.ico">
 <title>Player Panel</title>
 <style>
-  :root { --bg:#1e1f22; --panel:#2b2d31; --panel2:#313338; --line:#3f4147; --fg:#dbdee1; --muted:#949ba4; --accent:#5865f2; --ok:#3ba55d; --err:#ed4245; }
+  :root { --bg:#0f1115; --panel:#171a20; --panel2:#1d2129; --line:#2a303a; --fg:#f4f6f8; --muted:#929aa7; --accent:#6d72f6; --ok:#35b36f; --err:#ef5b61; --radius:12px; }
   * { box-sizing:border-box; }
   body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--fg); }
   header { display:flex; align-items:center; gap:10px; padding:12px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
@@ -16,7 +17,7 @@
   .tabs { display:flex; flex-wrap:wrap; gap:6px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:49px; z-index:9; }
   .tabs button { background:var(--panel2); border:1px solid var(--line); color:var(--fg); padding:7px 14px; border-radius:999px; cursor:pointer; font-size:14px; }
   .tabs button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
-  main { padding:16px; max-width:720px; margin:0 auto; }
+  main { padding:16px; max-width:1180px; margin:0 auto; }
   .note { color:var(--muted); font-size:12px; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .head { display:inline-block; font-size:14px; font-weight:600; color:var(--fg); margin:0 0 16px; background:var(--panel2); border:1px solid var(--line); border-radius:999px; padding:7px 16px; }
   .notice { padding:10px 13px; border-radius:8px; font-size:13px; margin:0 0 14px; background:var(--panel2); border:1px solid var(--line); white-space:pre-line; }
@@ -31,8 +32,8 @@
   .cmd code { color:#fff; font-weight:600; flex:0 0 auto; }
   .cmd span { color:var(--muted); font-size:13px; }
   .grouphead { font-size:13px; color:var(--muted); margin:14px 0 6px; font-weight:600; }
-  .cards { display:flex; flex-direction:column; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; transition:border-color .12s, box-shadow .12s, transform .12s; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; min-width:0; transition:border-color .12s, box-shadow .12s, transform .12s; }
   .card:hover { border-color:#4a4d55; box-shadow:0 4px 14px rgba(0,0,0,.25); }
   .card h3 { margin:0 0 8px; font-size:15px; }
   .card .lines { color:var(--muted); font-size:13px; margin:0 0 8px; }
@@ -44,6 +45,12 @@
   .section { margin:0 0 16px; }
   .section .grouphead { display:flex; align-items:center; gap:8px; margin:0 0 8px; }
   .section .grouphead .cnt { color:var(--muted); font-weight:400; }
+  .subtabs { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin:0 0 14px; padding:7px; background:var(--panel); border:1px solid var(--line); border-radius:9px; }
+  .subtabs button.tab { background:transparent; border:1px solid transparent; color:var(--muted); padding:6px 12px; border-radius:7px; cursor:pointer; }
+  .subtabs button.tab.active { background:var(--accent); color:#fff; }
+  .subtabs .spacer { flex:1; }
+  .groupactions { display:flex; gap:6px; }
+  .groupactions button.act { padding:5px 9px; font-size:12px; }
   /* Generic "list" layout: responsive two-column grid of compact item cells (1 col on a narrow
      Steam webview, 2+ when there's width). Each cell stacks a header (badge+name+tags) over its
      action buttons so it stays readable in a half-width column instead of one wasteful full row. */
@@ -54,7 +61,9 @@
   .prow .badge { font-size:11px; color:var(--muted); background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:2px 6px; flex:0 0 auto; font-variant-numeric:tabular-nums; }
   .prow .nm { font-weight:600; font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .prow .mid { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+  .prow .rowlines { color:var(--muted); font-size:12px; display:flex; flex-direction:column; gap:2px; }
   .prow .rowbtns { display:flex; gap:6px; flex-wrap:wrap; }
+  .plist.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
   /* collapsible card: a parent cell + its indented children, always spanning the full grid width.
      The children themselves flow in the same responsive two-column grid to avoid wasted space. */
   .prowwrap { grid-column:1/-1; display:flex; flex-direction:column; gap:6px; }
@@ -76,8 +85,14 @@
   .pmodal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; min-width:260px; max-width:92%; box-shadow:0 8px 30px rgba(0,0,0,.5); }
   .pmodal .ptitle { font-size:15px; color:var(--fg); margin-bottom:12px; }
   .pmodal input { width:100%; box-sizing:border-box; background:var(--bg); border:1px solid var(--line); color:var(--fg); border-radius:7px; padding:10px 12px; font-size:16px; }
+  .pmodal .pcontext { color:var(--muted); font-size:12px; margin:-5px 0 10px; white-space:pre-line; }
+  .pmodal .qchoices { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin:0 0 12px; }
+  .pmodal .qchoices button { padding:9px 5px; }
   .pmodal .pmbtns { display:flex; gap:8px; margin-top:14px; justify-content:flex-end; }
   button.act.ghost { background:transparent; }
+  .plugin-ui-host { display:block; width:100%; }
+  @media (max-width:900px){ .plist.three { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:620px){ .plist.three { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -98,23 +113,27 @@ const enc = encodeURIComponent;
 
 const TOKEN = new URLSearchParams(location.search).get("t") || "";
 let lang = localStorage.getItem("panel_lang") || "";   // resolved from server default on first load
-const expandedRows = new Set();   // collapsible-card keys kept open across re-renders
+const expandedRows = new Set();
+const activeGroups = new Map();   // selected group per menu, preserved across re-renders
 let menus = [];
 let languages = [];
 let activeId = decodeURIComponent((location.hash || "").replace(/^#/, "")) || null;
+let refreshIntervalSeconds = 5;
+let refreshTimer = null;
+let loading = false;
 
 // ---- frontend chrome i18n (server-driven content is localized server-side) ----
 const STR = {
   en: { title:"🎮 Player Panel", loading:"Loading…", noFeatures:"Nothing available yet.",
         empty:"(nothing here)", noToken:"Missing session token. Type /menu in-game to reopen the panel.",
         sessionEnded:"Session expired — reopen the panel in-game with /menu.",
-        staleNote:"This page does not refresh on its own — tap ↻ to get the latest data.",
+        staleNote:"Updates automatically every {0}s; tap ↻ to refresh now.",
         refresh:"Refresh", reqFailed:"Request failed", details:"Details",
         confirm:"OK", cancel:"Cancel" },
   zh: { title:"🎮 玩家面板", loading:"加载中…", noFeatures:"暂时没有可用的功能。",
         empty:"（暂无内容）", noToken:"缺少会话令牌。请在游戏内输入 /menu 重新打开面板。",
         sessionEnded:"会话已过期，请在游戏内用 /menu 重新打开面板。",
-        staleNote:"本页不会自动刷新——点 ↻ 获取最新数据。",
+        staleNote:"页面每 {0} 秒自动更新；点 ↻ 可立即刷新。",
         refresh:"刷新", reqFailed:"请求失败", details:"详情",
         confirm:"确定", cancel:"取消" }
 };
@@ -196,10 +215,40 @@ function buildLangSwitcher() {
   sel.style.display = languages.length > 1 ? "" : "none";
 }
 
-async function load() {
+function scheduleRefresh() {
+  clearInterval(refreshTimer);
+  if (refreshIntervalSeconds <= 0) return;
+  refreshTimer = setInterval(() => {
+    const tag = deepActiveElement()?.tagName;
+    const busy = document.hidden || $(".pmodal-overlay") || pluginUiModalOpen()
+      || ["INPUT","SELECT","TEXTAREA"].includes(tag);
+    if (!busy) load(true);
+  }, refreshIntervalSeconds * 1000);
+}
+
+function deepActiveElement() {
+  let active = document.activeElement;
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  return active;
+}
+
+function pluginUiModalOpen() {
+  for (const host of document.querySelectorAll(".plugin-ui-host")) {
+    if (host.shadowRoot?.querySelector('[aria-modal="true"]')) return true;
+  }
+  return false;
+}
+
+async function load(silent=false) {
+  if (loading) return;
+  loading = true;
   let data;
   try { data = await api("/api/p/view"); }
-  catch (e) { $("#main").replaceChildren(el("div", { class: "empty", text: e.message })); return; }
+  catch (e) {
+    if (!silent) $("#main").replaceChildren(el("div", { class: "empty", text: e.message }));
+    loading = false;
+    return;
+  }
 
   languages = data.languages || [];
   // The server returns the player's saved language (persisted per Steam ID); adopt it so the panel
@@ -210,15 +259,19 @@ async function load() {
   buildLangSwitcher();
 
   menus = data.menus || [];
+  refreshIntervalSeconds = Math.max(0, Number(data.refreshIntervalSeconds ?? 5) || 0);
+  scheduleRefresh();
   $("#who").textContent = data.player ? data.player.name : "";
   if (!menus.length) {
     $("#tabs").replaceChildren();
     $("#main").replaceChildren(el("div", { class: "empty", text: T("noFeatures") }));
+    loading = false;
     return;
   }
   if (!menus.some(m => m.id === activeId)) activeId = menus[0].id;
   renderTabs();
   renderActive();
+  loading = false;
 }
 
 function renderTabs() {
@@ -239,7 +292,12 @@ function renderActive() {
 function renderView(menu, view) {
   const main = $("#main");
   main.replaceChildren();
-  main.append(el("div", { class: "note" }, el("span", { text: "ℹ " + T("staleNote") })));
+  main.append(el("div", { class: "note" }, el("span", { text: "ℹ " + T("staleNote").replace("{0}", refreshIntervalSeconds) })));
+
+  if (menu.ui) {
+    mountCustomPlayerUi(menu, view, main);
+    if (menu.ui.replaceDefault) return;
+  }
 
   if (view.bodyMarkdown) main.append(el("div", { class: "md", html: mdToHtml(view.bodyMarkdown) }));
   if (view.header) main.append(el("div", { class: "head", text: view.header }));
@@ -255,9 +313,48 @@ function renderView(menu, view) {
   const groups = [];
   const index = new Map();
   for (const card of cards) {
-    const key = card.group || "";
-    if (!index.has(key)) { index.set(key, groups.length); groups.push({ label: card.group || null, cards: [] }); }
+    const key = card.groupKey || card.group || "";
+    if (!index.has(key)) { index.set(key, groups.length); groups.push({ key, label: card.group || null, cards: [] }); }
     groups[index.get(key)].cards.push(card);
+  }
+
+  if (view.layout === "tabbed-grid") {
+    let active = activeGroups.get(menu.id);
+    if (!groups.some(g => g.key === active)) active = groups.length ? groups[0].key : "";
+    activeGroups.set(menu.id, active);
+    const nav = el("div", { class:"subtabs" });
+    for (const group of groups) {
+      nav.append(el("button", {
+        class:"tab " + (group.key === active ? "active" : ""),
+        text:group.label || group.key,
+        onclick:() => { activeGroups.set(menu.id, group.key); renderView(menu, view); }
+      }));
+    }
+    nav.append(el("span", { class:"spacer" }));
+    const selected = groups.find(g => g.key === active);
+    const headerCards = selected ? selected.cards.filter(c => c.placement === "group-header") : [];
+    const actions = el("div", { class:"groupactions" });
+    for (const card of headerCards) {
+      for (const button of (card.buttons || [])) {
+        const btn = el("button", {
+          class:"act " + (button.style || ""),
+          text:button.label,
+          onclick:() => invoke(menu, card, button, btn)
+        });
+        actions.append(btn);
+      }
+    }
+    nav.append(actions);
+    main.append(nav);
+
+    const products = selected
+      ? selected.cards.filter(c => c.placement !== "group-header")
+      : [];
+    const wrap = el("div", { class:"plist three" });
+    for (const card of products) wrap.append(buildRow(menu, card));
+    if (!products.length) wrap.append(el("div", { class:"empty", text:T("empty") }));
+    main.append(wrap);
+    return;
   }
 
   const list = view.layout === "list";
@@ -269,6 +366,25 @@ function renderView(menu, view) {
     for (const c of g.cards) wrap.append(list ? buildRow(menu, c) : buildCard(menu, c));
     sec.append(wrap);
     main.append(sec);
+  }
+}
+
+function mountCustomPlayerUi(menu, view, main) {
+  const host = el("section", { class:"plugin-ui-host" });
+  const root = host.attachShadow({ mode:"open" });
+  root.innerHTML = `<style>
+    :host{display:block;color:var(--fg);font:14px/1.5 system-ui,Segoe UI,sans-serif}
+    *{box-sizing:border-box}button,input,select,textarea{font:inherit}
+    ${menu.ui.css || ""}
+  </style>${menu.ui.html || ""}`;
+  main.append(host);
+  const panel = { root, menu, view, lang, el,
+    invoke:(card, button, node) => invoke(menu, card, button, node),
+    flash, t:T };
+  try { Function("panel", '"use strict";\n' + (menu.ui.javaScript || ""))(panel); }
+  catch (error) {
+    root.replaceChildren(el("div", { class:"empty", text:"UI error: " + error.message }));
+    console.error("WebPanel plugin UI failed", menu.id, error);
   }
 }
 
@@ -284,6 +400,9 @@ function buildRow(menu, card) {
   if (card.label) top.append(el("span", { class: "nm", text: card.label }));
   if (hasTags) { const mid = el("div", { class: "mid" }); for (const t of card.tags) mid.append(el("span", { class: "pill", text: t })); top.append(mid); }
   row.append(top);
+  if (card.lines && card.lines.length) {
+    row.append(el("div", { class:"rowlines" }, ...card.lines.map(line => el("span", { text:line }))));
+  }
   const bb = el("div", { class: "rowbtns" });
   if (card.buttons) for (const b of card.buttons) {
     const btn = el("button", { class: "act sm " + (b.style || ""), text: b.label, onclick: () => invoke(menu, card, b, btn) });
@@ -324,7 +443,7 @@ function buildCard(menu, card) {
 
 // An in-page numeric prompt. Steam's in-game browser silently ignores window.prompt(), so we
 // render our own overlay with an input. Resolves to the trimmed string, or null if cancelled.
-function askValue(label, dflt) {
+function askValue(label, dflt, choices, card) {
   return new Promise(resolve => {
     const overlay = el("div", { class:"pmodal-overlay" });
     const input = el("input", { type:"number", inputmode:"numeric", min:"1", step:"1", value: dflt || "" });
@@ -332,13 +451,50 @@ function askValue(label, dflt) {
     const onKey = (e) => { if (e.key === "Enter") close(input.value.trim()); else if (e.key === "Escape") close(null); };
     const ok = el("button", { class:"act", text:T("confirm"), onclick: () => close(input.value.trim()) });
     const cancel = el("button", { class:"act ghost", text:T("cancel"), onclick: () => close(null) });
-    overlay.append(el("div", { class:"pmodal" },
-      el("div", { class:"ptitle", text: label }), input,
-      el("div", { class:"pmbtns" }, cancel, ok)));
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+    const modal = el("div", { class:"pmodal", role:"dialog", "aria-modal":"true" }, el("div", { class:"ptitle", text:label }));
+    const context = [card && card.label, ...((card && card.lines) || [])].filter(Boolean).join("\n");
+    if (context) modal.append(el("div", { class:"pcontext", text:context }));
+    if (choices && choices.length) {
+      const quick = el("div", { class:"qchoices" });
+      for (const choice of choices) {
+        quick.append(el("button", { class:"act", text:choice.label, onclick:() => close(choice.value) }));
+      }
+      modal.append(quick);
+    }
+    modal.append(input, el("div", { class:"pmbtns" }, cancel, ok));
+    overlay.append(modal);
+    let pressedOutside = false;
+    overlay.addEventListener("pointerdown", (e) => { pressedOutside = e.target === overlay; });
+    overlay.addEventListener("pointerup", (e) => {
+      const shouldClose = pressedOutside && e.target === overlay;
+      pressedOutside = false;
+      if (shouldClose) close(null);
+    });
+    overlay.addEventListener("pointercancel", () => { pressedOutside = false; });
     document.addEventListener("keydown", onKey);
     document.body.append(overlay);
     input.focus(); input.select();
+  });
+}
+
+function askConfirmation(message) {
+  return new Promise(resolve => {
+    const overlay = el("div", { class:"pmodal-overlay" });
+    const done = value => { overlay.remove(); resolve(value); };
+    const ok = el("button", { class:"act danger", text:T("confirm"), onclick:() => done(true) });
+    const cancel = el("button", { class:"act ghost", text:T("cancel"), onclick:() => done(false) });
+    overlay.append(el("div", { class:"pmodal", role:"dialog", "aria-modal":"true" },
+      el("div", { class:"ptitle", text:message }),
+      el("div", { class:"pmbtns" }, cancel, ok)));
+    let pressedOutside = false;
+    overlay.addEventListener("pointerdown", (e) => { pressedOutside = e.target === overlay; });
+    overlay.addEventListener("pointerup", (e) => {
+      const shouldClose = pressedOutside && e.target === overlay;
+      pressedOutside = false;
+      if (shouldClose) done(false);
+    });
+    overlay.addEventListener("pointercancel", () => { pressedOutside = false; });
+    document.body.append(overlay);
   });
 }
 
@@ -348,10 +504,11 @@ async function invoke(menu, card, button, btnNode) {
     // An explicit empty promptDefault ("") opens the box empty so the player must type a value
     // (e.g. a specific quantity); only an absent default falls back to "1".
     const dflt = (button.promptDefault === null || button.promptDefault === undefined) ? "1" : button.promptDefault;
-    const entered = await askValue(button.promptLabel, dflt);
+    const entered = await askValue(button.promptLabel, dflt, button.promptChoices || [], card);
     if (entered === null) return;
     value = entered.trim();
   }
+  if (button.confirmation && !await askConfirmation(button.confirmation)) return;
   btnNode.disabled = true;
   const body = new URLSearchParams();
   body.set("action", button.actionId);

@@ -30,13 +30,15 @@
 游戏内输入 `/menu`（或 `/menu essentials`）即可在浏览器里设置家/回家/返回死亡点/传送到有权限的传送点、
 向玩家发起传送请求并接受/拒绝来请、组队邀请/接受/退出/队长踢人、领取礼包、投票睡觉(沿用同样的冷却/收费/读条)。
 
+Essentials 已使用 WebPanel 的插件自建 UI：玩家页通过顶部标签在传送、请求、队伍、在线玩家、礼包和世界时间之间切换，当前标签内部使用紧凑响应式网格；管理员页同样以标签切换各设置与目录，不会再让一个简单传送点占满整行。
+
 ## 安装
 
 ```
 openmod install well404.Essentials
 ```
 
-重启服务器或执行 `openmod reload` 后生效。Essentials **不**强制依赖经济或面板插件——
+安装或升级 DLL 后必须完整重启服务器；不要用 `openmod reload` 替换二进制。Essentials **不**强制依赖经济或面板插件——
 没有它们也能正常工作（传送免费、无 Web 界面）。
 
 ## 命令
@@ -125,7 +127,7 @@ gifts:
 | 插件 | 说明 |
 | --- | --- |
 | [well404.Economy](https://www.nuget.org/packages/well404.Economy/) | 货币经济核心,全局 `IEconomyProvider` 供币 |
-| [well404.Shop](https://www.nuget.org/packages/well404.Shop/) | 物品商店,买卖物品 / 组合包,依赖 Economy |
+| [well404.Shop](https://www.nuget.org/packages/well404.Shop/) | 分组物品商店,买卖物品,依赖 Economy |
 | [well404.WebPanel](https://www.nuget.org/packages/well404.WebPanel/) | 通用 Web 管理面板,供各插件挂载可视化管理模块 |
 | [well404.Essentials](https://www.nuget.org/packages/well404.Essentials/) | 面向玩家的实用指令：home/tp/warp/gift/sleep/back，经济收费可选 |
 

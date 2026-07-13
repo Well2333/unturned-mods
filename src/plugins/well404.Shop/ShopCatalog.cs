@@ -18,34 +18,39 @@ namespace well404.Shop
             m_Configuration = configuration;
         }
 
-        private ShopSettings Settings => m_Configuration.Get<ShopSettings>() ?? new ShopSettings();
+        private ShopSettings Settings
+        {
+            get
+            {
+                var settings = m_Configuration.Get<ShopSettings>() ?? new ShopSettings();
+                ShopConfiguration.Normalize(settings);
+                return settings;
+            }
+        }
 
         public DiscountSettings Discounts => Settings.Discounts;
 
-        /// <summary>All purchasable entries — plain items first, then bundles — as a uniform list.</summary>
+        public IReadOnlyList<ShopGroupConfig> Groups => Settings.Groups;
+
+        /// <summary>All catalog items in configured display order.</summary>
         public IReadOnlyList<ShopEntry> Entries
         {
             get
             {
                 var settings = Settings;
-                var list = new List<ShopEntry>(settings.Items.Count + settings.Bundles.Count);
+                var list = new List<ShopEntry>(settings.Items.Count);
                 foreach (var item in settings.Items)
                 {
                     list.Add(ShopEntry.FromItem(item));
                 }
 
-                foreach (var bundle in settings.Bundles)
-                {
-                    list.Add(ShopEntry.FromBundle(bundle));
-                }
-
+                list.Sort((left, right) => left.Order.CompareTo(right.Order));
                 return list;
             }
         }
 
         /// <summary>
-        /// Finds an entry by reference id: a numeric id matching a plain item's game item id wins,
-        /// otherwise a bundle whose id matches (case-insensitive). Returns null if neither matches.
+        /// Finds an entry by its numeric game item id.
         /// </summary>
         public ShopEntry? Find(string id)
         {
@@ -60,8 +65,7 @@ namespace well404.Shop
                 }
             }
 
-            var bundle = settings.Bundles.Find(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
-            return bundle != null ? ShopEntry.FromBundle(bundle) : null;
+            return null;
         }
     }
 }

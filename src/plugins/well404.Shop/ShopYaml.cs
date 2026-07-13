@@ -37,6 +37,22 @@ namespace well404.Shop
             }
 
             sb.Append('\n');
+            if (settings.Groups.Count == 0)
+            {
+                sb.Append("groups: []\n");
+            }
+            else
+            {
+                sb.Append("groups:\n");
+                foreach (var group in settings.Groups)
+                {
+                    sb.Append("  - id: ").Append(Quote(group.Id)).Append('\n');
+                    sb.Append("    name: ").Append(Quote(group.Name)).Append('\n');
+                }
+            }
+
+            sb.Append('\n');
+
 
             // Plain items: referenced by their own game item id; name is resolved from the directory.
             if (settings.Items.Count == 0)
@@ -51,33 +67,9 @@ namespace well404.Shop
                     sb.Append("  - itemId: ").Append(item.ItemId.ToString(CultureInfo.InvariantCulture)).Append('\n');
                     sb.Append("    buyPrice: ").Append(Num(item.BuyPrice)).Append('\n');
                     sb.Append("    sellPrice: ").Append(Num(item.SellPrice)).Append('\n');
-                }
-            }
-
-            sb.Append('\n');
-
-            // Bundles: a named pack of items, referenced by their own id.
-            if (settings.Bundles.Count == 0)
-            {
-                sb.Append("bundles: []\n");
-                return sb.ToString();
-            }
-
-            sb.Append("bundles:\n");
-            foreach (var bundle in settings.Bundles)
-            {
-                sb.Append("  - id: ").Append(Quote(bundle.Id)).Append('\n');
-                sb.Append("    name: ").Append(Quote(bundle.Name)).Append('\n');
-                sb.Append("    buyPrice: ").Append(Num(bundle.BuyPrice)).Append('\n');
-                sb.Append("    sellPrice: ").Append(Num(bundle.SellPrice)).Append('\n');
-                if (bundle.Contents.Count > 0)
-                {
-                    sb.Append("    contents:\n");
-                    foreach (var content in bundle.Contents)
-                    {
-                        sb.Append("      - itemId: ").Append(content.ItemId.ToString(CultureInfo.InvariantCulture)).Append('\n');
-                        sb.Append("        amount: ").Append(content.Amount.ToString(CultureInfo.InvariantCulture)).Append('\n');
-                    }
+                    sb.Append("    group: ").Append(Quote(item.Group)).Append('\n');
+                    sb.Append("    note: ").Append(Quote(item.Note)).Append('\n');
+                    sb.Append("    order: ").Append(item.Order.ToString(CultureInfo.InvariantCulture)).Append('\n');
                 }
             }
 
@@ -88,10 +80,15 @@ namespace well404.Shop
 
         private static string Num(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 
-        /// <summary>Double-quotes a scalar and escapes backslashes and quotes for YAML.</summary>
+        /// <summary>Double-quotes a scalar and escapes control characters for YAML.</summary>
         private static string Quote(string value)
         {
-            var escaped = (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+            var escaped = (value ?? string.Empty)
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\r", "\\r")
+                .Replace("\n", "\\n")
+                .Replace("\t", "\\t");
             return "\"" + escaped + "\"";
         }
     }

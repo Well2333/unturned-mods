@@ -5,6 +5,8 @@
 自己的管理模块按统一 schema 注册进来,面板即可通用地渲染出设置组、集合 CRUD、搜索框等,
 而无需了解各插件的实现细节。
 
+Collection schema 还可声明分组标签和 reorder handler:管理页会以响应式三列卡片预览,在组内拖放后通过 `/reorder` 提交完整键顺序。表格行操作弹窗使用 `URLSearchParams.entries()` 复制输入字段,确保买价、卖价等弹窗值真正随请求发送。玩家按钮 schema 支持 1/5/10/全部等快捷值、二次确认和紧凑的分组 header 动作。
+
 除面向管理员的管理面板外,本插件还提供一个**面向玩家**的网页界面(`/p`):玩家在游戏内
 输入 `/menu` 即可收到一条专属链接(经 Steam 叠加层浏览器打开),在网页里以**自己的身份**
 浏览商店并购买/出售、查看钱包并转账、使用各种实用工具(传送/组队/礼包/睡觉)等。各功能
@@ -15,19 +17,29 @@
 按权限过滤)。**「首页」始终是第一个标签,并作为开屏默认页**(`/menu shop` 等带参数才定位到对应标签)。
 
 **多语言**:管理面板与玩家面板均内置**中/英双语**,右上角下拉切换,默认英文;玩家页另有
-「手动刷新 ↻ + 不会自动刷新」提示(因页面数据不自动刷新)。**两个面板切换的语言都保存在服务端的配置文件里,
+「定时刷新状态 + 手动刷新 ↻」提示。**两个面板切换的语言都保存在服务端的配置文件里,
 不在浏览器**——玩家语言按其 Steam ID 存于 `player-languages.yaml`(`players:` 映射),管理面语言存于
 `admin-language.yaml`(单值);因此即使管理面 URL(快速隧道域名)每次重启变化、浏览器 localStorage 丢失,
 下次打开仍沿用上次所选语言(旧的 `*.txt` 会在首次加载时自动迁移为 `.yaml`)。给开发者:网页文案用
 `IWebTranslationRegistry`(英文源串为键 + 中文映射表),详见
 [development-standards.md §9](../memory/guidelines/development-standards.md)。
 
+## UI 扩展与自动刷新
+
+简单模块继续使用原有 Settings、Collection、Table 等描述符注册。复杂模块可以把自身
+HTML/CSS/JavaScript 作为程序集资源注册，WebPanel 会在 Shadow DOM 中挂载；宿主不含任何具体
+插件判断。Essentials、Shop、Vault 已迁移到这种自建 UI，其余模块继续使用描述符制。
+
+两个面板默认每 5 秒刷新安全数据。页面隐藏、存在弹窗或输入框正在编辑时会暂停，避免覆盖未保存
+内容；手动刷新按钮始终保留。可在 web 配置段设置 refreshIntervalSeconds，设为 0 关闭自动刷新。
+
 ## 安装
 
 ```bash
 openmod install well404.WebPanel
-openmod reload
 ```
+
+安装或升级 DLL 后必须完整重启服务器；`openmod reload` 只适合未替换二进制时的配置或生命周期重载。
 
 启动后日志会打印管理面访问地址 `http://<bindAddress>:<port>/<token>/`(见下「鉴权」)。
 装了哪个家族插件,面板里就出现对应模块。
@@ -47,6 +59,7 @@ web:
     command: "cloudflared"
   publicBaseUrl: ""          # 玩家 /menu 链接用的公网地址;空=由 bindAddress+port 推导(开了 tunnel 时自动用隧道地址)
   playerSessionMinutes: 5    # 玩家链接有效期下限(分钟);实际不少于 15
+  refreshIntervalSeconds: 5  # 安全自动刷新间隔(秒);0=关闭
   devPlayer:                 # 开发预览:不进游戏也能以指定账号查看玩家面(默认关,见下)
     enabled: false
     steamId: ""              # 要模拟的玩家 Steam ID

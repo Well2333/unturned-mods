@@ -125,12 +125,14 @@ namespace well404.WebPanel
 
             var html = LoadResource("index.html");
             var playerHtml = LoadResource("player.html");
+            var favicon = LoadBinaryResource("unturned-favicon.jpg");
             var playerLanguages = new PlayerLanguageStore(WorkingDirectory);
             var adminLanguage = new AdminLanguageStore(WorkingDirectory);
 
             var server = new WebPanelHttpServer(
                 registry, playerRegistry, translations, sessions, playerLanguages, adminLanguage,
-                m_Logger, prefix, token, html, playerHtml, web.DevPlayer);
+                m_Logger, prefix, token, html, playerHtml, favicon, web.DevPlayer,
+                web.RefreshIntervalSeconds);
             var displayHost = host == "+" ? "<server-ip>" : host;
             var localBase = $"http://{displayHost}:{web.Port}";
 
@@ -771,6 +773,27 @@ namespace well404.WebPanel
 
             using var reader = new StreamReader(stream, Encoding.UTF8);
             return reader.ReadToEnd();
+        }
+
+        private static byte[] LoadBinaryResource(string suffix)
+        {
+            var assembly = typeof(WebPanelPlugin).Assembly;
+            var resourceName = assembly.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+            if (resourceName == null)
+            {
+                throw new InvalidOperationException("Embedded WebPanel resource is missing: " + suffix);
+            }
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+            {
+                throw new InvalidOperationException("Embedded WebPanel resource cannot be opened: " + suffix);
+            }
+
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return buffer.ToArray();
         }
     }
 }

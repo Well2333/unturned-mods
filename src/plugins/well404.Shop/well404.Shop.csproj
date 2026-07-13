@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>1.0.5</Version>
+    <Version>1.1.0</Version>
     <Description>Shop</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -34,6 +34,12 @@
   <ItemGroup>
     <EmbeddedResource Include="config.yaml" />
     <EmbeddedResource Include="translations.yaml" />
+    <EmbeddedResource Include="player-ui.html" />
+    <EmbeddedResource Include="player-ui.css" />
+    <EmbeddedResource Include="player-ui.js" />
+    <EmbeddedResource Include="admin-ui.html" />
+    <EmbeddedResource Include="admin-ui.css" />
+    <EmbeddedResource Include="admin-ui.js" />
   </ItemGroup>
 
   <!-- Hard dependency on the Economy plugin. The shop is non-functional without an

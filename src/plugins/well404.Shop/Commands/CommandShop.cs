@@ -46,7 +46,6 @@ namespace well404.Shop.Commands
             foreach (var entry in entries)
             {
                 var line = new StringBuilder();
-                // Items list by their game item id; bundles by their own id.
                 line.Append(entry.Id).Append(" - ").Append(ShopNames.DisplayName(entry, names));
                 if (entry.BuyPrice > 0m)
                 {

@@ -11,7 +11,7 @@ namespace well404.Shop.Commands
 {
     [Command("sell")]
     [CommandSyntax("<id> [amount]")]
-    [CommandDescription("Sells an item (by its item id) or a bundle (by its id) to the shop.")]
+    [CommandDescription("Sells an item by its game item id to the shop.")]
     [CommandActor(typeof(UnturnedUser))]
     public class CommandSell : Command
     {
@@ -63,6 +63,14 @@ namespace well404.Shop.Commands
             if (entry.SellPrice <= 0m)
             {
                 throw new UserFriendlyException(m_StringLocalizer["sell:not_sellable", new { name }]);
+            }
+
+            var inventory = await m_ShopService.GetInventoryCountsAsync(user);
+            var available = ShopService.AvailableUnits(entry, inventory);
+            amount = System.Math.Min(amount, available);
+            if (amount < 1)
+            {
+                throw new UserFriendlyException(m_StringLocalizer["sell:not_enough_items", new { name }]);
             }
 
             var took = await m_ShopService.TryTakeAsync(user, entry, amount);

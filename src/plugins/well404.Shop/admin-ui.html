@@ -1,0 +1,53 @@
+<div class="shop-admin">
+  <header class="topbar">
+    <div>
+      <h2 id="title">Shop management</h2>
+      <p id="subtitle">Manage the grouped catalog players see.</p>
+    </div>
+  </header>
+
+  <nav class="admin-tabs" aria-label="Shop sections">
+    <button type="button" data-tab="catalog" class="active">Catalog</button>
+    <button type="button" data-tab="discount">Discounts</button>
+  </nav>
+
+  <section class="tab-panel active" data-panel="catalog">
+    <section class="card catalog-card">
+      <div class="section-head">
+        <div>
+          <h3 id="catalog-title">Player shop catalog</h3>
+          <p id="catalog-help" class="desc">Drag product cards inside the current group to reorder them.</p>
+        </div>
+        <div class="section-actions">
+          <button id="edit-group" type="button" class="ghost">Edit group</button>
+          <button id="add-group" type="button">＋ Add group</button>
+        </div>
+      </div>
+      <div id="catalog-message" class="msg" role="status"></div>
+      <nav id="group-tabs" class="group-tabs" aria-label="Shop groups"></nav>
+      <div id="catalog-grid" class="product-grid"></div>
+    </section>
+
+    <section class="card add-card">
+      <div class="section-head">
+        <div>
+          <h3 id="add-title">Add item</h3>
+          <p id="add-help" class="desc">Search game items by name or numeric ID.</p>
+        </div>
+      </div>
+      <label class="search-field">
+        <span id="search-label">Item name or ID</span>
+        <input id="item-search" type="search" autocomplete="off" placeholder="Type a keyword or numeric ID…">
+      </label>
+      <div id="search-message" class="msg" role="status"></div>
+      <div id="search-results" class="search-results"></div>
+    </section>
+  </section>
+
+  <section class="tab-panel" data-panel="discount">
+    <div id="settings"></div>
+    <div class="save"><button id="save" type="button">Save discount settings</button></div>
+  </section>
+
+  <div id="modal-root"></div>
+</div>

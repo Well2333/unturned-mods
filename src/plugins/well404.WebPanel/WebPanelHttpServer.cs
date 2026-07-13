@@ -48,7 +48,9 @@ namespace well404.WebPanel
         private readonly string m_Token;
         private readonly string m_Html;
         private readonly string m_PlayerHtml;
+        private readonly byte[] m_Favicon;
         private readonly DevPlayerSettings m_DevPlayer;
+        private readonly int m_RefreshIntervalSeconds;
         private readonly HttpListener m_Listener;
         private CancellationTokenSource? m_Cts;
 
@@ -64,7 +66,9 @@ namespace well404.WebPanel
             string token,
             string html,
             string playerHtml,
-            DevPlayerSettings devPlayer)
+            byte[] favicon,
+            DevPlayerSettings devPlayer,
+            int refreshIntervalSeconds)
         {
             m_Registry = registry;
             m_PlayerRegistry = playerRegistry;
@@ -76,7 +80,9 @@ namespace well404.WebPanel
             m_Token = token;
             m_Html = html;
             m_PlayerHtml = playerHtml;
+            m_Favicon = favicon ?? throw new ArgumentNullException(nameof(favicon));
             m_DevPlayer = devPlayer ?? new DevPlayerSettings();
+            m_RefreshIntervalSeconds = Math.Max(0, refreshIntervalSeconds);
             m_Listener = new HttpListener();
             m_Listener.Prefixes.Add(prefix);
         }
@@ -130,6 +136,12 @@ namespace well404.WebPanel
             {
                 var request = context.Request;
                 var path = request.Url?.AbsolutePath ?? "/";
+
+                if (request.HttpMethod == "GET" && path == "/favicon.ico")
+                {
+                    WriteBytes(context.Response, 200, "image/jpeg", m_Favicon);
+                    return;
+                }
 
                 // CORS preflight (only fires for non-simple cross-origin requests via a proxy).
                 if (request.HttpMethod == "OPTIONS")
@@ -263,6 +275,12 @@ namespace well404.WebPanel
                     if (request.HttpMethod == "POST" && segments[4] == "delete")
                     {
                         await DeleteAsync(context, segments[2], segments[3]).ConfigureAwait(false);
+                        return;
+                    }
+
+                    if (request.HttpMethod == "POST" && segments[4] == "reorder")
+                    {
+                        await ReorderAsync(context, segments[2], segments[3]).ConfigureAwait(false);
                         return;
                     }
                 }
@@ -410,6 +428,31 @@ namespace well404.WebPanel
             WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
         }
 
+        private async Task ReorderAsync(HttpListenerContext context, string moduleId, string actionId)
+        {
+            var action = FindAction(moduleId, actionId);
+            if (action?.ReorderHandler == null)
+            {
+                WriteJson(context.Response, 404,
+                    "{\"success\":false,\"message\":\"Reorder is not supported here.\"}");
+                return;
+            }
+
+            var values = ParseForm(ReadBody(context.Request));
+            WebActionResult result;
+            try
+            {
+                result = await action.ReorderHandler(
+                    new WebActionRequest(values, LangOf(context.Request))).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: reorder {Module}/{Action} threw.", moduleId, actionId);
+                result = WebActionResult.Fail(ex.Message);
+            }
+            WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
+        }
+
         private WebPanelAction? FindAction(string moduleId, string actionId)
         {
             var module = m_Registry.GetModules()
@@ -433,6 +476,9 @@ namespace well404.WebPanel
                 sb.Append('{')
                     .Append("\"key\":").Append(Json.Encode(record.Key)).Append(',')
                     .Append("\"label\":").Append(Json.Encode(record.Label)).Append(',')
+                    .Append("\"group\":").Append(Json.Encode(record.Group)).Append(',')
+                    .Append("\"groupKey\":").Append(Json.Encode(record.GroupKey)).Append(',')
+                    .Append("\"placement\":").Append(Json.Encode(record.Placement)).Append(',')
                     .Append("\"tags\":");
                 AppendStringArray(sb, record.Tags);
                 sb.Append(',')
@@ -523,6 +569,7 @@ namespace well404.WebPanel
             sb.Append("{\"ok\":true,\"player\":")
                 .Append("{\"name\":").Append(Json.Encode(ctx.DisplayName)).Append('}')
                 .Append(",\"lang\":").Append(Json.Encode(ctx.Language))
+                .Append(",\"refreshIntervalSeconds\":").Append(m_RefreshIntervalSeconds)
                 .Append(',');
             AppendLanguagesJson(sb);
             sb.Append(",\"menus\":[");
@@ -540,6 +587,9 @@ namespace well404.WebPanel
                     .Append("\"id\":").Append(Json.Encode(menu.Id)).Append(',')
                     .Append("\"title\":").Append(Json.Encode(Tr(menu.Title, ctx.Language))).Append(',')
                     .Append("\"icon\":").Append(Json.Encode(menu.Icon)).Append(',')
+                    .Append("\"ui\":");
+                AppendUiJson(sb, (menu as IPlayerMenuUiProvider)?.Ui);
+                sb.Append(',')
                     .Append("\"view\":");
                 AppendPlayerView(sb, view);
                 sb.Append('}');
@@ -637,7 +687,9 @@ namespace well404.WebPanel
                     .Append("\"key\":").Append(Json.Encode(card.Key)).Append(',')
                     .Append("\"label\":").Append(Json.Encode(card.Label)).Append(',')
                     .Append("\"group\":").Append(Json.Encode(card.Group)).Append(',')
+                    .Append("\"groupKey\":").Append(Json.Encode(card.GroupKey)).Append(',')
                     .Append("\"badge\":").Append(Json.Encode(card.Badge)).Append(',')
+                    .Append("\"placement\":").Append(Json.Encode(card.Placement)).Append(',')
                     .Append("\"lines\":");
                 AppendStringArray(sb, card.Lines);
                 sb.Append(",\"tags\":");
@@ -657,8 +709,22 @@ namespace well404.WebPanel
                         .Append("\"label\":").Append(Json.Encode(button.Label)).Append(',')
                         .Append("\"style\":").Append(Json.Encode(button.Style)).Append(',')
                         .Append("\"promptLabel\":").Append(Json.Encode(button.PromptLabel)).Append(',')
-                        .Append("\"promptDefault\":").Append(Json.Encode(button.PromptDefault))
-                        .Append('}');
+                        .Append("\"promptDefault\":").Append(Json.Encode(button.PromptDefault)).Append(',')
+                        .Append("\"confirmation\":").Append(Json.Encode(button.Confirmation)).Append(',')
+                        .Append("\"promptChoices\":[");
+                    for (var choiceIndex = 0; choiceIndex < button.PromptChoices.Count; choiceIndex++)
+                    {
+                        if (choiceIndex > 0)
+                        {
+                            sb.Append(',');
+                        }
+                        var choice = button.PromptChoices[choiceIndex];
+                        sb.Append('{')
+                            .Append("\"label\":").Append(Json.Encode(choice.Label)).Append(',')
+                            .Append("\"value\":").Append(Json.Encode(choice.Value))
+                            .Append('}');
+                    }
+                    sb.Append("]}");
                 }
 
                 sb.Append("],\"children\":");
@@ -688,7 +754,9 @@ namespace well404.WebPanel
         private string BuildModulesJson(string lang)
         {
             var sb = new StringBuilder();
-            sb.Append("{\"lang\":").Append(Json.Encode(lang)).Append(',');
+            sb.Append("{\"lang\":").Append(Json.Encode(lang))
+                .Append(",\"refreshIntervalSeconds\":").Append(m_RefreshIntervalSeconds)
+                .Append(',');
             AppendLanguagesJson(sb);
             sb.Append(",\"modules\":[");
             var modules = m_Registry.GetModules();
@@ -704,6 +772,9 @@ namespace well404.WebPanel
                     .Append("\"id\":").Append(Json.Encode(module.Id)).Append(',')
                     .Append("\"title\":").Append(Json.Encode(Tr(module.Title, lang))).Append(',')
                     .Append("\"icon\":").Append(Json.Encode(module.Icon)).Append(',')
+                    .Append("\"ui\":");
+                AppendUiJson(sb, module.Ui);
+                sb.Append(',')
                     .Append("\"actions\":[");
 
                 for (var j = 0; j < module.Actions.Count; j++)
@@ -720,6 +791,7 @@ namespace well404.WebPanel
                         .Append("\"kind\":").Append(Json.Encode(action.Kind.ToString().ToLowerInvariant())).Append(',')
                         .Append("\"hasLoader\":").Append(Json.Bool(action.Loader != null)).Append(',')
                         .Append("\"hasDelete\":").Append(Json.Bool(action.DeleteHandler != null)).Append(',')
+                        .Append("\"hasReorder\":").Append(Json.Bool(action.ReorderHandler != null)).Append(',')
                         .Append("\"keyField\":").Append(Json.Encode(action.KeyField)).Append(',')
                         .Append("\"layout\":").Append(Json.Encode(action.Layout)).Append(',')
                         .Append("\"hidden\":").Append(Json.Bool(action.Hidden)).Append(',')
@@ -736,6 +808,22 @@ namespace well404.WebPanel
 
             sb.Append("]}");
             return sb.ToString();
+        }
+
+        private static void AppendUiJson(StringBuilder sb, WebUiExtension? ui)
+        {
+            if (ui == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('{')
+                .Append("\"html\":").Append(Json.Encode(ui.Html)).Append(',')
+                .Append("\"css\":").Append(Json.Encode(ui.Css)).Append(',')
+                .Append("\"javaScript\":").Append(Json.Encode(ui.JavaScript)).Append(',')
+                .Append("\"replaceDefault\":").Append(Json.Bool(ui.ReplaceDefault))
+                .Append('}');
         }
 
         /// <summary>
@@ -905,6 +993,11 @@ namespace well404.WebPanel
         private static void WriteText(HttpListenerResponse response, int status, string contentType, string body)
         {
             var bytes = Encoding.UTF8.GetBytes(body);
+            WriteBytes(response, status, contentType, bytes);
+        }
+
+        private static void WriteBytes(HttpListenerResponse response, int status, string contentType, byte[] bytes)
+        {
             SetCorsHeaders(response);
             response.StatusCode = status;
             response.ContentType = contentType;

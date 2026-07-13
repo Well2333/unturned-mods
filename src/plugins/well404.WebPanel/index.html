@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/jpeg" href="/favicon.ico">
 <title>Web Panel</title>
 <style>
-  :root { --bg:#1e1f22; --panel:#2b2d31; --panel2:#313338; --line:#3f4147; --fg:#dbdee1; --muted:#949ba4; --accent:#5865f2; --ok:#3ba55d; --err:#ed4245; }
+  :root { --bg:#0f1115; --panel:#171a20; --panel2:#1d2129; --line:#2a303a; --fg:#f4f6f8; --muted:#929aa7; --accent:#6d72f6; --ok:#35b36f; --err:#ef5b61; --radius:12px; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--fg); }
   header { display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10; }
@@ -18,9 +19,9 @@
   nav button:hover { background:var(--panel2); }
   nav button.active { background:var(--accent); color:#fff; }
   nav .empty { color:var(--muted); padding:10px; font-size:13px; }
-  main { flex:1; padding:18px 22px; max-width:1000px; }
+  main { flex:1; padding:18px 22px; max-width:1260px; }
   h2 { margin:0 0 14px; font-size:18px; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:12px; }
   .card h3 { margin:0 0 4px; font-size:15px; }
   .card .desc { color:var(--muted); font-size:13px; margin:0 0 12px; }
   .row { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
@@ -42,6 +43,14 @@
   .count { color:var(--muted); font-size:12px; margin-top:8px; }
   /* Collection — grid of small blocks (catalog) */
   .tiles { display:flex; flex-wrap:wrap; gap:10px; }
+  .tiles.tabbed { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .tiles.tabbed .tile { min-width:0; max-width:none; }
+  .collection-tabs { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px; }
+  .collection-tabs button { background:transparent; border:1px solid var(--line); color:var(--muted); padding:6px 11px; border-radius:7px; cursor:pointer; }
+  .collection-tabs button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .tile.dragging { opacity:.45; }
+  @media (max-width:950px){ .tiles.tabbed { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:650px){ .tiles.tabbed { grid-template-columns:1fr; } }
   .tile { position:relative; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:10px 12px; cursor:pointer; min-width:150px; max-width:260px; }
   .tile:hover { border-color:var(--accent); }
   /* Collection — vertical list (per-entity data, e.g. balances) */
@@ -66,6 +75,7 @@
   .edittitle { font-size:13px; color:var(--muted); margin-bottom:10px; }
   button.act.danger { background:var(--err); }
   button.act.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
+  .plugin-ui-host { display:block; width:100%; }
 </style>
 </head>
 <body>
@@ -139,6 +149,34 @@ function invoke(module, action, params) {
 let modules = [];
 let activeId = null;
 let flash = null; // {ok, text} shown once at the next render, near the save button
+let refreshIntervalSeconds = 5;
+let refreshTimer = null;
+let refreshers = [];
+let loadingModules = false;
+
+function scheduleRefresh() {
+  clearInterval(refreshTimer);
+  if (refreshIntervalSeconds <= 0) return;
+  refreshTimer = setInterval(() => {
+    const tag = deepActiveElement()?.tagName;
+    const busy = document.hidden || $(".modal-overlay") || pluginUiModalOpen()
+      || ["INPUT","SELECT","TEXTAREA"].includes(tag);
+    if (!busy) for (const refresh of [...refreshers]) refresh();
+  }, refreshIntervalSeconds * 1000);
+}
+
+function deepActiveElement() {
+  let active = document.activeElement;
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  return active;
+}
+
+function pluginUiModalOpen() {
+  for (const host of document.querySelectorAll(".plugin-ui-host")) {
+    if (host.shadowRoot?.querySelector('[aria-modal="true"]')) return true;
+  }
+  return false;
+}
 
 function buildLangSwitcher() {
   const sel = $("#langSel");
@@ -156,6 +194,8 @@ function buildLangSwitcher() {
 }
 
 async function loadModules() {
+  if (loadingModules) return;
+  loadingModules = true;
   const nav = $("#nav");
   let data;
   try {
@@ -164,9 +204,12 @@ async function loadModules() {
   } catch (e) {
     nav.replaceChildren(el("div", { class:"empty", text: e.message }));
     $("#main").replaceChildren();
+    loadingModules = false;
     return;
   }
   languages = data.languages || [];
+  refreshIntervalSeconds = Math.max(0, Number(data.refreshIntervalSeconds ?? 5) || 0);
+  scheduleRefresh();
   // The server returns the saved admin language (persisted in its data dir); adopt it so the panel
   // always opens in the language last chosen, even on a brand-new admin URL where localStorage is empty.
   lang = data.lang || lang || data.defaultLanguage || "en";
@@ -176,6 +219,7 @@ async function loadModules() {
   if (!modules.length) {
     nav.replaceChildren(el("div", { class:"empty", text: T("noModules") }));
     $("#main").replaceChildren();
+    loadingModules = false;
     return;
   }
   if (!modules.some(m => m.id === activeId)) activeId = modules[0].id;
@@ -183,6 +227,7 @@ async function loadModules() {
     el("button", { class: m.id === activeId ? "active" : "", onclick: () => { activeId = m.id; flash = null; render(); } },
       (m.icon ? m.icon + " " : "") + m.title)));
   render();
+  loadingModules = false;
 }
 
 function render() {
@@ -190,8 +235,17 @@ function render() {
     b.classList.toggle("active", modules[i] && modules[i].id === activeId));
   const module = modules.find(m => m.id === activeId);
   const main = $("#main");
+  refreshers = [];
   if (!module) { main.replaceChildren(); return; }
-  main.replaceChildren(el("h2", { text: (module.icon ? module.icon + " " : "") + module.title }));
+  main.replaceChildren();
+  if (!module.ui || !module.ui.replaceDefault) {
+    main.append(el("h2", { text: (module.icon ? module.icon + " " : "") + module.title }));
+  }
+
+  if (module.ui) {
+    mountCustomAdminUi(module, main);
+    if (module.ui.replaceDefault) return;
+  }
 
   const settings = []; // {action, inputs} groups saved together by the page button
   for (const action of module.actions) {
@@ -210,6 +264,47 @@ function render() {
   }
 }
 
+function mountCustomAdminUi(module, main) {
+  const host = el("section", { class:"plugin-ui-host" });
+  const root = host.attachShadow({ mode:"open" });
+  root.innerHTML = `<style>
+    :host{display:block;color:var(--fg);font:14px/1.5 system-ui,Segoe UI,sans-serif}
+    *{box-sizing:border-box}button,input,select,textarea{font:inherit}
+    ${module.ui.css || ""}
+  </style>${module.ui.html || ""}`;
+  main.append(host);
+  const find = id => module.actions.find(action => action.id === id);
+  const modulePrefix = `api/modules/${enc(module.id)}/`;
+  const scopedApi = (path, options) => {
+    const candidate = String(path || "");
+    if (!candidate.startsWith(modulePrefix) || candidate.includes("..")
+        || candidate.includes("\\") || candidate.includes("://") || candidate.startsWith("//")) {
+      return Promise.reject(new Error("Plugin UI API access is limited to its own module."));
+    }
+    return api(candidate, options);
+  };
+  const panel = {
+    root, module, lang, el, t:T, find, api:scopedApi, encode:enc,
+    invoke:(id, values) => invoke(module, find(id), values instanceof URLSearchParams ? values : new URLSearchParams(values || {})),
+    values:id => api(`api/modules/${enc(module.id)}/${enc(id)}/values`, { headers:headers() }),
+    records:id => api(`api/modules/${enc(module.id)}/${enc(id)}/records`, { headers:headers() }),
+    mountAction:(id, target) => {
+      const action = find(id);
+      if (!action) return null;
+      const built = buildCard(module, action);
+      target.append(built.card);
+      return { action, inputs:built.inputs };
+    },
+    saveSettings:(settings, button) => saveAll(module, settings.filter(Boolean), button),
+    onRefresh:fn => { if (typeof fn === "function") refreshers.push(fn); }
+  };
+  try { Function("panel", '"use strict";\n' + (module.ui.javaScript || ""))(panel); }
+  catch (error) {
+    root.replaceChildren(el("div", { class:"muted", text:"UI error: " + error.message }));
+    console.error("WebPanel plugin UI failed", module.id, error);
+  }
+}
+
 function buildCard(module, action) {
   const card = el("div", { class:"card" }, el("h3", { text: action.label }));
   if (action.description) card.append(el("div", { class:"desc", text: action.description }));
@@ -219,7 +314,9 @@ function buildCard(module, action) {
 
   if (action.kind === "table") {
     card.append(out, msg);
-    invoke(module, action).then(r => showResult(r, msg, out, module)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+    const refresh = () => invoke(module, action).then(r => showResult(r, msg, out, module)).catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
+    refreshers.push(refresh);
+    refresh();
   } else if (action.kind === "settings") {
     const row = el("div", { class:"row" });
     for (const f of action.fields) row.append(fieldNode(f, inputs));
@@ -261,6 +358,7 @@ function buildCollection(module, action, card, msg) {
   const editor = el("div");
   const addBtn = el("button", { class:"act", text:T("add"), onclick: () => openEditor(null) });
   card.append(container, el("div", { class:"row", style:"margin-top:10px" }, addBtn), editor, msg);
+  let activeGroup = null;
 
   function reload() {
     editor.replaceChildren();
@@ -269,8 +367,10 @@ function buildCollection(module, action, card, msg) {
       .then(d => paint(d.records || []))
       .catch(e => { msg.className = "msg err"; msg.textContent = e.message; });
   }
+  refreshers.push(reload);
 
   function paint(records) {
+    if (action.layout === "tabs-grid") { paintTabbed(records); return; }
     if (!records.length) {
       container.replaceChildren(el("span", { class:"muted", text:T("none") }));
       return;
@@ -293,6 +393,78 @@ function buildCollection(module, action, card, msg) {
     }));
   }
 
+  function paintTabbed(records) {
+    if (!records.length) {
+      container.replaceChildren(el("span", { class:"muted", text:T("none") }));
+      return;
+    }
+    const groups = [];
+    for (const rec of records) {
+      const key = rec.groupKey || rec.group || "";
+      if (!groups.some(group => group.key === key)) groups.push({ key, label:rec.group || key });
+    }
+    if (!groups.some(group => group.key === activeGroup)) activeGroup = groups[0].key;
+    const tabs = el("div", { class:"collection-tabs" });
+    for (const group of groups) {
+      tabs.append(el("button", {
+        class:group.key === activeGroup ? "active" : "",
+        text:group.label || T("none"),
+        onclick:() => { activeGroup = group.key; paintTabbed(records); }
+      }));
+    }
+    const visible = records.filter(rec =>
+      (rec.groupKey || rec.group || "") === activeGroup && rec.placement !== "group-header");
+    const grid = el("div", { class:"tiles tabbed" });
+    for (const rec of visible) {
+      const title = el("div", { class:"slot-title", text:rec.label });
+      const pills = (rec.tags || []).map(value => el("span", { class:"pill", text:value }));
+      for (const name of (action.summaryFields || [])) {
+        const value = rec.values ? rec.values[name] : "";
+        if (value === undefined || value === "") continue;
+        const field = (action.fields || []).find(item => item.name === name);
+        pills.push(el("span", { class:"pill kv", text:(field ? field.label : name) + ": " + value }));
+      }
+      const remove = action.hasDelete
+        ? el("span", { class:"slot-x", text:"×", title:T("del"),
+            onclick:event => { event.stopPropagation(); del(rec); } })
+        : null;
+      const tile = el("div", { class:"tile", onclick:() => openEditor(rec) },
+        title, el("div", { class:"pills" }, ...pills), remove);
+      if (action.hasReorder) {
+        tile.draggable = true;
+        tile.addEventListener("dragstart", event => {
+          tile.classList.add("dragging");
+          event.dataTransfer.setData("text/plain", rec.key);
+        });
+        tile.addEventListener("dragend", () => tile.classList.remove("dragging"));
+        tile.addEventListener("dragover", event => event.preventDefault());
+        tile.addEventListener("drop", async event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const from = visible.findIndex(item => item.key === event.dataTransfer.getData("text/plain"));
+          const to = visible.findIndex(item => item.key === rec.key);
+          if (from < 0 || to < 0 || from === to) return;
+          const reordered = visible.slice();
+          reordered.splice(to, 0, reordered.splice(from, 1)[0]);
+          const body = new URLSearchParams();
+          body.set("group", activeGroup || "");
+          body.set("keys", reordered.map(item => item.key).join("\n"));
+          try {
+            const result = await api(`api/modules/${enc(module.id)}/${enc(action.id)}/reorder`, {
+              method:"POST", headers:headers({ "Content-Type":"application/x-www-form-urlencoded" }), body
+            });
+            if (!result.success) throw new Error(result.message || T("saveFail"));
+            reload();
+          } catch (error) {
+            msg.className = "msg err"; msg.textContent = error.message;
+          }
+        });
+      }
+      grid.append(tile);
+    }
+    container.replaceChildren(tabs, grid);
+  }
+
   function openEditor(rec) {
     const inputs = {};
     const row = el("div", { class:"row" });
@@ -307,7 +479,9 @@ function buildCollection(module, action, card, msg) {
       saveBtn.disabled = true;
       emsg.className = "msg";
       try {
-        const r = await invoke(module, action, collect(inputs));
+        const values = collect(inputs);
+        if (rec) values.set("recordKey", rec.key);
+        const r = await invoke(module, action, values);
         if (r.success) { reload(); }
         else { emsg.className = "msg err"; emsg.textContent = r.message || T("saveFail"); saveBtn.disabled = false; }
       } catch (e) { emsg.className = "msg err"; emsg.textContent = e.message; saveBtn.disabled = false; }
@@ -434,14 +608,14 @@ function showResult(result, msg, out, module) {
 // collects them first (so e.g. the admin must set the prices). On success re-renders the module so
 // any collection that gained a record reflects it; on failure surfaces the message.
 async function rowAction(module, actionId, key, btn, msg, fields, title) {
-  let extra = {};
+  let extra = new URLSearchParams();
   if (fields && fields.length) {
     extra = await showModal(title || "", fields);
     if (extra === null) return;   // cancelled
   }
   btn.disabled = true;
   const body = new URLSearchParams(); body.set("key", key);
-  for (const k in extra) body.set(k, extra[k]);
+  for (const [key, value] of extra.entries()) body.set(key, value);
   try {
     const r = await api(`api/modules/${enc(module.id)}/${enc(actionId)}`, {
       method:"POST", headers: headers({ "Content-Type":"application/x-www-form-urlencoded" }), body: body.toString() });
@@ -460,10 +634,17 @@ function showModal(title, fields) {
     const done = (val) => { overlay.remove(); resolve(val); };
     const ok = el("button", { class:"act", text:T("confirm"), onclick: () => done(collect(inputs)) });
     const cancel = el("button", { class:"act ghost", text:T("cancel"), onclick: () => done(null) });
-    overlay.append(el("div", { class:"modal" },
+    overlay.append(el("div", { class:"modal", role:"dialog", "aria-modal":"true" },
       el("div", { class:"edittitle", text: title }), row,
       el("div", { class:"row", style:"margin-top:12px" }, ok, cancel)));
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) done(null); });
+    let pressedOutside = false;
+    overlay.addEventListener("pointerdown", (e) => { pressedOutside = e.target === overlay; });
+    overlay.addEventListener("pointerup", (e) => {
+      const shouldClose = pressedOutside && e.target === overlay;
+      pressedOutside = false;
+      if (shouldClose) done(null);
+    });
+    overlay.addEventListener("pointercancel", () => { pressedOutside = false; });
     document.body.append(overlay);
     const first = fields[0] && inputs[fields[0].name]; if (first) first.focus();
   });

@@ -7,31 +7,12 @@ namespace well404.Shop.Tests
     public class ShopQuickSellTests
     {
         [Fact]
-        public void CreateCard_RendersOneClickSellButtonWithoutPrompt()
-        {
-            var card = ShopQuickSell.CreateCard(text => text);
-
-            Assert.Equal(ShopQuickSell.CardKey, card.Key);
-            var button = Assert.Single(card.Buttons);
-            Assert.Equal(ShopQuickSell.ActionId, button.ActionId);
-            Assert.Equal("Sell all", button.Label);
-            Assert.Equal("danger", button.Style);
-            Assert.Null(button.PromptLabel);
-            Assert.Null(button.PromptDefault);
-        }
-
-        [Fact]
-        public void EligibleEntries_IncludesOnlySellablePlainItems()
+        public void EligibleEntries_IncludesOnlySellableItems()
         {
             var entries = new[]
             {
                 ShopEntry.FromItem(new ShopItemConfig { ItemId = 15, SellPrice = 40m }),
-                ShopEntry.FromItem(new ShopItemConfig { ItemId = 81, SellPrice = 0m }),
-                ShopEntry.FromBundle(new ShopBundleConfig
-                {
-                    Id = "kit", Name = "Kit", SellPrice = 100m,
-                    Contents = new List<BundleItem> { new BundleItem { ItemId = 15, Amount = 1 } }
-                })
+                ShopEntry.FromItem(new ShopItemConfig { ItemId = 81, SellPrice = 0m })
             };
             var eligible = ShopQuickSell.EligibleEntries(entries);
             Assert.Single(eligible);

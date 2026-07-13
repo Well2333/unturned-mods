@@ -8,8 +8,8 @@ using OpenMod.Unturned.Users;
 namespace well404.Shop
 {
     /// <summary>
-    /// Handles the inventory side of buying and selling: granting items (single
-    /// items or bundle contents) and taking them back. All inventory access runs
+    /// Handles the inventory side of buying and selling: granting catalog items
+    /// and taking them back. All inventory access runs
     /// on the main thread. Registered as a plugin-scoped singleton in
     /// <see cref="ShopContainerConfigurator"/>.
     /// </summary>
@@ -22,25 +22,43 @@ namespace well404.Shop
             m_ItemSpawner = itemSpawner;
         }
 
-        /// <summary>The total item-count required (or granted) per purchase unit, aggregated by asset id.</summary>
+        /// <summary>The item-count required (or granted) per purchase unit.</summary>
         private static Dictionary<ushort, int> ItemsPerUnit(ShopEntry entry)
+            => new Dictionary<ushort, int> { [entry.ItemId] = 1 };
+
+        public static int AvailableUnits(
+            ShopEntry entry, IReadOnlyDictionary<ushort, int> inventoryCounts)
         {
-            var result = new Dictionary<ushort, int>();
-            if (entry.IsBundle)
+            var units = int.MaxValue;
+            foreach (var required in ItemsPerUnit(entry))
             {
-                foreach (var content in entry.Contents)
+                inventoryCounts.TryGetValue(required.Key, out var owned);
+                units = System.Math.Min(units, owned / required.Value);
+            }
+            return units == int.MaxValue ? 0 : units;
+        }
+
+        public async Task<IReadOnlyDictionary<ushort, int>> GetInventoryCountsAsync(UnturnedUser user)
+        {
+            await UniTask.SwitchToMainThread();
+            var counts = new Dictionary<ushort, int>();
+            foreach (var page in user.Player.Inventory.Pages)
+            {
+                foreach (var item in page.Items)
                 {
-                    result.TryGetValue(content.ItemId, out var existing);
-                    result[content.ItemId] = existing + content.Amount;
+                    if (!ushort.TryParse(item.Item.Asset.ItemAssetId, NumberStyles.None,
+                            CultureInfo.InvariantCulture, out var itemId))
+                    {
+                        continue;
+                    }
+                    counts.TryGetValue(itemId, out var previous);
+                    // A shop unit is one inventory entry, matching GiveItemAsync. ItemAmount is
+                    // asset-specific state (for example ammunition remaining in a magazine or
+                    // ammunition crate), not the number of separately sellable item instances.
+                    counts[itemId] = previous + 1;
                 }
             }
-            else
-            {
-                // A plain item grants exactly one of itself per purchase unit.
-                result[entry.ItemId] = 1;
-            }
-
-            return result;
+            return counts;
         }
 
         public async Task GiveAsync(UnturnedUser user, ShopEntry entry, int units)
@@ -77,8 +95,6 @@ namespace well404.Shop
             {
                 var assetId = req.Key.ToString();
                 var list = new List<IInventoryItem>();
-                double owned = 0;
-
                 foreach (var page in inventory.Pages)
                 {
                     foreach (var item in page.Items)
@@ -86,12 +102,11 @@ namespace well404.Shop
                         if (item.Item.Asset.ItemAssetId == assetId)
                         {
                             list.Add(item);
-                            owned += item.Item.State.ItemAmount;
                         }
                     }
                 }
 
-                if (owned < req.Value * units)
+                if (list.Count < req.Value * units)
                 {
                     return false;
                 }
@@ -109,17 +124,8 @@ namespace well404.Shop
                         break;
                     }
 
-                    var amount = (int)item.Item.State.ItemAmount;
-                    if (amount <= remaining)
-                    {
-                        await item.DestroyAsync();
-                        remaining -= amount;
-                    }
-                    else
-                    {
-                        await item.Item.SetItemAmountAsync(amount - remaining);
-                        remaining = 0;
-                    }
+                    await item.DestroyAsync();
+                    remaining--;
                 }
             }
 
@@ -142,11 +148,7 @@ namespace well404.Shop
                     {
                         continue;
                     }
-                    var amount = (int)item.Item.State.ItemAmount;
-                    if (amount > 0)
-                    {
-                        removals.Add(new PendingRemoval(itemId, amount, item));
-                    }
+                    removals.Add(new PendingRemoval(itemId, item));
                 }
             }
 
@@ -155,21 +157,19 @@ namespace well404.Shop
             {
                 await removal.Item.DestroyAsync();
                 removed.TryGetValue(removal.ItemId, out var previous);
-                removed[removal.ItemId] = previous + removal.Amount;
+                removed[removal.ItemId] = previous + 1;
             }
             return removed;
         }
 
         private sealed class PendingRemoval
         {
-            public PendingRemoval(ushort itemId, int amount, IInventoryItem item)
+            public PendingRemoval(ushort itemId, IInventoryItem item)
             {
                 ItemId = itemId;
-                Amount = amount;
                 Item = item;
             }
             public ushort ItemId { get; }
-            public int Amount { get; }
             public IInventoryItem Item { get; }
         }
     }

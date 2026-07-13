@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>1.2.7</Version>
+    <Version>1.3.0</Version>
     <Description>Web Panel</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -32,6 +32,12 @@
     <EmbeddedResource Include="index.html" />
     <!-- The player-facing single-page surface, served at /p. -->
     <EmbeddedResource Include="player.html" />
+    <!-- Steam's official square Unturned app icon, served locally to both SPAs. -->
+    <EmbeddedResource Include="unturned-favicon.jpg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="unturned-favicon.SOURCE.md" Pack="true" PackagePath="docs/" />
   </ItemGroup>
 
   <!-- Published shared abstractions provide the single interface assembly used by host and extensions. -->

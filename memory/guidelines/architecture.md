@@ -108,11 +108,21 @@ unturned-mods/
   偶然时序。注册表按 id 覆盖，因此重复注册安全；插件仍须保存成功取得的 registry，并在
   unload 时从该实例注销，禁止从已释放的插件作用域重新 Resolve。
 
-**铁律：宿主（well404.WebPanel）绝不内含任何具体插件的业务逻辑或 id 判断。** 两个内嵌
-SPA（`index.html` 管理面、`player.html` 玩家面）只按**通用描述符字段**渲染，**不得**出现
-`menu.id === "shop"` 这类对某插件的特判。任何插件想要的样式/布局都必须经由通用字段表达，
-由该插件**注册数据**驱动，从而保证「不同人不同插件的任意组合都不会让面板出问题」。曾经把
-商店专属渲染写进 `player.html` 是反面教材，已重构为下述通用能力：
+**铁律：宿主（well404.WebPanel）绝不内含任何具体插件的业务逻辑或 id 判断。** WebPanel
+采用双轨扩展：
+
+- 简单功能继续使用描述符注册制，由宿主通用渲染 Settings、Collection、Table 等控件。
+- 复杂功能在自身程序集嵌入 HTML/CSS/JavaScript，以 `WebUiExtension` 挂到
+  `WebPanelModule.Ui`；玩家菜单实现 `IPlayerMenuUiProvider`。宿主在 Shadow DOM 中挂载，
+  只提供当前模块及受限的 action、records、values、refresh 能力。
+- 自建 JavaScript 属于已安装插件的可信代码；Shadow DOM 是样式/DOM 隔离，不是安全沙箱。
+  服务器管理员应只安装可信插件，插件作者仍应优先使用宿主提供的受限能力对象。
+- `ReplaceDefault=true` 完全采用插件自建界面；false 可在旧描述符控件之前挂载自建摘要。
+- 插件卸载仍只注销 module/menu；资源跟随插件程序集，不创建额外公开静态目录。
+
+两套机制都不得让宿主出现 `menu.id === "shop"` 之类业务特判。自建 UI 负责业务布局，
+宿主只负责鉴权、路由、导航、刷新、错误隔离与能力 API。网页视觉遵守根 `DESIGN.md`。
+旧描述符制继续提供下述通用能力：
 
 - **玩家菜单渲染模型（`IPlayerMenu` → `PlayerMenuView`/`PlayerCard`）**，全部为通用 UI 语义：
   - `PlayerMenuView.Layout`：`"list"`（紧凑行）或 null（默认卡片）。任何插件可选。

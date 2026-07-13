@@ -16,13 +16,15 @@ namespace well404.Vault
     /// The player-facing vault surface for the web panel: a compact list with two sections — the
     /// player's backpack (store) and the vault contents (take). Copies that are identical (same id +
     /// amount + quality + state) are merged into one entry. An item that has several distinct variants
-    /// (e.g. shell boxes with different round counts) becomes a collapsible card whose children list
-    /// each variant with its specifics, so the player can act on a particular one. Every entry offers
+    /// (e.g. shell boxes with different round counts) becomes a collapsed summary card whose custom
+    /// UI opens the children in a modal, so the player can act on a particular one. Every entry offers
     /// All / a typed amount / One. Driven entirely by the generic player-menu model.
     /// </summary>
-    public sealed class VaultPlayerMenu : IPlayerMenu
+    public sealed class VaultPlayerMenu : IPlayerMenu, IPlayerMenuUiProvider
     {
         public const string MenuId = "vault";
+        private static readonly WebUiExtension s_Ui = WebUiExtension.FromEmbeddedResources(
+            typeof(VaultPlayerMenu).Assembly, "player-ui.html", "player-ui.css", "player-ui.js");
 
         // The web surface enforces the same permissions as the chat commands, so a player whose
         // store/take is denied can't bypass it through the panel.
@@ -49,6 +51,8 @@ namespace well404.Vault
         public string Title => "Vault";
 
         public string? Icon => "🧳";
+
+        public WebUiExtension Ui => s_Ui;
 
         public async Task<PlayerMenuView> RenderAsync(PlayerMenuContext context)
         {
@@ -81,7 +85,7 @@ namespace well404.Vault
         }
 
         // Builds one card per item id (merging identical copies). A single-variant id is a plain card;
-        // a multi-variant id is a collapsible parent whose children are the variants. When allowOps is
+        // a multi-variant id is a collapsed parent whose children are shown in a modal. When allowOps is
         // false (offline / no permission) the cards are built read-only (no action buttons).
         private List<PlayerCard> BuildItemCards(IReadOnlyList<ItemVariant> variants, string mode, string group, IReadOnlyDictionary<string, string> names, string lang, bool allowOps)
         {
@@ -102,7 +106,7 @@ namespace well404.Vault
                     continue;
                 }
 
-                // Multiple variants → a collapsible parent ("All" of the whole item) with variant children.
+                // Multiple variants → a collapsed parent ("All" of the whole item) with variant children.
                 var children = new List<PlayerCard>();
                 foreach (var v in list.OrderByDescending(x => x.Amount).ThenByDescending(x => x.Quality))
                 {

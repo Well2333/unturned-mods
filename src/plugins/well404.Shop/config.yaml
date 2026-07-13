@@ -12,22 +12,58 @@ discounts:
   #   well404.shop.vip: 0.9
   #   well404.shop.mvp: 0.8
 
+groups:
+  - id: "default"
+    name: "default"
+
 # Plain items: a single game item, referenced in /buy and /sell by its own item id
 # (its display name comes from the game). buyPrice 0 = not buyable; sellPrice 0 = not sellable.
 items:
-  - itemId: 15
+  - itemId: 14
+    buyPrice: 10
+    sellPrice: 4
+    group: "default"
+    note: ""
+    order: 1
+  - itemId: 13
+    buyPrice: 15
+    sellPrice: 6
+    group: "default"
+    note: ""
+    order: 2
+  - itemId: 116
+    buyPrice: 1000
+    sellPrice: 400
+    group: "default"
+    note: ""
+    order: 3
+  - itemId: 6
     buyPrice: 100
     sellPrice: 40
-
-# Bundles: a named pack of several items, referenced by its own `id` in /buy and /sell.
-# A bundle can be sold too when sellPrice > 0 (all contents are taken back).
-bundles:
-  - id: "starter"
-    name: "Starter Pack"
-    buyPrice: 500
-    sellPrice: 0
-    contents:
-      - itemId: 15
-        amount: 2
-      - itemId: 81
-        amount: 1
+    group: "default"
+    note: ""
+    order: 4
+  - itemId: 43
+    buyPrice: 200
+    sellPrice: 80
+    group: "default"
+    note: ""
+    order: 5
+  - itemId: 95
+    buyPrice: 20
+    sellPrice: 8
+    group: "default"
+    note: ""
+    order: 6
+  - itemId: 391
+    buyPrice: 30
+    sellPrice: 12
+    group: "default"
+    note: ""
+    order: 7
+  - itemId: 68
+    buyPrice: 50
+    sellPrice: 20
+    group: "default"
+    note: ""
+    order: 8

@@ -41,6 +41,12 @@ namespace well404.WebPanel
         /// <summary>How long a player web-session link stays valid, in minutes.</summary>
         public int PlayerSessionMinutes { get; set; } = 5;
 
+        /// <summary>
+        /// Browser data refresh interval in seconds. The clients pause while hidden or editing;
+        /// zero disables automatic refresh. Default is five seconds.
+        /// </summary>
+        public int RefreshIntervalSeconds { get; set; } = 5;
+
         /// <summary>Developer-only impersonation of a fixed player (see <see cref="DevPlayerSettings"/>).</summary>
         public DevPlayerSettings DevPlayer { get; set; } = new DevPlayerSettings();
     }

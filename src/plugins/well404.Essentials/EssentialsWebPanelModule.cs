@@ -20,6 +20,8 @@ namespace well404.Essentials
     internal static class EssentialsWebPanelModule
     {
         public const string ModuleId = "well404.essentials";
+        private static readonly WebUiExtension s_Ui = WebUiExtension.FromEmbeddedResources(
+            typeof(EssentialsWebPanelModule).Assembly, "admin-ui.html", "admin-ui.css", "admin-ui.js");
 
         private const int SearchLimit = 100;
 
@@ -133,7 +135,7 @@ namespace well404.Essentials
             return new WebPanelModule(
                 ModuleId, "Essentials",
                 new[] { teleport, rules, warps, gifts, search },
-                icon: "🏠");
+                icon: "🏠", ui: s_Ui);
         }
 
         private static WebActionResult SaveTeleport(EssentialsConfigStore store, WebActionRequest request)

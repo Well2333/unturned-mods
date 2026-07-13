@@ -11,7 +11,7 @@ namespace well404.Shop.Commands
 {
     [Command("buy")]
     [CommandSyntax("<id> [amount]")]
-    [CommandDescription("Buys an item (by its item id) or a bundle (by its id) from the shop.")]
+    [CommandDescription("Buys an item by its game item id from the shop.")]
     [CommandActor(typeof(UnturnedUser))]
     public class CommandBuy : Command
     {

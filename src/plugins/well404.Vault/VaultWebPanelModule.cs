@@ -13,6 +13,8 @@ namespace well404.Vault
     internal static class VaultWebPanelModule
     {
         public const string ModuleId = "well404.vault";
+        private static readonly WebUiExtension s_Ui = WebUiExtension.FromEmbeddedResources(
+            typeof(VaultWebPanelModule).Assembly, "admin-ui.html", "admin-ui.css", "admin-ui.js");
 
         public static WebPanelModule Create(VaultConfigStore store, VaultService vault)
         {
@@ -52,7 +54,7 @@ namespace well404.Vault
                 layout: "list",
                 summaryFields: new[] { "capacity" });
 
-            return new WebPanelModule(ModuleId, "Vault", new[] { settings, overrides }, icon: "🧳");
+            return new WebPanelModule(ModuleId, "Vault", new[] { settings, overrides }, icon: "🧳", ui: s_Ui);
         }
 
         private static WebActionResult SaveSettings(VaultConfigStore store, WebActionRequest request)

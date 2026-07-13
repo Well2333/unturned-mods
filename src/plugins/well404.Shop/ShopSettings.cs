@@ -7,6 +7,8 @@ namespace well404.Shop
     {
         public DiscountSettings Discounts { get; set; } = new DiscountSettings();
 
+        public List<ShopGroupConfig> Groups { get; set; } = new List<ShopGroupConfig>();
+
         /// <summary>
         /// Plain items. A plain item is referenced by its game item id (both in <c>/buy</c>/<c>/sell</c>
         /// and in the panel); its display name is resolved from the game item directory, so it needs
@@ -14,9 +16,14 @@ namespace well404.Shop
         /// </summary>
         public List<ShopItemConfig> Items { get; set; } = new List<ShopItemConfig>();
 
-        /// <summary>Custom bundles (a named combo of several items), referenced by their own id.</summary>
-        public List<ShopBundleConfig> Bundles { get; set; } = new List<ShopBundleConfig>();
     }
+
+    public class ShopGroupConfig
+    {
+        public string Id { get; set; } = "default";
+        public string Name { get; set; } = "default";
+    }
+
 
     public class DiscountSettings
     {
@@ -42,30 +49,12 @@ namespace well404.Shop
 
         /// <summary>Payout to sell one. 0 makes it unsellable.</summary>
         public decimal SellPrice { get; set; }
+
+        public string Group { get; set; } = "default";
+
+        public string Note { get; set; } = string.Empty;
+
+        public int Order { get; set; }
     }
 
-    /// <summary>A custom bundle: a named pack of several items, referenced by its own id.</summary>
-    public class ShopBundleConfig
-    {
-        /// <summary>The id used in <c>/buy</c>/<c>/sell</c> (a name-like string; avoid pure numbers).</summary>
-        public string Id { get; set; } = string.Empty;
-
-        /// <summary>Human-readable display name.</summary>
-        public string Name { get; set; } = string.Empty;
-
-        /// <summary>Price to buy one bundle. 0 makes it unbuyable.</summary>
-        public decimal BuyPrice { get; set; }
-
-        /// <summary>Payout to sell one bundle (requires the player to own all contents). 0 = unsellable.</summary>
-        public decimal SellPrice { get; set; }
-
-        /// <summary>The items one bundle grants (and that selling reclaims).</summary>
-        public List<BundleItem> Contents { get; set; } = new List<BundleItem>();
-    }
-
-    public class BundleItem
-    {
-        public ushort ItemId { get; set; }
-        public int Amount { get; set; } = 1;
-    }
 }

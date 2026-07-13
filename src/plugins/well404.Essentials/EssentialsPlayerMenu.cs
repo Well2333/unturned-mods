@@ -26,10 +26,12 @@ namespace well404.Essentials
     /// all driven through the same services as the in-game commands. Web text is localized to the
     /// player's chosen language; in-game notices use the server's language.
     /// </summary>
-    public sealed class EssentialsPlayerMenu : IPlayerMenu
+    public sealed class EssentialsPlayerMenu : IPlayerMenu, IPlayerMenuUiProvider
     {
         public const string MenuId = "essentials";
         private const string WarpPrefix = "warp:";
+        private static readonly WebUiExtension s_Ui = WebUiExtension.FromEmbeddedResources(
+            typeof(EssentialsPlayerMenu).Assembly, "player-ui.html", "player-ui.css", "player-ui.js");
 
         private readonly PlayerDataStore m_PlayerData;
         private readonly WarpService m_Warps;
@@ -69,6 +71,8 @@ namespace well404.Essentials
         public string Title => "Utilities";
 
         public string? Icon => "🧭";
+
+        public WebUiExtension Ui => s_Ui;
 
         private string L(string lang, string key) => m_Tr.Resolve(key, lang);
 

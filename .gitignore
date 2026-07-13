@@ -28,6 +28,9 @@ Thumbs.db
 # and never be committed.
 /.localserver/
 /artifacts/
+# Local-only AI memory (may contain private host aliases or deployment context).
+# Never commit or publish this directory.
+/.local-memory/
 
 # ---- Assembled plugin artifacts from scripts/build.sh ----
 # build/ is the default output dir; everything there is generated EXCEPT the

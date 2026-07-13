@@ -27,16 +27,41 @@ namespace UnturnedMods.Shared.WebPanel
         public string Language { get; }
     }
 
+    public sealed class PlayerPromptChoice
+    {
+        public PlayerPromptChoice(string label, string value)
+        {
+            Label = label ?? throw new ArgumentNullException(nameof(label));
+            Value = value ?? throw new ArgumentNullException(nameof(value));
+        }
+
+        public string Label { get; }
+        public string Value { get; }
+    }
+
     /// <summary>A clickable button on a <see cref="PlayerCard"/>.</summary>
     public sealed class PlayerButton
     {
-        public PlayerButton(string actionId, string label, string? style = null, string? promptLabel = null, string? promptDefault = null)
+        /// <summary>Shared 1.0 binary-compatible constructor.</summary>
+        public PlayerButton(
+            string actionId, string label, string? style = null,
+            string? promptLabel = null, string? promptDefault = null)
+            : this(actionId, label, style, promptLabel, promptDefault, null, null)
+        {
+        }
+
+        public PlayerButton(
+            string actionId, string label, string? style,
+            string? promptLabel, string? promptDefault,
+            IReadOnlyList<PlayerPromptChoice>? promptChoices, string? confirmation)
         {
             ActionId = actionId ?? throw new ArgumentNullException(nameof(actionId));
             Label = label ?? throw new ArgumentNullException(nameof(label));
             Style = style;
             PromptLabel = promptLabel;
             PromptDefault = promptDefault;
+            PromptChoices = promptChoices ?? Array.Empty<PlayerPromptChoice>();
+            Confirmation = confirmation;
         }
 
         /// <summary>Action id passed back to <see cref="IPlayerMenu.InvokeAsync"/> (e.g. <c>buy</c>, <c>claim</c>).</summary>
@@ -55,11 +80,16 @@ namespace UnturnedMods.Shared.WebPanel
 
         /// <summary>Pre-filled value for the prompt (e.g. the available count, so "OK" acts on all). Null = "1".</summary>
         public string? PromptDefault { get; }
+
+        public IReadOnlyList<PlayerPromptChoice> PromptChoices { get; }
+
+        public string? Confirmation { get; }
     }
 
     /// <summary>One entry (item, gift, ...) shown as a card with text and buttons.</summary>
     public sealed class PlayerCard
     {
+        /// <summary>Shared 1.0 binary-compatible constructor.</summary>
         public PlayerCard(
             string key,
             string label,
@@ -69,6 +99,21 @@ namespace UnturnedMods.Shared.WebPanel
             string? group = null,
             string? badge = null,
             IReadOnlyList<PlayerCard>? children = null)
+            : this(key, label, lines, tags, buttons, group, badge, children, null, null)
+        {
+        }
+
+        public PlayerCard(
+            string key,
+            string label,
+            IReadOnlyList<string>? lines,
+            IReadOnlyList<string>? tags,
+            IReadOnlyList<PlayerButton>? buttons,
+            string? group,
+            string? badge,
+            IReadOnlyList<PlayerCard>? children,
+            string? placement,
+            string? groupKey)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
             Label = label ?? throw new ArgumentNullException(nameof(label));
@@ -78,6 +123,8 @@ namespace UnturnedMods.Shared.WebPanel
             Group = group;
             Badge = badge;
             Children = children ?? Array.Empty<PlayerCard>();
+            Placement = placement;
+            GroupKey = groupKey;
         }
 
         /// <summary>Identifies the entry; passed back as the <c>cardKey</c> on a button action.</summary>
@@ -113,6 +160,10 @@ namespace UnturnedMods.Shared.WebPanel
         /// Null = none. Generic; the renderer does not interpret it.
         /// </summary>
         public string? Badge { get; }
+
+        public string? Placement { get; }
+
+        public string? GroupKey { get; }
     }
 
     /// <summary>The rendered state of a player menu (one tab).</summary>
@@ -199,6 +250,16 @@ namespace UnturnedMods.Shared.WebPanel
         /// button with a <see cref="PlayerButton.PromptLabel"/> (null otherwise).
         /// </summary>
         Task<PlayerActionResult> InvokeAsync(PlayerMenuContext context, string actionId, string cardKey, string? value);
+    }
+
+    /// <summary>
+    /// Optional companion capability for a player menu that owns its presentation. WebPanel mounts
+    /// the resources in a Shadow DOM and exposes only the current menu/view and action callback.
+    /// Menus that do not implement this interface continue using the generic descriptor renderer.
+    /// </summary>
+    public interface IPlayerMenuUiProvider
+    {
+        WebUiExtension Ui { get; }
     }
 
     /// <summary>

@@ -12,7 +12,7 @@ change history live in [`memory/`](memory/README.md).
 | Plugin | What it does |
 | --- | --- |
 | `well404.Economy` | Currency core — balances, `/pay`, kill rewards, the global `IEconomyProvider`. |
-| `well404.Shop` | Item shop — buy/sell items and bundles, permission-tier discounts (depends on Economy). |
+| `well404.Shop` | Grouped item shop — buy/sell items, notes and ordering, permission-tier discounts (depends on Economy). |
 | `well404.WebPanel` | Web admin panel (plugins mount modules) **+ a player-facing web UI** (`/menu`: server intro, shop, wallet transfers, utilities). Token-in-path auth, optional built-in tunnel (cloudflared/ngrok; auto-downloads a portable cloudflared when it is missing). |
 | `well404.Essentials` | Player utilities — home/tp/warp/gift/sleep/back/party, shared teleport rules, optional economy fees. |
 | `well404.AdminTools` | Admin tools — godmode, kick, temporary ban/unban. |
@@ -33,8 +33,10 @@ openmod install well404.Shop        # pulls in Economy
 openmod install well404.WebPanel    # optional: web panel + player UI
 openmod install well404.Essentials
 openmod install well404.AdminTools
-openmod reload
 ```
+
+Fully restart the server after installing or replacing plugin DLLs. Use `openmod reload` only for
+configuration/lifecycle reloads when no binary has been replaced.
 
 ## Build / local dev
 

@@ -7,16 +7,28 @@ namespace UnturnedMods.Shared.WebPanel
     /// <summary>A group of related management actions shown as one section in the panel.</summary>
     public sealed class WebPanelModule
     {
+        /// <summary>Shared 1.0 binary-compatible constructor.</summary>
         public WebPanelModule(
             string id,
             string title,
             IReadOnlyList<WebPanelAction> actions,
             string? icon = null)
+            : this(id, title, actions, icon, null)
+        {
+        }
+
+        public WebPanelModule(
+            string id,
+            string title,
+            IReadOnlyList<WebPanelAction> actions,
+            string? icon,
+            WebUiExtension? ui)
         {
             Id = id ?? throw new ArgumentNullException(nameof(id));
             Title = title ?? throw new ArgumentNullException(nameof(title));
             Actions = actions ?? throw new ArgumentNullException(nameof(actions));
             Icon = icon;
+            Ui = ui;
         }
 
         /// <summary>Stable, unique module id (e.g. <c>well404.economy</c>). Used for routing.</summary>
@@ -27,6 +39,9 @@ namespace UnturnedMods.Shared.WebPanel
 
         /// <summary>Optional icon hint (an emoji or short label) for the nav entry.</summary>
         public string? Icon { get; }
+
+        /// <summary>Optional plugin-owned management surface mounted in an isolated Shadow DOM.</summary>
+        public WebUiExtension? Ui { get; }
 
         public IReadOnlyList<WebPanelAction> Actions { get; }
     }
@@ -65,6 +80,7 @@ namespace UnturnedMods.Shared.WebPanel
     /// <summary>One management action a feature plugin exposes.</summary>
     public sealed class WebPanelAction
     {
+        /// <summary>Shared 1.0 binary-compatible constructor.</summary>
         public WebPanelAction(
             string id,
             string label,
@@ -79,6 +95,26 @@ namespace UnturnedMods.Shared.WebPanel
             string? layout = null,
             bool hidden = false,
             IReadOnlyList<string>? summaryFields = null)
+            : this(id, label, kind, handler, fields, description, loader, recordsLoader,
+                deleteHandler, keyField, layout, hidden, summaryFields, null)
+        {
+        }
+
+        public WebPanelAction(
+            string id,
+            string label,
+            WebActionKind kind,
+            Func<WebActionRequest, Task<WebActionResult>> handler,
+            IReadOnlyList<WebField>? fields,
+            string? description,
+            Func<Task<IReadOnlyDictionary<string, string>>>? loader,
+            Func<Task<IReadOnlyList<WebRecord>>>? recordsLoader,
+            Func<WebActionRequest, Task<WebActionResult>>? deleteHandler,
+            string? keyField,
+            string? layout,
+            bool hidden,
+            IReadOnlyList<string>? summaryFields,
+            Func<WebActionRequest, Task<WebActionResult>>? reorderHandler)
         {
             Id = id ?? throw new ArgumentNullException(nameof(id));
             Label = label ?? throw new ArgumentNullException(nameof(label));
@@ -93,6 +129,7 @@ namespace UnturnedMods.Shared.WebPanel
             Layout = layout;
             Hidden = hidden;
             SummaryFields = summaryFields ?? Array.Empty<string>();
+            ReorderHandler = reorderHandler;
         }
 
         /// <summary>
@@ -138,6 +175,8 @@ namespace UnturnedMods.Shared.WebPanel
 
         /// <summary>For <see cref="WebActionKind.Collection"/>: deletes the record whose key is in the request.</summary>
         public Func<WebActionRequest, Task<WebActionResult>>? DeleteHandler { get; }
+
+        public Func<WebActionRequest, Task<WebActionResult>>? ReorderHandler { get; }
 
         /// <summary>
         /// For <see cref="WebActionKind.Collection"/>: the field that identifies a record. It is

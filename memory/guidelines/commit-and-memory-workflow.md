@@ -8,6 +8,11 @@
 - **`git push`（推送 GitHub）、创建 tag / GitHub Release、发布 NuGet
   （`scripts/release-plugin.sh`、publish workflow 等）只能在用户当次明确要求时执行，
   严禁擅自进行。** 「之前授权过一次」不等于持续授权——每次都要有当次的明确指令。
+- **需求被修改、扩展或重新定义后，此前针对旧成果给出的推送/发版授权立即失效。**
+  完成新需求后只能保留本地代码、测试和提交；不得根据同一会话更早的“发布”指令自行推送。
+- **用户明确说“不要发”“等我要求再发”即撤销当前全部远程写入授权。** 撤销后必须等待
+  用户在成果完成并确认后再次明确说“现在提交并发布/现在推送”等，才能执行 `git push`、
+  创建远程分支/tag/GitHub Release 或触发 NuGet 发布；本地 `git commit` 不属于远程发布。
 - 本地 `git commit` 与变更记录可按下方流程进行，但提交后**停在本地**，
   不推送、不发版，等待用户指示。若不确定，先问。
 
@@ -32,56 +37,53 @@
 
 ## 核心原则
 
-1. **每次提交都要在 `memory/changelog/` 留下一条变更记录。**
-2. 变更记录文件名为 **`YYYY-MM-DD-<commithash>.md`**，`<commithash>` 指向**该记录
-   所描述的那次功能提交**的短哈希。
-3. 若改动**涉及开发规范**，必须在 `memory/guidelines/` 同步更新相应文件，并在
-   变更记录里注明同步了什么。
-4. 记录内容应**在提交前依据 diff 撰写**（即「根据其内容撰写」）；哈希在功能提交
-   产生后回填到文件名（见下）。
+1. **一个开发分支最终只保留一条正式 changelog**，对应其合入 `main` 的 squash 功能提交；
+   不再要求分支内每个临时提交各写一条正式记录。
+2. 正式记录位于 `memory/changelog/YYYY-MM-DD-<commithash>.md`，其中哈希指向
+   `main` 上该分支的 squash 功能提交。
+3. 分支开发期间如需记录中间状态，只能放在 `memory/changelog/_wip/`；合并时汇总为一条
+   正式记录并删除该分支的全部 WIP 草稿。
+4. 若改动涉及开发规范，必须在同一分支同步更新 `memory/guidelines/`，并在正式记录中标记
+   `guideline_changed: true`、逐项说明。
 
-## 标准流程（两步提交，保证文件名哈希精确）
+## 标准收敛流程
 
-由于短哈希只有在提交完成后才存在，采用「功能提交 + 紧随其后的记录提交」。
-**走分支 + squash 时**，下面的「功能提交」即**把分支 squash 合并到 `main` 的那个提交**，
-变更记录用它的短哈希命名（见上「分支工作流与 squash 合并」）。在 `main` 上的标准两步如下：
+1. 在类型分支完成代码、文档和规范更新；中间提交可有可无，不生成顶层正式 changelog。
+2. 合入前根据**整个分支相对 main 的 diff**起草一条汇总记录；如使用 `_wip/`，同时归并并删除
+   此分支草稿。
+3. 在 `main` 上执行 squash 合并并创建功能提交。
+4. 获取功能提交短哈希，将汇总记录命名为 `memory/changelog/YYYY-MM-DD-<hash>.md`，再用一个
+   极简 `docs(memory)` 提交写入记录。记录提交本身不再生成记录，避免递归。
+5. 只有用户针对当前成果当次明确授权时，才可推送 `main`、删除远程分支或发版。
+
+示例：
 
 ```bash
-# 1) 暂存并完成功能提交（提交信息即变更记录的浓缩）
-git add -A
-git commit -m "feat(<scope>): <简述>"
-
-# 2) 取得刚刚那次提交的短哈希
-HASH=$(git rev-parse --short HEAD)
-DATE=$(date +%F)              # YYYY-MM-DD
-
-# 3) 按 diff 撰写变更记录，文件名指向上一步的提交
-#    （用模板填好内容后写入）
-#    memory/changelog/${DATE}-${HASH}.md
-
-# 4) 提交这条记录
-git add memory/changelog/${DATE}-${HASH}.md
-git commit -m "docs(memory): changelog for ${HASH}"
+git switch main
+git merge --squash feat/example
+git commit -m "feat(scope): summary"
+git rev-parse --short HEAD  # 记下输出为 HASH
+# 撰写 memory/changelog/YYYY-MM-DD-<HASH>.md
+git add memory/changelog/YYYY-MM-DD-<HASH>.md
+git commit -m "docs(memory): changelog for <HASH>"
 ```
-
-> 这样，`changelog/YYYY-MM-DD-<hash>.md` 的文件名始终精确对应它所描述的功能
-> 提交，溯源无歧义。记录提交本身保持极简、不再为它单独写记录（避免无限递归）。
 
 ## 变更记录模板
 
 ```markdown
 ---
 date: YYYY-MM-DD
-commit: <short-hash>
+branch: <分支名>
+merge_commit: <main 上的 squash 短哈希>
 type: feature | fix | refactor | chore | docs | guideline
-scope: <插件Id 或 仓库范围，如 well404.AutoMessage / repo>
-guideline_changed: false   # 若改了一级规范则为 true，并在下方说明
+scope: <插件Id 或仓库范围>
+guideline_changed: false
 ---
 
-# <一句话标题>
+# <一句话标题：本分支整体做了什么>
 
 ## 做了什么
-- ...
+- ...（汇总本分支全部要点）
 
 ## 为什么
 - ...

@@ -16,13 +16,18 @@ namespace well404.Shop
             ["Sell"] = "出售",
             ["Quantity to buy"] = "购买数量",
             ["Quantity to sell"] = "出售数量",
-            ["Items"] = "单品",
-            ["Bundles"] = "礼包",
+            ["Items"] = "商品",
+            ["All"] = "全部",
+            ["In inventory: {0}"] = "当前库存：{0}",
+            ["Choose purchase quantity"] = "选择购买数量",
+            ["Choose sale quantity"] = "选择出售数量",
+            ["Sell all in this group"] = "售卖本组全部",
+            ["Sell every sellable item in this group? This cannot be undone."]
+                = "确认出售本组内背包中的全部可售商品？此操作无法撤销。",
+            ["This group has no items eligible for quick sell."] = "本分组没有可批量出售的商品。",
             ["Quick sell"] = "一键售卖",
             ["Sell all"] = "全部售卖",
             ["Quick actions"] = "快捷操作",
-            ["Sell every sellable plain item in your inventory at once. Bundles are not included."]
-                = "一键出售背包中所有商店可回收的普通商品；礼包不包含在内。",
             ["You must be online to buy or sell."] = "你需要在线才能购买或出售物品。",
             ["Item not found."] = "找不到该商品。",
             ["Enter a valid quantity."] = "请输入有效的数量。",
@@ -39,6 +44,21 @@ namespace well404.Shop
             ["Sold {0} item(s) for {1}."] = "已一键出售 {0} 件物品，获得 {1}。",
 
             // ---- admin module chrome ----
+            ["Shop groups"] = "商店分组",
+            ["Group ID"] = "分组 ID",
+            ["Group name"] = "分组名称",
+            ["Player shop catalog"] = "玩家商店目录",
+            ["Note"] = "备注",
+            ["Create the second-level tabs shown to players. The default group always exists."]
+                = "管理玩家商店的二级标签栏；default 分组始终存在。",
+            ["This preview uses the same groups and order as the player shop. Drag cards inside a group to reorder them."]
+                = "此处的分组和顺序与玩家商店完全同步；在分组内拖动商品卡片即可排序。",
+            ["Enter a valid group ID and name."] = "请输入有效的分组 ID 和名称。",
+            ["The default group cannot be deleted."] = "default 分组不能删除。",
+            ["Order saved."] = "排序已保存。",
+            ["The group order is stale; refresh and try again."] = "分组列表已变化，请刷新后重试。",
+            ["The selected group does not exist."] = "选择的分组不存在。",
+            ["The catalog order is stale; refresh and try again."] = "商品列表已变化，请刷新后重试。",
             // Plain items (referenced by game item id; name auto-resolved)
             ["Plain items"] = "普通商品",
             ["Item ID"] = "物品ID",
@@ -48,20 +68,14 @@ namespace well404.Shop
             ["0 = not sellable"] = "0=不可卖",
             ["Click to edit, Add to create. A plain item is bought and sold by its game item id; its display name comes from the game. Look up ids with the search below."]
                 = "点击编辑，「新增」添加。普通商品按游戏物品 ID 买卖，显示名由游戏自动解析。物品 ID 可用下方检索。",
-            // Bundles (a named pack, referenced by their own id)
-            ["Bundle ID"] = "礼包ID",
-            ["Unique id used by /buy /sell"] = "/buy /sell 用的唯一ID",
-            ["Display name"] = "显示名",
-            ["Contents"] = "内容物",
-            ["itemId×amount, comma-separated, e.g. 15x2, 81x1"] = "物品ID×数量，逗号分隔，如 15x2, 81x1",
-            ["Click a bundle to edit, Add to create. A bundle is a named pack of items; contents format itemId×amount, comma-separated (id only = amount 1), e.g. 15x2, 81x1."]
-                = "点击编辑，「新增」添加。礼包是一组物品的命名组合；内容格式 物品ID×数量，逗号分隔（只写ID则数量为1），如 15x2, 81x1。",
             // Search + quick-add
             ["Search game items"] = "检索游戏物品",
             ["Item name or ID"] = "物品名或ID",
             ["Type a keyword or numeric ID…"] = "输入关键词或数字ID…",
             ["Search any game item by name or ID, then click + to add it to the shop as a plain item (set its prices afterwards)."]
                 = "按名称或 ID 检索任意游戏物品，点「＋」即把它作为普通商品加入商店（之后再填买卖价）。",
+            ["Search any game item by name or ID, then click + to add it with prices, group and note."]
+                = "按名称或 ID 检索物品，点击＋并填写买价、卖价、分组和备注后加入商店。",
             ["Add to shop"] = "加入商店",
             ["Added to the shop."] = "已加入商店。",
             ["Already in the shop."] = "已在商店中。",
@@ -70,8 +84,6 @@ namespace well404.Shop
             ["Deleted."] = "已删除。",
             ["Not found."] = "未找到。",
             ["Enter a valid item ID."] = "请输入有效的物品 ID。",
-            ["Enter the bundle ID, name and contents."] = "请填写礼包 ID、名称与内容。",
-            ["Contents cannot be empty, e.g. 15x2, 81x1."] = "内容不能为空，如 15x2, 81x1。",
             ["Saved discount settings."] = "已保存折扣设置。",
             // Discounts
             ["VIP discount"] = "VIP 折扣",
@@ -84,8 +96,8 @@ namespace well404.Shop
 
             // ---- player command help (intro page); keys are the English descriptions ----
             ["Browse the server shop and see item prices."] = "浏览服务器商店，查看各商品的价格。",
-            ["Buy a plain item by its item id, or a bundle by its id, with your money."] = "用你的金钱按物品 ID 购买单品，或按礼包 ID 购买礼包。",
-            ["Sell a plain item by its item id, or a bundle by its id, back to the shop for money."] = "把单品（按物品 ID）或礼包（按礼包 ID）卖回商店换取金钱。",
+            ["Buy an item by its game item id with your money."] = "用你的金钱按游戏物品 ID 购买商品。",
+            ["Sell an item by its game item id back to the shop for money."] = "按游戏物品 ID 把商品卖回商店换取金钱。",
 
             // ---- result table column headers / messages (localized server-side) ----
             ["Name"] = "名称",

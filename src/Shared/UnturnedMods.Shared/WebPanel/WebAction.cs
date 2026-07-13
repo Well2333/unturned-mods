@@ -47,16 +47,32 @@ namespace UnturnedMods.Shared.WebPanel
     /// <summary>One record in a <see cref="WebActionKind.Collection"/>: a title, pill badges, and edit values.</summary>
     public sealed class WebRecord
     {
+        /// <summary>Shared 1.0 binary-compatible constructor.</summary>
         public WebRecord(
             string key,
             string label,
             IReadOnlyDictionary<string, string> values,
             IReadOnlyList<string>? tags = null)
+            : this(key, label, values, tags, null, null, null)
+        {
+        }
+
+        public WebRecord(
+            string key,
+            string label,
+            IReadOnlyDictionary<string, string> values,
+            IReadOnlyList<string>? tags,
+            string? group,
+            string? groupKey,
+            string? placement)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
             Label = label ?? throw new ArgumentNullException(nameof(label));
             Values = values ?? throw new ArgumentNullException(nameof(values));
             Tags = tags ?? System.Array.Empty<string>();
+            Group = group;
+            GroupKey = groupKey;
+            Placement = placement;
         }
 
         /// <summary>Identifies the record (passed to the delete handler).</summary>
@@ -74,6 +90,14 @@ namespace UnturnedMods.Shared.WebPanel
 
         /// <summary>Field values used to pre-fill the editor when the record is clicked.</summary>
         public IReadOnlyDictionary<string, string> Values { get; }
+
+        public string? Group { get; }
+
+        /// <summary>Stable grouping key, separate from the display label in <see cref="Group"/>.</summary>
+        public string? GroupKey { get; }
+
+        /// <summary>Optional generic placement hint such as <c>group-header</c>.</summary>
+        public string? Placement { get; }
     }
 
     /// <summary>

@@ -118,6 +118,11 @@ scripts/new-plugin.sh <PluginId> ["Display Name"]
 - **判断标准**:装上 WebPanel 后,管理员**无需手改 `config.yaml`** 就能完成该插件的全部
   日常配置。达不到即不合规。
 
+复杂模块允许使用插件自建 UI：资源必须作为插件自身的 `EmbeddedResource` 打包，通过
+`WebUiExtension.FromEmbeddedResources` 注册，并遵守根 `DESIGN.md`。自建界面只调用宿主
+提供的能力对象，不得自行拼管理员 token、跨模块调用或依赖具体 WebPanel URL。简单模块继续
+优先使用描述符注册制，避免不必要的前端重复。
+
 **明确排除项**:`well404.WebPanel` 自身的 `web.*` 基础设施配置(`bindAddress`、`port`、
 管理面 `token`、`tunnel`、`publicBaseUrl` 等)**不纳入 WebUI 编辑**,只能改 `config.yaml`。
 理由:这些控制「面板自身如何对外暴露与鉴权」,把管理面密钥放进管理面页面里可改既矛盾又

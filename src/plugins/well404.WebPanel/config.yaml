@@ -5,7 +5,7 @@
 # register their own management modules into it, so this plugin stays generic.
 
 web:
- ---- Tunnel / reverse proxy (optional; exposes the panel without opening ports) ----
+  # ---- Listener and authentication ----
 # Interface to listen on:
   #   127.0.0.1  -> loopback only (default; reach it via an SSH tunnel / reverse proxy)
   #   0.0.0.0    -> all interfaces (public)
@@ -93,6 +93,10 @@ web:
 
   # How long a player's /menu link stays valid, in minutes.
   playerSessionMinutes: 5
+
+  # Refresh safe browser data every N seconds. Pauses while the page is hidden or being edited.
+  # 0 disables automatic refresh.
+  refreshIntervalSeconds: 5
 
   # ---- Developer preview (impersonate a fixed player without joining the game) ----
   # When enabled, opening  http://host:port/<token>/dev-player  mints a long-lived session for the

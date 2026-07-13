@@ -11,57 +11,59 @@ using UnturnedMods.Shared.WebPanel;
 namespace well404.Shop
 {
     /// <summary>
-    /// Builds the shop's <see cref="WebPanelModule"/>. Plain items and bundles are managed in two
-    /// separate collections so each stays as simple as it can be: a plain item is just an item id
-    /// plus a price pair (its name comes from the game); a bundle adds an id, name and contents. A
-    /// game-item search lets the admin look up ids and one-click "quick add" any item as a plain
-    /// item. Catalog edits are written back to <c>config.yaml</c> via <see cref="ShopConfigStore"/>.
+    /// Builds the shop's <see cref="WebPanelModule"/>. Each catalog record is one game item with
+    /// prices, group, note and display order. Game-item search lets the admin look up ids and add
+    /// items without manually copying asset metadata. Catalog edits are persisted to
+    /// <c>config.yaml</c> via <see cref="ShopConfigStore"/>.
     /// </summary>
     internal static class ShopWebPanelModule
     {
         public const string ModuleId = "well404.shop";
+        private static readonly WebUiExtension s_Ui = WebUiExtension.FromEmbeddedResources(
+            typeof(ShopWebPanelModule).Assembly, "admin-ui.html", "admin-ui.css", "admin-ui.js");
 
         private const int SearchLimit = 100;
         private const string QuickAddActionId = "additem";
 
         public static WebPanelModule Create(ShopConfigStore store, IItemDirectory itemDirectory)
         {
-            var items = new WebPanelAction(
-                id: "items",
-                label: "Plain items",
+            var groups = new WebPanelAction(
+                id: "groups",
+                label: "Shop groups",
                 kind: WebActionKind.Collection,
-                handler: request => Task.FromResult(SaveItem(store, request)),
+                handler: request => Task.FromResult(SaveGroup(store, request)),
+                fields: new[]
+                {
+                    new WebField("id", "Group ID", required: true),
+                    new WebField("name", "Group name", placeholder: "Empty uses the group ID")
+                },
+                description: "Create the second-level tabs shown to players. The default group always exists.",
+                recordsLoader: () => Task.FromResult(LoadGroupRecords(store)),
+                deleteHandler: request => Task.FromResult(RemoveGroup(store, request)),
+                keyField: "id");
+
+            var catalog = new WebPanelAction(
+                id: "catalog",
+                label: "Player shop catalog",
+                kind: WebActionKind.Collection,
+                handler: request => Task.FromResult(SaveCatalog(store, request)),
                 fields: new[]
                 {
                     new WebField("itemId", "Item ID", WebFieldType.Number, required: true),
-                    new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
-                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
+                    new WebField("group", "Group ID", required: true, placeholder: "default"),
+                    new WebField("note", "Note"),
+                    new WebField("buyPrice", "Buy price", WebFieldType.Number),
+                    new WebField("sellPrice", "Sell price", WebFieldType.Number)
                 },
-                description: "Click to edit, Add to create. A plain item is bought and sold by its game item id; its display name comes from the game. Look up ids with the search below.",
-                recordsLoader: () => LoadItemRecordsAsync(store, itemDirectory),
-                deleteHandler: request => Task.FromResult(RemoveItem(store, request)),
-                keyField: "itemId",
-                summaryFields: new[] { "buyPrice", "sellPrice" });
-
-            var bundles = new WebPanelAction(
-                id: "bundles",
-                label: "Bundles",
-                kind: WebActionKind.Collection,
-                handler: request => Task.FromResult(SaveBundle(store, request)),
-                fields: new[]
-                {
-                    new WebField("id", "Bundle ID", WebFieldType.Text, required: true, placeholder: "Unique id used by /buy /sell"),
-                    new WebField("name", "Display name", WebFieldType.Text, required: true),
-                    new WebField("contents", "Contents", WebFieldType.Text, required: true,
-                        placeholder: "itemId×amount, comma-separated, e.g. 15x2, 81x1"),
-                    new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
-                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
-                },
-                description: "Click a bundle to edit, Add to create. A bundle is a named pack of items; contents format itemId×amount, comma-separated (id only = amount 1), e.g. 15x2, 81x1.",
-                recordsLoader: () => LoadBundleRecordsAsync(store, itemDirectory),
-                deleteHandler: request => Task.FromResult(RemoveBundle(store, request)),
-                keyField: "id",
-                summaryFields: new[] { "buyPrice", "sellPrice" });
+                description: "This preview uses the same groups and order as the player shop. Drag cards inside a group to reorder them.",
+                loader: null,
+                recordsLoader: () => LoadCatalogRecordsAsync(store, itemDirectory),
+                deleteHandler: request => Task.FromResult(RemoveCatalog(store, request)),
+                keyField: null,
+                layout: "tabs-grid",
+                hidden: false,
+                summaryFields: new[] { "buyPrice", "sellPrice", "note" },
+                reorderHandler: request => Task.FromResult(ReorderCatalog(store, request)));
 
             var search = new WebPanelAction(
                 id: "search",
@@ -72,10 +74,9 @@ namespace well404.Shop
                 {
                     new WebField("query", "Item name or ID", WebFieldType.Text, placeholder: "Type a keyword or numeric ID…")
                 },
-                description: "Search any game item by name or ID, then click + to add it to the shop as a plain item (set its prices afterwards).");
+                description: "Search any game item by name or ID, then click + to add it with prices, group and note.");
 
-            // Invoke-only target of the search's per-row "+" button: quick-adds the clicked item id
-            // as a draft plain item (zero prices, ready to edit). Hidden so it has no card of its own.
+            // Invoke-only target of the search's per-row "+" button: quick-adds the clicked item id with popup-supplied prices, group and note. Hidden so it has no card of its own.
             var quickAdd = new WebPanelAction(
                 id: QuickAddActionId,
                 label: "Add to shop",
@@ -112,63 +113,155 @@ namespace well404.Shop
 
             return new WebPanelModule(
                 ModuleId, "Shop",
-                new[] { items, bundles, search, quickAdd, discount },
-                icon: "🛒");
+                new[] { groups, catalog, search, quickAdd, discount },
+                icon: "🛒", ui: s_Ui);
         }
 
-        // ----- plain items -----
-
-        private static async Task<IReadOnlyList<WebRecord>> LoadItemRecordsAsync(ShopConfigStore store, IItemDirectory itemDirectory)
+        private static IReadOnlyList<WebRecord> LoadGroupRecords(ShopConfigStore store)
         {
-            var names = await ShopNames.BuildMapAsync(itemDirectory);
             var records = new List<WebRecord>();
-            foreach (var item in store.Items)
+            foreach (var group in store.Groups)
             {
-                var id = item.ItemId.ToString(CultureInfo.InvariantCulture);
-                records.Add(new WebRecord(
-                    id,
-                    ShopNames.NameOf(item.ItemId, names),
+                var name = string.IsNullOrWhiteSpace(group.Name) ? group.Id : group.Name;
+                records.Add(new WebRecord(group.Id, name,
                     new Dictionary<string, string>
                     {
-                        ["itemId"] = id,
-                        ["buyPrice"] = Num(item.BuyPrice),
-                        ["sellPrice"] = Num(item.SellPrice)
-                    },
-                    new[] { "#" + id }));
+                        ["id"] = group.Id,
+                        ["name"] = name
+                    }));
             }
-
             return records;
         }
 
-        private static WebActionResult SaveItem(ShopConfigStore store, WebActionRequest request)
+        private static WebActionResult SaveGroup(ShopConfigStore store, WebActionRequest request)
         {
-            var idRaw = request.Get("itemId");
-            if (idRaw == null
-                || !ushort.TryParse(idRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId)
-                || itemId == 0)
+            var id = (request.Get("id") ?? string.Empty).Trim();
+            if (id.Length == 0
+                || id.Contains(",")
+                || id.Contains(((char)10).ToString())
+                || id.Contains(((char)13).ToString()))
             {
-                return WebActionResult.Fail("Enter a valid item ID.");
+                return WebActionResult.Fail("Enter a valid group ID.");
             }
-
-            store.UpsertItem(new ShopItemConfig
-            {
-                ItemId = itemId,
-                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
-                SellPrice = request.GetDecimal("sellPrice") ?? 0m
-            });
+            var requestedName = request.Get("name");
+            var name = string.IsNullOrWhiteSpace(requestedName) ? id : requestedName.Trim();
+            store.UpsertGroup(new ShopGroupConfig { Id = id, Name = name });
             return WebActionResult.Ok("Saved.");
         }
 
-        private static WebActionResult RemoveItem(ShopConfigStore store, WebActionRequest request)
+        private static WebActionResult RemoveGroup(ShopConfigStore store, WebActionRequest request)
         {
             var key = request.Get("key");
-            if (key == null)
+            if (key == null || !store.RemoveGroup(key))
+            {
+                return WebActionResult.Fail("The default group cannot be deleted.");
+            }
+            return WebActionResult.Ok("Deleted.");
+        }
+
+
+        private static async Task<IReadOnlyList<WebRecord>> LoadCatalogRecordsAsync(
+            ShopConfigStore store, IItemDirectory itemDirectory)
+        {
+            var names = await ShopNames.BuildMapAsync(itemDirectory);
+            var ordered = new List<KeyValuePair<int, WebRecord>>();
+            var groupNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in store.Groups)
+            {
+                var name = string.IsNullOrWhiteSpace(group.Name) ? group.Id : group.Name;
+                groupNames[group.Id] = name;
+                ordered.Add(new KeyValuePair<int, WebRecord>(int.MinValue,
+                    new WebRecord("group:" + group.Id, name,
+                        new Dictionary<string, string>(),
+                        null, name, group.Id, "group-header")));
+            }
+            foreach (var item in store.Items)
+            {
+                var id = item.ItemId.ToString(CultureInfo.InvariantCulture);
+                ordered.Add(new KeyValuePair<int, WebRecord>(item.Order,
+                    new WebRecord("item:" + id, ShopNames.NameOf(item.ItemId, names),
+                        new Dictionary<string, string>
+                        {
+                            ["itemId"] = id,
+                            ["group"] = item.Group,
+                            ["note"] = item.Note,
+                            ["buyPrice"] = Num(item.BuyPrice),
+                            ["sellPrice"] = Num(item.SellPrice)
+                        },
+                        new[] { "#" + id }, GroupName(groupNames, item.Group), item.Group, null)));
+            }
+            ordered.Sort((left, right) => left.Key.CompareTo(right.Key));
+            var records = new List<WebRecord>();
+            foreach (var pair in ordered) records.Add(pair.Value);
+            return records;
+        }
+
+        private static WebActionResult SaveCatalog(ShopConfigStore store, WebActionRequest request)
+        {
+            var requestedGroup = request.Get("group") ?? ShopConfiguration.DefaultGroupId;
+            var group = store.ResolveGroupId(requestedGroup);
+            if (group == null)
+            {
+                return WebActionResult.Fail("The selected group does not exist.");
+            }
+            if (!ReadPrices(request, out var buyPrice, out var sellPrice, out var priceError))
+            {
+                return WebActionResult.Fail(priceError!);
+            }
+            var oldKey = request.Get("recordKey");
+            var oldOrder = store.GetCatalogOrder(oldKey);
+            if (!ushort.TryParse(request.Get("itemId"), NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out var itemId) || itemId == 0)
             {
                 return WebActionResult.Fail("Enter a valid item ID.");
             }
-
-            return store.RemoveItem(key) ? WebActionResult.Ok("Deleted.") : WebActionResult.Fail("Not found.");
+            var newKey = "item:" + itemId.ToString(CultureInfo.InvariantCulture);
+            if (!string.Equals(oldKey, newKey, StringComparison.OrdinalIgnoreCase)
+                && store.Items.Any(item => item.ItemId == itemId))
+            {
+                return WebActionResult.Fail("That item already exists in the catalog.");
+            }
+            store.UpsertItem(new ShopItemConfig
+            {
+                ItemId = itemId,
+                Group = group,
+                Note = request.Get("note") ?? string.Empty,
+                Order = oldOrder,
+                BuyPrice = buyPrice,
+                SellPrice = sellPrice
+            });
+            RemoveOldCatalogKey(store, oldKey, newKey);
+            return WebActionResult.Ok("Saved.");
         }
+
+        private static void RemoveOldCatalogKey(ShopConfigStore store, string? oldKey, string newKey)
+        {
+            if (oldKey == null || string.Equals(oldKey, newKey, StringComparison.OrdinalIgnoreCase)) return;
+            if (oldKey.StartsWith("item:", StringComparison.OrdinalIgnoreCase))
+                store.RemoveItem(oldKey.Substring(5));
+        }
+
+        private static WebActionResult RemoveCatalog(ShopConfigStore store, WebActionRequest request)
+        {
+            var key = request.Get("key") ?? string.Empty;
+            var removed = key.StartsWith("item:", StringComparison.OrdinalIgnoreCase)
+                && store.RemoveItem(key.Substring(5));
+            return removed ? WebActionResult.Ok("Deleted.") : WebActionResult.Fail("Not found.");
+        }
+
+        private static WebActionResult ReorderCatalog(ShopConfigStore store, WebActionRequest request)
+        {
+            var group = request.Get("group") ?? ShopConfiguration.DefaultGroupId;
+            var keys = SplitKeys(request.Get("keys"));
+            return store.ReorderCatalog(group, keys)
+                ? WebActionResult.Ok("Order saved.")
+                : WebActionResult.Fail("The catalog order is stale; refresh and try again.");
+        }
+
+        private static IReadOnlyList<string> SplitKeys(string? raw)
+            => string.IsNullOrEmpty(raw)
+                ? (IReadOnlyList<string>)Array.Empty<string>()
+                : raw.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
         private static WebActionResult QuickAddItem(ShopConfigStore store, WebActionRequest request)
         {
@@ -185,90 +278,28 @@ namespace well404.Shop
                 return WebActionResult.Fail("Already in the shop.");
             }
 
+            var requestedGroup = request.Get("group") ?? ShopConfiguration.DefaultGroupId;
+            var group = store.ResolveGroupId(requestedGroup);
+            if (group == null)
+            {
+                return WebActionResult.Fail("The selected group does not exist.");
+            }
+            if (!ReadPrices(request, out var buyPrice, out var sellPrice, out var priceError))
+            {
+                return WebActionResult.Fail(priceError!);
+            }
+
             store.UpsertItem(new ShopItemConfig
             {
                 ItemId = itemId,
-                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
-                SellPrice = request.GetDecimal("sellPrice") ?? 0m
+                Group = group,
+                Note = request.Get("note") ?? string.Empty,
+                BuyPrice = buyPrice,
+                SellPrice = sellPrice
             });
             return WebActionResult.Ok("Added to the shop.");
         }
 
-        // ----- bundles -----
-
-        private static async Task<IReadOnlyList<WebRecord>> LoadBundleRecordsAsync(ShopConfigStore store, IItemDirectory itemDirectory)
-        {
-            var names = await ShopNames.BuildMapAsync(itemDirectory);
-            var records = new List<WebRecord>();
-            foreach (var bundle in store.Bundles)
-            {
-                var rawParts = new List<string>();
-                var prettyParts = new List<string>();
-                foreach (var content in bundle.Contents)
-                {
-                    rawParts.Add(Raw(content.ItemId, content.Amount));
-                    prettyParts.Add(ShopNames.Label(content.ItemId, content.Amount, names));
-                }
-
-                records.Add(new WebRecord(
-                    bundle.Id,
-                    bundle.Name,
-                    new Dictionary<string, string>
-                    {
-                        ["id"] = bundle.Id,
-                        ["name"] = bundle.Name,
-                        ["contents"] = string.Join(", ", rawParts),
-                        ["buyPrice"] = Num(bundle.BuyPrice),
-                        ["sellPrice"] = Num(bundle.SellPrice)
-                    },
-                    prettyParts));
-            }
-
-            return records;
-        }
-
-        private static WebActionResult SaveBundle(ShopConfigStore store, WebActionRequest request)
-        {
-            var id = request.Get("id");
-            var name = request.Get("name");
-            var contentsRaw = request.Get("contents");
-            if (id == null || name == null || contentsRaw == null)
-            {
-                return WebActionResult.Fail("Enter the bundle ID, name and contents.");
-            }
-
-            var parsed = ParseItems(contentsRaw, out var error);
-            if (parsed == null)
-            {
-                return WebActionResult.Fail(error!);
-            }
-
-            if (parsed.Count == 0)
-            {
-                return WebActionResult.Fail("Contents cannot be empty, e.g. 15x2, 81x1.");
-            }
-
-            store.UpsertBundle(new ShopBundleConfig
-            {
-                Id = id,
-                Name = name,
-                Contents = parsed,
-                BuyPrice = request.GetDecimal("buyPrice") ?? 0m,
-                SellPrice = request.GetDecimal("sellPrice") ?? 0m
-            });
-            return WebActionResult.Ok("Saved.");
-        }
-
-        private static WebActionResult RemoveBundle(ShopConfigStore store, WebActionRequest request)
-        {
-            var id = request.Get("key");
-            if (id == null)
-            {
-                return WebActionResult.Fail("Not found.");
-            }
-
-            return store.RemoveBundle(id) ? WebActionResult.Ok("Deleted.") : WebActionResult.Fail("Not found.");
-        }
 
         // ----- discounts -----
 
@@ -347,6 +378,7 @@ namespace well404.Shop
 
             await UniTask.SwitchToMainThread();
             var assets = await itemDirectory.GetItemAssetsAsync();
+            var names = await ShopNames.BuildMapAsync(itemDirectory);
 
             var rows = new List<IReadOnlyList<string>>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -361,7 +393,9 @@ namespace well404.Shop
                 {
                     if (string.Equals(asset.ItemAssetId, trimmed, StringComparison.Ordinal))
                     {
-                        rows.Add(new[] { asset.ItemAssetId ?? string.Empty, asset.ItemName ?? string.Empty });
+                        var exactId = asset.ItemAssetId ?? string.Empty;
+                        rows.Add(new[] { exactId,
+                            names.TryGetValue(exactId, out var exactName) ? exactName : asset.ItemName ?? string.Empty });
                         seen.Add(trimmed);
                         break;
                     }
@@ -371,7 +405,8 @@ namespace well404.Shop
             foreach (var asset in assets)
             {
                 var assetId = asset.ItemAssetId ?? string.Empty;
-                var itemName = asset.ItemName ?? string.Empty;
+                var itemName = names.TryGetValue(assetId, out var resolvedName)
+                    ? resolvedName : asset.ItemName ?? string.Empty;
                 if (seen.Contains(assetId))
                 {
                     continue;
@@ -402,61 +437,49 @@ namespace well404.Shop
                 .WithRowAction(QuickAddActionId, "Add to shop", null, new[]
                 {
                     new WebField("buyPrice", "Buy price", WebFieldType.Number, required: false, placeholder: "0 = not buyable"),
-                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable")
+                    new WebField("sellPrice", "Sell price", WebFieldType.Number, required: false, placeholder: "0 = not sellable"),
+                    new WebField("group", "Group ID", placeholder: "default"),
+                    new WebField("note", "Note")
                 });
         }
 
         // ----- helpers -----
 
-        /// <summary>The raw editable form of an item ref, e.g. <c>81x3</c>.</summary>
-        private static string Raw(ushort itemId, int amount)
-            => itemId.ToString(CultureInfo.InvariantCulture) + "x" + amount.ToString(CultureInfo.InvariantCulture);
+        private static string Num(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 
-        /// <summary>
-        /// Parses a "contents" string into item/amount pairs. Entries are comma/semicolon/newline
-        /// separated; each is <c>itemId</c> or <c>itemId×amount</c> (× may be <c>x</c>, <c>X</c>,
-        /// <c>×</c> or <c>*</c>; amount defaults to 1). Returns null with <paramref name="error"/>
-        /// set on a malformed entry.
-        /// </summary>
-        private static List<BundleItem>? ParseItems(string raw, out string? error)
+        private static string GroupName(
+            IReadOnlyDictionary<string, string> names, string group)
+            => names.TryGetValue(group, out var name) && !string.IsNullOrWhiteSpace(name)
+                ? name : group;
+
+        private static bool ReadPrices(
+            WebActionRequest request, out decimal buyPrice, out decimal sellPrice, out string? error)
         {
             error = null;
-            // Players often type full-width punctuation/digits (，；ｘ＊０-９) on a Chinese IME;
-            // fold them to ASCII so the separators and numbers parse.
-            raw = NormalizeFullWidth(raw);
-            var result = new List<BundleItem>();
-            var tokens = raw.Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var tokenRaw in tokens)
+            if (!ReadNonNegativeDecimal(request.Get("buyPrice"), out buyPrice))
             {
-                var token = tokenRaw.Trim();
-                if (token.Length == 0)
-                {
-                    continue;
-                }
-
-                var parts = token.Split(new[] { 'x', 'X', '×', '*' }, 2);
-                var idPart = parts[0].Trim();
-                var amountPart = parts.Length > 1 ? parts[1].Trim() : "1";
-
-                if (!ushort.TryParse(idPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId) || itemId == 0)
-                {
-                    error = $"Invalid item ID: {token}";
-                    return null;
-                }
-
-                if (!int.TryParse(amountPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount) || amount < 1)
-                {
-                    error = $"Invalid amount: {token} (format itemId×amount, e.g. 15x2)";
-                    return null;
-                }
-
-                result.Add(new BundleItem { ItemId = itemId, Amount = amount });
+                sellPrice = 0m;
+                error = "Buy price must be a non-negative number.";
+                return false;
             }
-
-            return result;
+            if (!ReadNonNegativeDecimal(request.Get("sellPrice"), out sellPrice))
+            {
+                error = "Sell price must be a non-negative number.";
+                return false;
+            }
+            return true;
         }
 
-        private static string Num(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+        private static bool ReadNonNegativeDecimal(string? raw, out decimal value)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                value = 0m;
+                return true;
+            }
+            return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out value)
+                && value >= 0m;
+        }
 
         /// <summary>Folds full-width punctuation/digits (U+FF01–U+FF5E and the ideographic space) to ASCII.</summary>
         private static string NormalizeFullWidth(string value)
