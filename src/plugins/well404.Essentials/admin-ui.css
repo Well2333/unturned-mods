@@ -12,3 +12,4 @@ button,.act{border:1px solid var(--accent);background:var(--accent);color:white;
 table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:7px;border-bottom:1px solid var(--line)}
 .msg{display:none}.msg.ok,.msg.err{display:block;margin-top:8px}.msg.err{color:#ff858a}.msg.ok{color:#70d99b}
 @media(max-width:600px){.topbar{display:block}.topbar>button{margin-top:8px}.tiles{grid-template-columns:1fr}}
+.collection-tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin-bottom:9px}.collection-tabs button{white-space:nowrap;background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:7px 10px}.collection-tabs button.active{color:var(--text);border-color:var(--accent)}.tiles.tabbed .tile[draggable="true"]{cursor:grab}.tiles.tabbed .tile[draggable="true"]:active{cursor:grabbing}.tiles.tabbed .tile.dragging{opacity:.45}

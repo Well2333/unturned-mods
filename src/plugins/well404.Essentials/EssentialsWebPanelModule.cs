@@ -93,16 +93,22 @@ namespace well404.Essentials
                 fields: new[]
                 {
                     new WebField("name", "Name", WebFieldType.Text, required: true, placeholder: "Name used by /warp"),
+                    new WebField("category", "Label", WebFieldType.Text, placeholder: "default"),
                     new WebField("x", "X", WebFieldType.Number, required: true),
                     new WebField("y", "Y", WebFieldType.Number, required: true),
                     new WebField("z", "Z", WebFieldType.Number, required: true),
                     new WebField("yaw", "Yaw", WebFieldType.Number),
                     new WebField("cooldownSeconds", "Cooldown seconds", WebFieldType.Number, placeholder: "0 = use global cooldown")
                 },
-                description: "Players teleport with /warp <name> and also need permission well404.Essentials:well404.essentials.warps.<name>. Capture coordinates in-game with /warp set.",
+                description: "Labels become read-only player filters. Drag warp cards inside a label to set their player-panel order. Players still need permission well404.Essentials:well404.essentials.warps.<name>.",
+                loader: null,
                 recordsLoader: () => Task.FromResult(LoadWarpRecords(store)),
                 deleteHandler: request => Task.FromResult(RemoveWarp(warpService, request)),
-                keyField: "name");
+                keyField: "name",
+                layout: "tabs-grid",
+                hidden: false,
+                summaryFields: null,
+                reorderHandler: request => Task.FromResult(ReorderWarps(warpService, request)));
 
             var gifts = new WebPanelAction(
                 id: "gifts",
@@ -192,6 +198,7 @@ namespace well404.Essentials
                     new Dictionary<string, string>
                     {
                         ["name"] = warp.Name,
+                        ["category"] = warp.Category,
                         ["x"] = Num(warp.X),
                         ["y"] = Num(warp.Y),
                         ["z"] = Num(warp.Z),
@@ -202,7 +209,10 @@ namespace well404.Essentials
                     {
                         $"({Num(warp.X)}, {Num(warp.Y)}, {Num(warp.Z)})",
                         warp.CooldownSeconds > 0 ? $"cooldown {warp.CooldownSeconds}s" : "no cooldown"
-                    }));
+                    },
+                    warp.Category,
+                    warp.Category,
+                    null));
             }
 
             return records;
@@ -227,11 +237,13 @@ namespace well404.Essentials
             warps.Upsert(new WarpEntry
             {
                 Name = name,
+                Category = request.Get("category") ?? "default",
                 X = x.Value,
                 Y = y.Value,
                 Z = z.Value,
                 Yaw = request.GetDecimal("yaw") ?? 0m,
-                CooldownSeconds = ReadInt(request, "cooldownSeconds", 0)
+                CooldownSeconds = ReadInt(request, "cooldownSeconds", 0),
+                Order = warps.Find(name)?.Order ?? 0
             });
 
             return WebActionResult.Ok($"Saved warp {name}. Remember to grant players the permission {Warps.WarpService.PermissionFor(name)}.");
@@ -248,6 +260,24 @@ namespace well404.Essentials
             return warps.Delete(name)
                 ? WebActionResult.Ok($"Deleted warp {name}.")
                 : WebActionResult.Fail($"Warp not found: {name}.");
+        }
+
+        private static WebActionResult ReorderWarps(WarpService warps, WebActionRequest request)
+        {
+            var category = request.Get("group") ?? "default";
+            var raw = request.Get("keys");
+            if (raw == null)
+            {
+                return WebActionResult.Fail("Missing warp order.");
+            }
+
+            var names = raw.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(key => key.Trim())
+                .Where(key => key.Length > 0)
+                .ToList();
+            return warps.Reorder(category, names)
+                ? WebActionResult.Ok("Warp order saved.")
+                : WebActionResult.Fail("The warp list changed; refresh and try again.");
         }
 
         private static async Task<IReadOnlyList<WebRecord>> LoadGiftRecordsAsync(

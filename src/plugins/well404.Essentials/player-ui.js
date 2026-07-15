@@ -1,43 +1,18 @@
-const app=panel.root.querySelector("#app"), view=panel.view, zh=panel.lang==="zh";
+const app=panel.root.querySelector("#app"),view=panel.view,zh=panel.lang==="zh";
 const sections=[
   ["travel",zh?"传送与位置":"Travel & locations",c=>c.key==="home"||c.key==="back"||c.key==="warps"||c.key.startsWith("warp:")],
-  ["requests",zh?"待处理请求":"Pending requests",c=>c.key.startsWith("tpreq:")||c.key.startsWith("pinv:")],
-  ["party",zh?"队伍":"Party",c=>c.key==="party"||c.key.startsWith("pmember:")],
-  ["players",zh?"在线玩家":"Online players",c=>c.key==="noplayers"||c.key.startsWith("p:")],
+  ["players-party",zh?"玩家与队伍":"Players & party",c=>c.key==="noplayers"||c.key.startsWith("p:")||c.key.startsWith("tpreq:")||c.key.startsWith("pinv:")||c.key==="party"||c.key.startsWith("pmember:")],
   ["gifts",zh?"礼包":"Gifts",c=>c.key==="gifts"||c.key.startsWith("gift:")],
   ["sleep",zh?"世界时间":"World time",c=>c.key==="sleep"]
 ];
 const make=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n};
-const hero=make("div","hero");const copy=make("div");copy.append(make("h2","",view.title),make("p","",view.header||""));hero.append(copy);app.append(hero);
-if(view.message)app.append(make("div","notice",view.message));
+const hero=make("div","hero"),copy=make("div");copy.append(make("h2","",view.title),make("p","",view.header||""));hero.append(copy);app.append(hero);if(view.message)app.append(make("div","notice",view.message));
 const tabs=make("nav","tabs"),content=make("div","content");app.append(tabs,content);
-function cardNode(card){
-  const n=make("article","item"), title=make("div","title",card.label);n.append(title);
-  if(card.lines?.length)n.append(make("div","lines",card.lines.join(" · ")));
-  if(card.buttons?.length){const actions=make("div","actions");for(const b of card.buttons){const btn=make("button",b.style||"",b.label);btn.onclick=()=>panel.invoke(card,b,btn);actions.append(btn)}n.append(actions)}
-  return n;
-}
+function cardNode(card){const n=make("article","item"),title=make("div","title",card.label);n.append(title);if(card.tags?.length){const pills=make("div","pills");for(const tag of card.tags)pills.append(make("span","pill",tag));n.append(pills)}if(card.lines?.length)n.append(make("div","lines",card.lines.join(" · ")));if(card.buttons?.length){const actions=make("div","actions");for(const b of card.buttons){const btn=make("button",b.style||"",b.label);btn.onclick=()=>panel.invoke(card,b,btn);actions.append(btn)}n.append(actions)}return n}
 const models=sections.map(([id,label,match])=>({id,label,cards:(view.cards||[]).filter(match)}));
-const stateKey="well404.essentials.player.tab";
-let saved="";try{saved=sessionStorage.getItem(stateKey)||""}catch{}
-let active=models.some(model=>model.id===saved)?saved:(models.find(model=>model.cards.length)?.id||models[0].id);
-function paint(){
-  tabs.replaceChildren();
-  for(const model of models){
-    const button=make("button",model.id===active?"active":"",model.label);
-    button.type="button";
-    button.setAttribute("aria-selected",model.id===active?"true":"false");
-    button.onclick=()=>{active=model.id;try{sessionStorage.setItem(stateKey,active)}catch{}paint()};
-    tabs.append(button);
-  }
-  const model=models.find(item=>item.id===active)||models[0];
-  const panelNode=make("section","panel");
-  const head=make("div","panel-head");
-  head.append(make("h3","",model.label),make("span","count",String(model.cards.length)));
-  const items=make("div","items");
-  if(model.cards.length)model.cards.forEach(card=>items.append(cardNode(card)));
-  else items.append(make("div","empty",zh?"暂无内容":"Nothing here"));
-  panelNode.append(head,items);
-  content.replaceChildren(panelNode);
-}
+const stateKey="well404.essentials.player.tab",warpKey="well404.essentials.player.warp-filter";let saved="";try{saved=sessionStorage.getItem(stateKey)||""}catch{}let active=models.some(model=>model.id===saved)?saved:(models.find(model=>model.cards.length)?.id||models[0].id);
+function subsection(parent,title,cards){const section=make("section","subsection"),head=make("div","subsection-head");head.append(make("h4","",title),make("span","count",String(cards.length)));section.append(head);const items=make("div","items");if(cards.length)cards.forEach(card=>items.append(cardNode(card)));else items.append(make("div","empty",zh?"暂无内容":"Nothing here"));section.append(items);parent.append(section)}
+function travelContent(model,parent){const fixed=model.cards.filter(c=>c.key==="home"||c.key==="back"||c.key==="warps"),warps=model.cards.filter(c=>c.key.startsWith("warp:"));const categories=[...new Set(warps.map(c=>c.metadata?.warpCategory||c.tags?.[0]||"default"))];let selected="all";try{const value=sessionStorage.getItem(warpKey)||"all";if(value==="all"||categories.includes(value))selected=value}catch{}const filters=make("nav","filter-tabs"),grid=make("div","items");function draw(){filters.replaceChildren();const choices=[["all",zh?"全部":"All"],...categories.map(c=>[c,c])];for(const [id,label] of choices){const button=make("button",id===selected?"active":"",label);button.type="button";button.onclick=()=>{selected=id;try{sessionStorage.setItem(warpKey,id)}catch{}draw()};filters.append(button)}grid.replaceChildren();const visible=[...fixed,...warps.filter(c=>selected==="all"||(c.metadata?.warpCategory||c.tags?.[0]||"default")===selected)];if(visible.length)visible.forEach(c=>grid.append(cardNode(c)));else grid.append(make("div","empty",zh?"此标签下暂无传送点":"No warps under this label"))}draw();parent.append(filters,grid)}
+function playersPartyContent(model,parent){const online=model.cards.filter(c=>c.key==="noplayers"||c.key.startsWith("p:")),pending=model.cards.filter(c=>c.key.startsWith("tpreq:")||c.key.startsWith("pinv:")),party=model.cards.filter(c=>c.key==="party"||c.key.startsWith("pmember:"));subsection(parent,zh?"在线玩家":"Online players",online);if(pending.length)subsection(parent,zh?"待处理请求":"Pending requests",pending);subsection(parent,zh?"队伍":"Party",party)}
+function paint(){tabs.replaceChildren();for(const model of models){const button=make("button",model.id===active?"active":"",model.label);button.type="button";button.setAttribute("aria-selected",model.id===active?"true":"false");button.onclick=()=>{active=model.id;try{sessionStorage.setItem(stateKey,active)}catch{}paint()};tabs.append(button)}const model=models.find(item=>item.id===active)||models[0],panelNode=make("section","panel"),head=make("div","panel-head");head.append(make("h3","",model.label),make("span","count",String(model.cards.length)));panelNode.append(head);if(model.id==="travel")travelContent(model,panelNode);else if(model.id==="players-party")playersPartyContent(model,panelNode);else{const items=make("div","items");if(model.cards.length)model.cards.forEach(card=>items.append(cardNode(card)));else items.append(make("div","empty",zh?"暂无内容":"Nothing here"));panelNode.append(items)}content.replaceChildren(panelNode)}
 paint();

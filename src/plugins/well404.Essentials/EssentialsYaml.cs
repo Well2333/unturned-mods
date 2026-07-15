@@ -59,6 +59,8 @@ namespace well404.Essentials
                 foreach (var w in s.Warps)
                 {
                     sb.Append("  - name: ").Append(Quote(w.Name)).Append('\n');
+                    sb.Append("    category: ").Append(Quote(w.Category)).Append('\n');
+                    sb.Append("    order: ").Append(Int(w.Order)).Append('\n');
                     sb.Append("    x: ").Append(Num(w.X)).Append('\n');
                     sb.Append("    y: ").Append(Num(w.Y)).Append('\n');
                     sb.Append("    z: ").Append(Num(w.Z)).Append('\n');

@@ -1,24 +1,37 @@
-const zh=panel.lang==="zh";
-const labels=zh
-  ?{title:"个人仓库",subtitle:"管理基础容量、权限容量与玩家单独覆盖。",settings:"容量设置",overrides:"玩家覆盖",save:"保存容量设置"}
-  :{title:"Personal vault",subtitle:"Manage base capacity, permission tiers and per-player overrides.",settings:"Capacity",overrides:"Player overrides",save:"Save capacity settings"};
-panel.root.querySelector("#title").textContent=labels.title;
-panel.root.querySelector("#subtitle").textContent=labels.subtitle;
-for(const button of panel.root.querySelectorAll("[data-tab]"))button.textContent=labels[button.dataset.tab];
-const entries=[panel.mountAction("settings",panel.root.querySelector("#settings"))];
-panel.mountAction("overrides",panel.root.querySelector("#overrides"));
-const save=panel.root.querySelector("#save");
-save.textContent=labels.save;
-save.onclick=()=>panel.saveSettings(entries,save);
-let active="settings";
-function select(id){
-  active=id;
-  for(const button of panel.root.querySelectorAll("[data-tab]")){
-    const selected=button.dataset.tab===active;
-    button.classList.toggle("active",selected);
-    button.setAttribute("aria-selected",selected?"true":"false");
-  }
-  for(const section of panel.root.querySelectorAll("[data-panel]"))section.classList.toggle("active",section.dataset.panel===active);
-}
-for(const button of panel.root.querySelectorAll("[data-tab]"))button.onclick=()=>select(button.dataset.tab);
-select(active);
+const root=panel.root,zh=panel.lang==="zh";
+const L=zh?{
+  title:"个人仓库",subtitle:"管理容量，并检索、编辑或删除玩家仓库中的精确记录。",settings:"容量设置",overrides:"玩家覆盖",contents:"玩家仓库",save:"保存容量设置",
+  contentsTitle:"玩家仓库内容",contentsHelp:"输入 SteamID 后加载数据库中的精确记录。修改单条记录会保留其原始状态数据。",steam:"Steam ID",load:"加载仓库",
+  bulk:"要批量删除的物品 ID",bulkDelete:"删除全部匹配项",bulkConfirm:"确定删除该玩家仓库内所有 ID 为 {id} 的物品？此操作不可撤销。",
+  edit:"编辑",remove:"删除",editTitle:"编辑仓库记录",itemId:"物品 ID",amount:"数量",quality:"品质 (0–100)",record:"记录",cells:"格",saveItem:"保存修改",cancel:"取消",
+  deleteConfirm:"确定删除记录 #{record}（物品 #{item}）？此操作不可撤销。",loadFirst:"请先加载当前输入的 SteamID，再执行批量删除。",invalidSteam:"请输入有效的 17 位 SteamID。",invalidItem:"请输入有效的物品 ID。",requestFailed:"请求失败。",empty:"该玩家仓库为空。"
+}:{
+  title:"Personal vault",subtitle:"Manage capacity and inspect, edit, or delete exact player vault rows.",settings:"Capacity",overrides:"Player overrides",contents:"Player contents",save:"Save capacity settings",
+  contentsTitle:"Player vault contents",contentsHelp:"Enter a Steam ID to load exact database rows. Editing a row preserves its original state data.",steam:"Steam ID",load:"Load vault",
+  bulk:"Item ID to delete",bulkDelete:"Delete all matching",bulkConfirm:"Delete every item with ID {id} from this player's vault? This cannot be undone.",
+  edit:"Edit",remove:"Delete",editTitle:"Edit stored row",itemId:"Item ID",amount:"Amount",quality:"Quality (0–100)",record:"Record",cells:"cells",saveItem:"Save changes",cancel:"Cancel",
+  deleteConfirm:"Delete record #{record} (item #{item})? This cannot be undone.",loadFirst:"Load the currently entered Steam ID before using bulk delete.",invalidSteam:"Enter a valid 17-digit Steam ID.",invalidItem:"Enter a valid item ID.",requestFailed:"Request failed.",empty:"This player's vault is empty."
+};
+const $=selector=>root.querySelector(selector);
+const make=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=text;return node};
+const bodyOf=values=>{const body=new URLSearchParams();for(const [key,value] of Object.entries(values))body.set(key,String(value??""));return body};
+const state={steamId:"",rows:[],summary:"",loading:false};
+const tabKey="well404.vault.admin.tab",steamKey="well404.vault.admin.steam";
+$("#title").textContent=L.title;$("#subtitle").textContent=L.subtitle;$("#contents-title").textContent=L.contentsTitle;$("#contents-help").textContent=L.contentsHelp;$("#steam-label").textContent=L.steam;$("#bulk-label").textContent=L.bulk;$("#load-contents").textContent=L.load;$("#bulk-delete").textContent=L.bulkDelete;
+for(const button of root.querySelectorAll("[data-tab]"))button.textContent=L[button.dataset.tab];
+const entries=[panel.mountAction("settings",$("#settings"))];panel.mountAction("overrides",$("#overrides"));
+const save=$("#save");save.textContent=L.save;save.onclick=()=>panel.saveSettings(entries,save);
+function select(id){for(const button of root.querySelectorAll("[data-tab]")){const selected=button.dataset.tab===id;button.classList.toggle("active",selected);button.setAttribute("aria-selected",selected?"true":"false")}for(const section of root.querySelectorAll("[data-panel]"))section.classList.toggle("active",section.dataset.panel===id);save.hidden=id==="contents";try{sessionStorage.setItem(tabKey,id)}catch{}}
+let initialTab="settings";try{const saved=sessionStorage.getItem(tabKey);if(["settings","overrides","contents"].includes(saved))initialTab=saved;$("#steam-id").value=sessionStorage.getItem(steamKey)||""}catch{}
+for(const button of root.querySelectorAll("[data-tab]"))button.onclick=()=>select(button.dataset.tab);select(initialTab);
+function message(text,kind="info"){const target=$("#contents-message");target.textContent=text||"";target.className=text?`msg ${kind}`:"msg"}
+function validSteam(value){return /^\d{17}$/.test(String(value||"").trim())}
+function localizedName(text){const lines=String(text||"").split("\n").filter(Boolean),node=make("div","inventory-title");const primary=!zh&&lines.length>1?lines[lines.length-1]:(lines[0]||"");node.append(make("span","name-primary",primary));if(zh&&lines.length>1)node.append(make("span","name-secondary",lines.slice(1).join(" ")));return node}
+async function loadContents(){const steamId=$("#steam-id").value.trim();if(!validSteam(steamId)){message(L.invalidSteam,"err");return}if(state.loading)return;state.loading=true;$("#load-contents").disabled=true;message(zh?"正在加载…":"Loading…");try{const result=await panel.invoke("inventory",bodyOf({steamId}));if(!result.success)throw new Error(result.message||L.requestFailed);state.steamId=steamId;state.rows=result.rows||[];state.summary=result.message||"";try{sessionStorage.setItem(steamKey,steamId)}catch{}renderContents();message("")}catch(error){message(error.message||L.requestFailed,"err")}finally{state.loading=false;$("#load-contents").disabled=false}}
+function rowModel(row){return{recordId:row[0],itemId:row[1],name:row[2],amount:row[3],quality:row[4],cells:row[5],maxAmount:row[6]}}
+function renderContents(){$("#contents-summary").textContent=state.summary;const grid=$("#inventory-grid");grid.replaceChildren();if(!state.rows.length){grid.append(make("div","empty",L.empty));return}for(const raw of state.rows){const item=rowModel(raw),card=make("article","inventory-card");card.append(localizedName(item.name));const meta=make("div","inventory-meta");meta.append(make("span","pill",`#${item.itemId}`),make("span","pill",`×${item.amount}`),make("span","pill",`${L.quality}: ${item.quality}`),make("span","pill",`${item.cells} ${L.cells}`),make("span","pill",`${L.record} ${item.recordId}`));card.append(meta);const actions=make("div","inventory-actions"),edit=make("button","ghost",L.edit),remove=make("button","danger",L.remove);edit.type=remove.type="button";edit.onclick=()=>openEditor(item);remove.onclick=()=>deleteOne(item);actions.append(edit,remove);card.append(actions);grid.append(card)}}
+function field(form,label,name,value,min,max){const wrap=make("label","field"),caption=make("span","",label),input=document.createElement("input");input.type="number";input.name=name;input.value=value;input.min=min;input.max=max;input.step="1";wrap.append(caption,input);form.append(wrap);return input}
+function openEditor(item){const host=$("#modal-root"),overlay=make("div","modal-overlay"),modal=make("div","modal"),head=make("div","modal-head");modal.setAttribute("role","dialog");modal.setAttribute("aria-modal","true");const close=make("button","modal-close","×"),dismiss=()=>host.replaceChildren();close.type="button";close.onclick=dismiss;head.append(make("h3","",`${L.editTitle} #${item.recordId}`),close);modal.append(head);const form=make("div","form-grid");const itemId=field(form,L.itemId,"itemId",item.itemId,"1","65535"),amount=field(form,L.amount,"amount",item.amount,"1","255"),quality=field(form,L.quality,"quality",item.quality,"0","100");modal.append(form);const status=make("div","msg"),actions=make("div","modal-actions"),cancel=make("button","ghost",L.cancel),submit=make("button","",L.saveItem);cancel.type=submit.type="button";cancel.onclick=dismiss;submit.onclick=async()=>{submit.disabled=true;try{const result=await panel.invoke("updateitem",bodyOf({steamId:state.steamId,recordId:item.recordId,itemId:itemId.value,amount:amount.value,quality:quality.value}));if(!result.success)throw new Error(result.message||L.requestFailed);dismiss();await loadContents();message(result.message||"","ok")}catch(error){status.textContent=error.message||L.requestFailed;status.className="msg err";submit.disabled=false}};actions.append(cancel,submit);modal.append(status,actions);overlay.append(modal);host.replaceChildren(overlay);let pressedOutside=false;overlay.addEventListener("pointerdown",event=>{pressedOutside=event.target===overlay});overlay.addEventListener("pointerup",event=>{const closeNow=pressedOutside&&event.target===overlay;pressedOutside=false;if(closeNow)dismiss()});overlay.addEventListener("pointercancel",()=>{pressedOutside=false})}
+async function deleteOne(item){if(!confirm(L.deleteConfirm.replace("{record}",item.recordId).replace("{item}",item.itemId)))return;try{const result=await panel.invoke("deleteitem",bodyOf({steamId:state.steamId,recordId:item.recordId}));if(!result.success)throw new Error(result.message||L.requestFailed);await loadContents();message(result.message||"","ok")}catch(error){message(error.message||L.requestFailed,"err")}}
+async function deleteMatching(){const typed=$("#steam-id").value.trim();if(!validSteam(typed)){message(L.invalidSteam,"err");return}if(typed!==state.steamId){message(L.loadFirst,"err");return}const itemId=$("#bulk-item-id").value.trim();if(!/^\d+$/.test(itemId)||Number(itemId)<1||Number(itemId)>65535){message(L.invalidItem,"err");return}if(!confirm(L.bulkConfirm.replace("{id}",itemId)))return;const button=$("#bulk-delete");button.disabled=true;try{const result=await panel.invoke("deleteitems",bodyOf({steamId:state.steamId,itemId}));if(!result.success)throw new Error(result.message||L.requestFailed);await loadContents();message(result.message||"","ok")}catch(error){message(error.message||L.requestFailed,"err")}finally{button.disabled=false}}
+$("#load-contents").onclick=loadContents;$("#steam-id").addEventListener("keydown",event=>{if(event.key==="Enter")loadContents()});$("#bulk-delete").onclick=deleteMatching;panel.onRefresh(()=>{if(state.steamId&&!$("#modal-root").children.length)return loadContents()});

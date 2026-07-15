@@ -54,6 +54,7 @@ namespace well404.Essentials
         {
             // Switch to the main thread before calling any Unturned / UnityEngine API.
             await UniTask.SwitchToMainThread();
+            LifetimeScope.Resolve<EssentialsConfigStore>().PersistMigrationIfNeeded(WorkingDirectory);
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_start"]);
 
             var settings = m_Configuration.Get<EssentialsSettings>() ?? new EssentialsSettings();

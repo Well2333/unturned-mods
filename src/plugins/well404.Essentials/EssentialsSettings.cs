@@ -101,6 +101,12 @@ namespace well404.Essentials
 
         /// <summary>Per-warp cooldown in seconds (0 = use the global teleport cooldown).</summary>
         public int CooldownSeconds { get; set; } = 0;
+
+        /// <summary>Read-only player-facing filter label. Missing legacy values become default.</summary>
+        public string Category { get; set; } = "default";
+
+        /// <summary>Stable administrator-controlled display order.</summary>
+        public int Order { get; set; } = 0;
     }
 
     public class GiftEntry

@@ -6,7 +6,26 @@
   <nav class="tabs" aria-label="Vault sections">
     <button type="button" data-tab="settings" class="active">Capacity</button>
     <button type="button" data-tab="overrides">Player overrides</button>
+    <button type="button" data-tab="contents">Player contents</button>
   </nav>
   <section class="tab-panel active" data-panel="settings"><div id="settings"></div></section>
   <section class="tab-panel" data-panel="overrides"><div id="overrides"></div></section>
+  <section class="tab-panel" data-panel="contents">
+    <div class="card contents-card">
+      <h3 id="contents-title">Player vault contents</h3>
+      <p class="desc" id="contents-help">Load a player's exact stored rows to edit or delete them.</p>
+      <div class="lookup-row">
+        <label class="field"><span id="steam-label">Steam ID</span><input id="steam-id" inputmode="numeric" maxlength="17"></label>
+        <button id="load-contents" type="button">Load</button>
+      </div>
+      <div class="bulk-row">
+        <label class="field"><span id="bulk-label">Item ID to delete</span><input id="bulk-item-id" type="number" min="1" max="65535"></label>
+        <button id="bulk-delete" class="danger" type="button">Delete all matching</button>
+      </div>
+      <div id="contents-message" class="msg" role="status"></div>
+      <div id="contents-summary" class="summary"></div>
+      <div id="inventory-grid" class="inventory-grid"></div>
+    </div>
+  </section>
+  <div id="modal-root"></div>
 </div>

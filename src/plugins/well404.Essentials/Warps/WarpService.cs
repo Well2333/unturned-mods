@@ -51,6 +51,7 @@ namespace well404.Essentials.Warps
 
         public void Set(string name, PlayerLocation location, int cooldownSeconds)
         {
+            var existing = Find(name);
             Upsert(new WarpEntry
             {
                 Name = name,
@@ -58,7 +59,9 @@ namespace well404.Essentials.Warps
                 Y = (decimal)location.Y,
                 Z = (decimal)location.Z,
                 Yaw = (decimal)location.Yaw,
-                CooldownSeconds = cooldownSeconds
+                CooldownSeconds = cooldownSeconds,
+                Category = existing?.Category ?? "default",
+                Order = existing?.Order ?? 0
             });
         }
 
@@ -70,6 +73,9 @@ namespace well404.Essentials.Warps
         }
 
         public bool Delete(string name) => m_Store.RemoveWarp(name);
+
+        public bool Reorder(string category, IReadOnlyList<string> names)
+            => m_Store.ReorderWarps(category, names);
 
         private void RegisterPermission(string name)
             => m_PermissionRegistry.RegisterPermission(

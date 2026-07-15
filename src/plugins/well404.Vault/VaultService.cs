@@ -135,6 +135,30 @@ namespace well404.Vault
         /// <summary>Grid cells currently used by a player's vault.</summary>
         public int UsedSlots(string steamId) => Store.UsedSlots(steamId);
 
+        /// <summary>
+        /// Updates the editable fields of one stored row. Asset-derived capacity metadata is
+        /// recalculated on Unity's main thread and the opaque item state is intentionally preserved.
+        /// </summary>
+        public async Task<bool> UpdateStoredItemAsync(
+            string steamId, long recordId, ushort itemId, byte amount, byte quality)
+        {
+            await UniTask.SwitchToMainThread();
+            return Store.UpdateItem(
+                steamId,
+                recordId,
+                itemId,
+                amount,
+                quality,
+                SlotCostOf(itemId),
+                MaxAmountOf(itemId));
+        }
+
+        public Task<bool> DeleteStoredItemAsync(string steamId, long recordId)
+            => Task.FromResult(Store.DeleteItem(steamId, recordId));
+
+        public Task<int> DeleteStoredItemsAsync(string steamId, ushort itemId)
+            => Task.FromResult(Store.DeleteItems(steamId, itemId));
+
         /// <summary>The grid footprint of one item id (size_x × size_y), or 1 if the asset is unknown.</summary>
         public static int SlotCostOf(ushort itemId)
         {

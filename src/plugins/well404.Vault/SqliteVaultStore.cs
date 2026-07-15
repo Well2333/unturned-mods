@@ -138,6 +138,62 @@ VALUES($steamId, $itemId, $amount, $quality, $state, $slotCost, $maxAmount);";
             });
         }
 
+        /// <summary>Updates one exact row owned by <paramref name="steamId"/> without touching its state blob.</summary>
+        public bool UpdateItem(
+            string steamId,
+            long recordId,
+            ushort itemId,
+            byte amount,
+            byte quality,
+            int slotCost,
+            byte maxAmount)
+            => WithDatabase(connection =>
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = @"
+UPDATE vault_items
+SET item_id = $itemId,
+    amount = $amount,
+    quality = $quality,
+    slot_cost = $slotCost,
+    max_amount = $maxAmount
+WHERE id = $id AND steam_id = $steamId;";
+                command.Parameters.AddWithValue("$itemId", itemId);
+                command.Parameters.AddWithValue("$amount", amount);
+                command.Parameters.AddWithValue("$quality", quality);
+                command.Parameters.AddWithValue("$slotCost", slotCost);
+                command.Parameters.AddWithValue("$maxAmount", maxAmount);
+                command.Parameters.AddWithValue("$id", recordId);
+                command.Parameters.AddWithValue("$steamId", steamId);
+                return command.ExecuteNonQuery() == 1;
+            });
+
+        /// <summary>Deletes one exact row only when it belongs to <paramref name="steamId"/>.</summary>
+        public bool DeleteItem(string steamId, long recordId)
+            => WithDatabase(connection =>
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = "DELETE FROM vault_items WHERE id = $id AND steam_id = $steamId;";
+                command.Parameters.AddWithValue("$id", recordId);
+                command.Parameters.AddWithValue("$steamId", steamId);
+                return command.ExecuteNonQuery() == 1;
+            });
+
+        /// <summary>Deletes every row of one item id owned by one player and returns the affected count.</summary>
+        public int DeleteItems(string steamId, ushort itemId)
+            => WithDatabase(connection =>
+            {
+                using var transaction = connection.BeginTransaction();
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = "DELETE FROM vault_items WHERE steam_id = $steamId AND item_id = $itemId;";
+                command.Parameters.AddWithValue("$steamId", steamId);
+                command.Parameters.AddWithValue("$itemId", itemId);
+                var count = command.ExecuteNonQuery();
+                transaction.Commit();
+                return count;
+            });
+
         /// <summary>
         /// Atomically selects and deletes the first matching item. The returned item is no longer
         /// present in SQLite when this method returns.

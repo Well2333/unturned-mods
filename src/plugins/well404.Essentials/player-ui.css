@@ -13,3 +13,5 @@ button{border:1px solid var(--line);background:#242933;color:var(--text);border-
 button.primary{background:var(--accent);border-color:var(--accent)}button.danger{background:transparent;color:#ff858a;border-color:#744047}
 button:disabled{opacity:.5}.empty{color:var(--muted);padding:8px}
 @media(max-width:560px){.items{grid-template-columns:1fr}.hero{display:block}}
+.filter-tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin:0 0 9px}.filter-tabs button{white-space:nowrap;background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:6px 9px}.filter-tabs button.active{color:var(--text);border-color:var(--accent)}
+.subsection+.subsection{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.subsection-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}.subsection-head h4{font-size:13px;margin:0}.pills{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}.pill{border:1px solid var(--line);border-radius:99px;padding:1px 6px;color:var(--muted);font-size:10px}

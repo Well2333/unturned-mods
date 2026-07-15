@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
+using OpenMod.Extensions.Games.Abstractions.Items;
+using UnturnedMods.Shared.Items;
 using UnturnedMods.Shared.WebPanel;
 
 namespace well404.Vault
@@ -16,7 +18,7 @@ namespace well404.Vault
         private static readonly WebUiExtension s_Ui = WebUiExtension.FromEmbeddedResources(
             typeof(VaultWebPanelModule).Assembly, "admin-ui.html", "admin-ui.css", "admin-ui.js");
 
-        public static WebPanelModule Create(VaultConfigStore store, VaultService vault)
+        public static WebPanelModule Create(VaultConfigStore store, VaultService vault, IItemDirectory itemDirectory)
         {
             var settings = new WebPanelAction(
                 id: "settings",
@@ -54,7 +56,132 @@ namespace well404.Vault
                 layout: "list",
                 summaryFields: new[] { "capacity" });
 
-            return new WebPanelModule(ModuleId, "Vault", new[] { settings, overrides }, icon: "🧳", ui: s_Ui);
+            var inventory = new WebPanelAction(
+                id: "inventory",
+                label: "Player vault contents",
+                kind: WebActionKind.Table,
+                handler: request => LoadInventoryAsync(vault, itemDirectory, request),
+                description: "Load the exact SQLite rows stored for one player.",
+                hidden: true);
+
+            var updateItem = new WebPanelAction(
+                id: "updateitem",
+                label: "Update stored item",
+                kind: WebActionKind.Form,
+                handler: request => UpdateItemAsync(vault, request),
+                hidden: true);
+
+            var deleteItem = new WebPanelAction(
+                id: "deleteitem",
+                label: "Delete stored item",
+                kind: WebActionKind.Form,
+                handler: request => DeleteItemAsync(vault, request),
+                hidden: true);
+
+            var deleteItems = new WebPanelAction(
+                id: "deleteitems",
+                label: "Delete matching stored items",
+                kind: WebActionKind.Form,
+                handler: request => DeleteItemsAsync(vault, request),
+                hidden: true);
+
+            return new WebPanelModule(ModuleId, "Vault",
+                new[] { settings, overrides, inventory, updateItem, deleteItem, deleteItems },
+                icon: "🧳", ui: s_Ui);
+        }
+
+        private static async Task<WebActionResult> LoadInventoryAsync(
+            VaultService vault, IItemDirectory itemDirectory, WebActionRequest request)
+        {
+            var steamId = ValidSteamId(request.Get("steamId"));
+            if (steamId == null)
+            {
+                return WebActionResult.Fail("Enter a valid 17-digit Steam ID.");
+            }
+
+            var names = await LocalizedItemCatalog.BuildAsync(itemDirectory);
+            var rows = new List<IReadOnlyList<string>>();
+            foreach (var item in vault.Get(steamId))
+            {
+                rows.Add(new[]
+                {
+                    item.RecordId.ToString(CultureInfo.InvariantCulture),
+                    item.ItemId.ToString(CultureInfo.InvariantCulture),
+                    LocalizedItemCatalog.DisplayName(item.ItemId, names, request.Language),
+                    item.Amount.ToString(CultureInfo.InvariantCulture),
+                    item.Quality.ToString(CultureInfo.InvariantCulture),
+                    item.SlotCost.ToString(CultureInfo.InvariantCulture),
+                    item.MaxAmount.ToString(CultureInfo.InvariantCulture)
+                });
+            }
+
+            var used = vault.UsedSlots(steamId).ToString(CultureInfo.InvariantCulture);
+            return WebActionResult.Table(
+                new[] { "Record ID", "Item ID", "Name", "Amount", "Quality", "Grid cells", "Max amount" },
+                rows,
+                rows.Count == 0 ? "This player's vault is empty." : $"{rows.Count} stored row(s), {used} grid cell(s) used.");
+        }
+
+        private static async Task<WebActionResult> UpdateItemAsync(VaultService vault, WebActionRequest request)
+        {
+            var steamId = ValidSteamId(request.Get("steamId"));
+            if (steamId == null
+                || !long.TryParse(request.Get("recordId"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var recordId)
+                || recordId < 1
+                || !ushort.TryParse(request.Get("itemId"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId)
+                || itemId == 0
+                || !byte.TryParse(request.Get("amount"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount)
+                || amount == 0
+                || !byte.TryParse(request.Get("quality"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var quality)
+                || quality > 100)
+            {
+                return WebActionResult.Fail("Enter a valid Steam ID, record ID, item ID, amount (1–255), and quality (0–100).");
+            }
+
+            return await vault.UpdateStoredItemAsync(steamId, recordId, itemId, amount, quality)
+                ? WebActionResult.Ok("Stored item updated; its opaque state data was preserved.")
+                : WebActionResult.Fail("Stored row not found for this player.");
+        }
+
+        private static async Task<WebActionResult> DeleteItemAsync(VaultService vault, WebActionRequest request)
+        {
+            var steamId = ValidSteamId(request.Get("steamId"));
+            if (steamId == null
+                || !long.TryParse(request.Get("recordId"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var recordId)
+                || recordId < 1)
+            {
+                return WebActionResult.Fail("Enter a valid Steam ID and record ID.");
+            }
+
+            return await vault.DeleteStoredItemAsync(steamId, recordId)
+                ? WebActionResult.Ok("Stored row deleted.")
+                : WebActionResult.Fail("Stored row not found for this player.");
+        }
+
+        private static async Task<WebActionResult> DeleteItemsAsync(VaultService vault, WebActionRequest request)
+        {
+            var steamId = ValidSteamId(request.Get("steamId"));
+            if (steamId == null
+                || !ushort.TryParse(request.Get("itemId"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var itemId)
+                || itemId == 0)
+            {
+                return WebActionResult.Fail("Enter a valid Steam ID and item ID.");
+            }
+
+            var count = await vault.DeleteStoredItemsAsync(steamId, itemId);
+            return count > 0
+                ? WebActionResult.Ok($"Deleted {count} stored row(s) with item ID {itemId}.")
+                : WebActionResult.Fail("No matching stored rows were found for this player.");
+        }
+
+        private static string? ValidSteamId(string? value)
+        {
+            if (value == null || value.Length != 17 || !ulong.TryParse(value, out var parsed) || parsed == 0)
+            {
+                return null;
+            }
+
+            return value;
         }
 
         private static WebActionResult SaveSettings(VaultConfigStore store, WebActionRequest request)

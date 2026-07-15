@@ -41,6 +41,10 @@ namespace well404.Essentials
             ["That player is not in your party."] = "该玩家不在你的队伍中。",
             ["Request teleport"] = "请求传送",
             ["Invite to party"] = "邀请组队",
+            ["Join this party?"] = "确定加入这个队伍吗？",
+            ["Leave your current party?"] = "确定退出当前队伍吗？",
+            ["Kick {0} from the party?"] = "确定把 {0} 踢出队伍吗？",
+            ["Invite {0} to your party?"] = "确定邀请 {0} 加入队伍吗？",
             ["Claim"] = "领取",
             ["Refreshes in {0}"] = "{0} 后刷新",
             ["Sleep vote"] = "睡觉投票",
@@ -110,6 +114,12 @@ namespace well404.Essentials
             ["Warps"] = "传送点",
             ["Name"] = "名称",
             ["Name used by /warp"] = "/warp 用的名称",
+            ["Label"] = "标签",
+            ["Labels become read-only player filters. Drag warp cards inside a label to set their player-panel order. Players still need permission well404.Essentials:well404.essentials.warps.<name>."]
+                = "标签会成为玩家只读过滤项；可在同一标签内拖动传送点卡片设置玩家面板顺序。玩家仍需对应的传送点权限。",
+            ["Warp order saved."] = "已保存传送点顺序。",
+            ["Missing warp order."] = "缺少传送点顺序。",
+            ["The warp list changed; refresh and try again."] = "传送点列表已变化，请刷新后重试。",
             ["Yaw"] = "朝向(yaw)",
             ["0 = use global cooldown"] = "0=用全局冷却",
             ["Players teleport with /warp <name> and also need permission well404.Essentials:well404.essentials.warps.<name>. Capture coordinates in-game with /warp set."]

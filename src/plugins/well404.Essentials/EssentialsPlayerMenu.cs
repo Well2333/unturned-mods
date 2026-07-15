@@ -116,7 +116,14 @@ namespace well404.Essentials
                 if (await m_Warps.HasAccessAsync(me, warp.Name))
                 {
                     warpCount++;
-                    cards.Add(new PlayerCard(WarpPrefix + warp.Name, "📍 " + warp.Name, null, null, new[] { new PlayerButton("go", L(lang, "Teleport")) }));
+                    cards.Add(new PlayerCard(
+                        WarpPrefix + warp.Name,
+                        "📍 " + warp.Name,
+                        null,
+                        new[] { warp.Category },
+                        new[] { new PlayerButton("go", L(lang, "Teleport")) },
+                        null, null, null, null, null,
+                        new Dictionary<string, string> { ["warpCategory"] = warp.Category }));
                 }
             }
 
@@ -142,7 +149,7 @@ namespace well404.Essentials
                 var name = NameOf(inviterId);
                 cards.Add(new PlayerCard("pinv:" + inviterId, m_Tr.Format(lang, "Party invite from {0}", name), null, null, new[]
                 {
-                    new PlayerButton("pacc", L(lang, "Accept"), "primary"),
+                    new PlayerButton("pacc", L(lang, "Accept"), "primary", null, null, null, L(lang, "Join this party?")),
                     new PlayerButton("pden", L(lang, "Deny"), "danger")
                 }));
             }
@@ -158,7 +165,7 @@ namespace well404.Essentials
                 }
 
                 cards.Add(new PlayerCard("party", "👥 " + (m_Party.GetPartyName(me) ?? L(lang, "Party")), lines, null,
-                    new[] { new PlayerButton("pleave", L(lang, "Leave party"), "danger") }));
+                    new[] { new PlayerButton("pleave", L(lang, "Leave party"), "danger", null, null, null, L(lang, "Leave your current party?")) }));
 
                 if (m_Party.IsLeader(me))
                 {
@@ -170,7 +177,7 @@ namespace well404.Essentials
                         }
 
                         cards.Add(new PlayerCard("pmember:" + member.SteamId, "👥 " + member.DisplayName, null, null,
-                            new[] { new PlayerButton("pkick", L(lang, "Kick from party"), "danger") }));
+                            new[] { new PlayerButton("pkick", L(lang, "Kick from party"), "danger", null, null, null, m_Tr.Format(lang, "Kick {0} from the party?", member.DisplayName)) }));
                     }
                 }
             }
@@ -194,7 +201,7 @@ namespace well404.Essentials
                 {
                     new PlayerButton("tpreq", L(lang, me.Player.Player.quests.isMemberOfSameGroupAs(other.Player.Player)
                         ? "Teleport" : "Request teleport")),
-                    new PlayerButton("pinvite", L(lang, "Invite to party"))
+                    new PlayerButton("pinvite", L(lang, "Invite to party"), null, null, null, null, m_Tr.Format(lang, "Invite {0} to your party?", other.DisplayName))
                 }));
             }
 

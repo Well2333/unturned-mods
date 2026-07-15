@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>2.3.0</Version>
+    <Version>2.4.0</Version>
     <Description>Personal Vault</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>

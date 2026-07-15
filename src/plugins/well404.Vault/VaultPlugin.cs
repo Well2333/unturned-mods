@@ -124,7 +124,10 @@ namespace well404.Vault
                 return;
             }
 
-            registry.RegisterModule(VaultWebPanelModule.Create(new VaultConfigStore(m_Configuration, WorkingDirectory), vault));
+            registry.RegisterModule(VaultWebPanelModule.Create(
+                new VaultConfigStore(m_Configuration, WorkingDirectory),
+                vault,
+                LifetimeScope.Resolve<OpenMod.Extensions.Games.Abstractions.Items.IItemDirectory>()));
             m_WebPanelRegistry = registry;
         }
     }

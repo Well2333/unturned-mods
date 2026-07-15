@@ -92,6 +92,61 @@ namespace well404.Vault.Tests
         }
 
         [Fact]
+        public void UpdateItem_IsPlayerScopedAndPreservesOpaqueState()
+        {
+            var store = NewStore();
+            var state = Convert.ToBase64String(new byte[] { 4, 8, 15, 16, 23, 42 });
+            store.AddItems("owner", new[]
+            {
+                new StoredItem { ItemId = 10, Amount = 1, Quality = 90, State = state, SlotCost = 2, MaxAmount = 0 }
+            });
+            var row = Assert.Single(store.Get("owner"));
+
+            Assert.False(store.UpdateItem("other", row.RecordId, 11, 2, 70, 4, 8));
+            Assert.True(store.UpdateItem("owner", row.RecordId, 11, 2, 70, 4, 8));
+
+            var updated = Assert.Single(store.Get("owner"));
+            Assert.Equal((ushort)11, updated.ItemId);
+            Assert.Equal((byte)2, updated.Amount);
+            Assert.Equal((byte)70, updated.Quality);
+            Assert.Equal(4, updated.SlotCost);
+            Assert.Equal((byte)8, updated.MaxAmount);
+            Assert.Equal(state, updated.State);
+        }
+
+        [Fact]
+        public void DeleteItem_IsPlayerScoped()
+        {
+            var store = NewStore();
+            store.AddItems("owner", new[] { new StoredItem { ItemId = 10, State = string.Empty } });
+            var row = Assert.Single(store.Get("owner"));
+
+            Assert.False(store.DeleteItem("other", row.RecordId));
+            Assert.Single(store.Get("owner"));
+            Assert.True(store.DeleteItem("owner", row.RecordId));
+            Assert.Empty(store.Get("owner"));
+        }
+
+        [Fact]
+        public void DeleteItems_DeletesOnlyMatchingItemForOnePlayer()
+        {
+            var store = NewStore();
+            store.AddItems("owner", new[]
+            {
+                new StoredItem { ItemId = 60332, State = string.Empty },
+                new StoredItem { ItemId = 60332, State = string.Empty },
+                new StoredItem { ItemId = 15, State = string.Empty }
+            });
+            store.AddItems("other", new[] { new StoredItem { ItemId = 60332, State = string.Empty } });
+
+            Assert.Equal(2, store.DeleteItems("owner", 60332));
+            Assert.Single(store.Get("owner"));
+            Assert.Equal((ushort)15, store.Get("owner")[0].ItemId);
+            Assert.Single(store.Get("other"));
+            Assert.Equal(0, store.DeleteItems("owner", 60332));
+        }
+
+        [Fact]
         public void Database_UsesWalJournalMode()
         {
             NewStore();
