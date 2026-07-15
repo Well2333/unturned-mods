@@ -75,6 +75,8 @@
   .edittitle { font-size:13px; color:var(--muted); margin-bottom:10px; }
   button.act.danger { background:var(--err); }
   button.act.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
+  .localized-name { display:inline-flex; min-width:0; flex-direction:column; vertical-align:top; }
+  .localized-secondary { color:var(--muted); font-size:10px; font-weight:400; line-height:1.25; margin-top:2px; }
   .plugin-ui-host { display:block; width:100%; }
 </style>
 </head>
@@ -119,6 +121,14 @@ const el = (tag, props={}, ...kids) => {
   for (const kid of kids) if (kid != null) n.append(kid);
   return n;
 };
+
+function localizedText(value, className="") {
+  const lines = String(value || "").split("\n").filter(Boolean);
+  const primary = lang !== "zh" && lines.length > 1 ? lines[lines.length - 1] : (lines[0] || "");
+  const node = el("span", { class:(className + " localized-name").trim() }, el("span", { text:primary }));
+  if (lang === "zh" && lines.length > 1) node.append(el("span", { class:"localized-secondary", text:lines.slice(1).join(" ") }));
+  return node;
+}
 
 // The page is served under a secret token path (…/<token>/), so every relative API call
 // carries the token automatically — there is no separate token field to fill in.
@@ -376,8 +386,8 @@ function buildCollection(module, action, card, msg) {
       return;
     }
     container.replaceChildren(...records.map(rec => {
-      const title = el("div", { class:"slot-title", text: rec.label });
-      const tagPills = (rec.tags || []).map(t => el("span", { class:"pill", text: t }));
+      const title = localizedText(rec.label, "slot-title");
+      const tagPills = (rec.tags || []).map(t => localizedText(t, "pill"));
       // Summary pills: selected field values shown as "<label>: <value>" using localized field labels.
       const sumPills = (action.summaryFields || []).map(name => {
         const v = rec.values ? rec.values[name] : undefined;
@@ -416,8 +426,8 @@ function buildCollection(module, action, card, msg) {
       (rec.groupKey || rec.group || "") === activeGroup && rec.placement !== "group-header");
     const grid = el("div", { class:"tiles tabbed" });
     for (const rec of visible) {
-      const title = el("div", { class:"slot-title", text:rec.label });
-      const pills = (rec.tags || []).map(value => el("span", { class:"pill", text:value }));
+      const title = localizedText(rec.label, "slot-title");
+      const pills = (rec.tags || []).map(value => localizedText(value, "pill"));
       for (const name of (action.summaryFields || [])) {
         const value = rec.values ? rec.values[name] : "";
         if (value === undefined || value === "") continue;
@@ -590,7 +600,7 @@ function showResult(result, msg, out, module) {
     if (hasRowAction) headCells.push(el("th", { text: "" }));
     const thead = el("thead", {}, el("tr", {}, ...headCells));
     const tbody = el("tbody", {}, ...result.rows.map((r, i) => {
-      const cells = r.map(c => el("td", { text: c }));
+      const cells = r.map(c => el("td", {}, localizedText(c)));
       if (hasRowAction) {
         const key = (result.rowKeys && result.rowKeys[i] != null) ? result.rowKeys[i] : r[0];
         const btn = el("button", { class:"act", text: result.rowActionLabel || "+",

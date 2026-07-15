@@ -8,14 +8,15 @@ using OpenMod.API.Users;
 using OpenMod.Core.Users;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Users;
+using UnturnedMods.Shared.Items;
 using UnturnedMods.Shared.WebPanel;
 
 namespace well404.Vault
 {
     /// <summary>
     /// The player-facing vault surface for the web panel: a compact list with two sections — the
-    /// player's backpack (store) and the vault contents (take). Copies that are identical (same id +
-    /// amount + quality + state) are merged into one entry. An item that has several distinct variants
+    /// player's backpack (store) and the vault contents (take). Copies with the same meaningful visible state are merged into one entry. Raw quality only
+    /// distinguishes assets whose ItemAsset.showQuality is true. An item that has several distinct variants
     /// (e.g. shell boxes with different round counts) becomes a collapsed summary card whose custom
     /// UI opens the children in a modal, so the player can act on a particular one. Every entry offers
     /// All / a typed amount / One. Driven entirely by the generic player-menu model.
@@ -84,34 +85,43 @@ namespace well404.Vault
             return new PlayerMenuView(m_Tr.Resolve("Vault", lang), header, cards, message, null, "list");
         }
 
-        // Builds one card per item id (merging identical copies). A single-variant id is a plain card;
-        // a multi-variant id is a collapsed parent whose children are shown in a modal. When allowOps is
-        // false (offline / no permission) the cards are built read-only (no action buttons).
-        private List<PlayerCard> BuildItemCards(IReadOnlyList<ItemVariant> variants, string mode, string group, IReadOnlyDictionary<string, string> names, string lang, bool allowOps)
+        // Builds one card per item id. Quality participates in the visible variant only when
+        // Unturned itself exposes it through ItemAsset.showQuality. Raw quality is still preserved in
+        // storage and restored on withdrawal; non-quality cards use a wildcard action key.
+        private List<PlayerCard> BuildItemCards(IReadOnlyList<ItemVariant> variants, string mode, string group, IReadOnlyDictionary<string, LocalizedItemInfo> names, string lang, bool allowOps)
         {
             var cards = new List<PlayerCard>();
-            foreach (var byId in variants.GroupBy(v => v.ItemId).OrderBy(g => VaultNames.NameOf(g.Key, names)))
+            foreach (var byId in variants.GroupBy(v => v.ItemId)
+                         .OrderByDescending(grouping => grouping.Sum(item => item.Count * item.SlotCost))
+                         .ThenBy(grouping => grouping.Key))
             {
                 var idStr = byId.Key.ToString(CultureInfo.InvariantCulture);
-                var name = VaultNames.NameOf(byId.Key, names);
-                var list = byId.ToList();
+                var itemInfo = LocalizedItemCatalog.Get(byId.Key, names);
+                var name = itemInfo.DisplayName(lang);
+                var showsQuality = itemInfo.ShowsQuality;
+                var list = MergeVisibleVariants(byId, showsQuality);
                 var totalCount = list.Sum(v => v.Count);
                 var totalSlots = list.Sum(v => v.Count * v.SlotCost);
+                var metadata = ItemMetadata(itemInfo, byId.Key, totalCount, totalSlots);
 
                 if (list.Count == 1)
                 {
                     var v = list[0];
-                    cards.Add(new PlayerCard(VariantKey(v), name, null,
-                        VariantTags(v, true, lang), Ops(mode, VariantKey(v), v.Count, lang, allowOps), group, "#" + idStr));
+                    var key = VariantKey(v, showsQuality);
+                    cards.Add(new PlayerCard(key, name, null,
+                        VariantTags(v, true, lang, showsQuality), Ops(mode, key, v.Count, lang, allowOps),
+                        group, "#" + idStr, null, null, null, metadata));
                     continue;
                 }
 
-                // Multiple variants → a collapsed parent ("All" of the whole item) with variant children.
                 var children = new List<PlayerCard>();
-                foreach (var v in list.OrderByDescending(x => x.Amount).ThenByDescending(x => x.Quality))
+                foreach (var v in list.OrderByDescending(x => x.Amount).ThenByDescending(x => showsQuality ? x.Quality : (byte)0))
                 {
-                    children.Add(new PlayerCard(VariantKey(v), name, null,
-                        VariantTags(v, false, lang), Ops(mode, VariantKey(v), v.Count, lang, allowOps), group));
+                    var key = VariantKey(v, showsQuality);
+                    children.Add(new PlayerCard(key, name, null,
+                        VariantTags(v, false, lang, showsQuality), Ops(mode, key, v.Count, lang, allowOps),
+                        group, null, null, null, null,
+                        ItemMetadata(itemInfo, byId.Key, v.Count, v.Count * v.SlotCost)));
                 }
 
                 var parentButtons = allowOps
@@ -121,20 +131,45 @@ namespace well404.Vault
                     idStr, name, null,
                     new[] { "×" + totalCount.ToString(CultureInfo.InvariantCulture), m_Tr.Format(lang, "{0} slots", totalSlots) },
                     parentButtons,
-                    group, "#" + idStr, children));
+                    group, "#" + idStr, children, null, null, metadata));
             }
 
             return cards;
         }
 
+        internal static IReadOnlyDictionary<string, string> ItemMetadata(
+            LocalizedItemInfo item, ushort itemId, int count, int totalSlots)
+            => new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["itemId"] = itemId.ToString(CultureInfo.InvariantCulture),
+                ["count"] = count.ToString(CultureInfo.InvariantCulture),
+                ["totalSlots"] = totalSlots.ToString(CultureInfo.InvariantCulture),
+                ["rarity"] = item.Rarity,
+                ["rarityRank"] = item.RarityRank.ToString(CultureInfo.InvariantCulture),
+                ["category"] = item.Category,
+                ["itemType"] = item.ItemType
+            };
+
+        internal static List<ItemVariant> MergeVisibleVariants(IEnumerable<ItemVariant> variants, bool showsQuality)
+            => variants
+                .GroupBy(v => (v.Amount, Quality: showsQuality ? v.Quality : (byte)0, v.State, v.SlotCost, v.MaxAmount))
+                .Select(group =>
+                {
+                    var first = group.First();
+                    return new ItemVariant(first.ItemId, first.Amount, group.Key.Quality, first.State,
+                        group.Sum(item => item.Count), first.SlotCost, first.MaxAmount);
+                })
+                .ToList();
+
         private PlayerButton[] Ops(string mode, string cardKey, int count, string lang, bool allowOps)
             => allowOps ? OpsButtons(mode, cardKey, count, lang) : Array.Empty<PlayerButton>();
 
-        private List<string> VariantTags(ItemVariant v, bool includeSlots, string lang)
+        internal static bool ShouldShowQuality(bool assetShowsQuality, byte quality)
+            => assetShowsQuality && quality < 100;
+
+        private List<string> VariantTags(ItemVariant v, bool includeSlots, string lang, bool showsQuality)
         {
             var tags = new List<string> { "×" + v.Count.ToString(CultureInfo.InvariantCulture) };
-            // Stack/ammo fill shown as a ratio (e.g. 6/8) to avoid being mistaken for the copy count;
-            // fall back to the raw figure if the capacity is unknown.
             if (v.MaxAmount > 1)
             {
                 tags.Add(v.Amount.ToString(CultureInfo.InvariantCulture) + "/" + v.MaxAmount.ToString(CultureInfo.InvariantCulture));
@@ -144,7 +179,7 @@ namespace well404.Vault
                 tags.Add(m_Tr.Format(lang, "Amount {0}", v.Amount));
             }
 
-            if (v.Quality < 100)
+            if (ShouldShowQuality(showsQuality, v.Quality))
             {
                 tags.Add(m_Tr.Format(lang, "Durability {0}%", v.Quality));
             }
@@ -252,7 +287,7 @@ namespace well404.Vault
                 return PlayerActionResult.Fail(m_Tr.Resolve("Item not found.", lang));
             }
 
-            var name = VaultNames.NameOf(itemId, names);
+            var name = VaultNames.NameOf(itemId, names, lang);
 
             if (mode == "store")
             {
@@ -288,28 +323,35 @@ namespace well404.Vault
             return PlayerActionResult.Fail(m_Tr.Resolve("Unknown action.", lang));
         }
 
-        // ----- variant key encoding ("id|amount|quality|base64state") -----
+        // ----- variant key encoding ("id|amount|quality-or-*|base64state") -----
 
-        private static string VariantKey(ItemVariant v)
+        internal static string VariantKey(ItemVariant v, bool showsQuality)
             => v.ItemId.ToString(CultureInfo.InvariantCulture) + "|" + ((int)v.Amount).ToString(CultureInfo.InvariantCulture)
-               + "|" + ((int)v.Quality).ToString(CultureInfo.InvariantCulture) + "|" + v.State;
+               + "|" + (showsQuality ? ((int)v.Quality).ToString(CultureInfo.InvariantCulture) : "*") + "|" + v.State;
 
-        private static (ushort itemId, byte amount, byte quality, string stateBase64, byte[] state)? ParseVariant(string cardKey)
+        internal static (ushort itemId, byte amount, byte? quality, string stateBase64, byte[] state)? ParseVariant(string cardKey)
         {
-            if (cardKey.IndexOf('|') < 0)
+            if (cardKey.IndexOf("|", StringComparison.Ordinal) < 0)
             {
                 return null;
             }
 
-            // Limit to 4 so the (base64) state — the last field — is kept whole, exactly mirroring the
-            // 4-field encoder in VariantKey.
-            var parts = cardKey.Split(new[] { '|' }, 4, StringSplitOptions.None);
+            var parts = cardKey.Split(new[] { "|" }, 4, StringSplitOptions.None);
             if (parts.Length < 4
                 || !ushort.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
-                || !byte.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount)
-                || !byte.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var quality))
+                || !byte.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount))
             {
                 return null;
+            }
+
+            byte? quality = null;
+            if (!string.Equals(parts[2], "*", StringComparison.Ordinal))
+            {
+                if (!byte.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedQuality))
+                {
+                    return null;
+                }
+                quality = parsedQuality;
             }
 
             var stateBase64 = parts[3];

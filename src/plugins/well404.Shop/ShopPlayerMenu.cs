@@ -114,7 +114,7 @@ namespace well404.Shop
                 }
 
                 var groupName = GroupName(entry.Group);
-                cards.Add(new PlayerCard(entry.Id, ShopNames.NameOf(entry.ItemId, names),
+                cards.Add(new PlayerCard(entry.Id, ShopNames.NameOf(entry.ItemId, names, lang),
                     lines, null, buttons, groupName,
                     "#" + entry.ItemId.ToString(CultureInfo.InvariantCulture),
                     null, null, entry.Group));
@@ -153,7 +153,7 @@ namespace well404.Shop
             }
 
             var names = await ShopNames.BuildMapAsync(m_ItemDirectory);
-            var name = ShopNames.DisplayName(entry, names);
+            var name = ShopNames.DisplayName(entry, names, lang);
             switch (actionId)
             {
                 case "buy": return await BuyAsync(user, entry, name, all ? (int?)null : parsed, lang);

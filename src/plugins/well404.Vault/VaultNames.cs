@@ -1,9 +1,7 @@
-using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Threading.Tasks;
-using Cysharp.Threading.Tasks;
 using OpenMod.Extensions.Games.Abstractions.Items;
+using UnturnedMods.Shared.Items;
 
 namespace well404.Vault
 {
@@ -15,27 +13,13 @@ namespace well404.Vault
     /// </summary>
     internal static class VaultNames
     {
-        public static async Task<IReadOnlyDictionary<string, string>> BuildMapAsync(IItemDirectory itemDirectory)
-        {
-            await UniTask.SwitchToMainThread();
-            var assets = await itemDirectory.GetItemAssetsAsync();
-            var names = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var asset in assets)
-            {
-                var assetId = asset.ItemAssetId;
-                if (assetId != null && !names.ContainsKey(assetId))
-                {
-                    names[assetId] = asset.ItemName ?? string.Empty;
-                }
-            }
+        public static Task<IReadOnlyDictionary<string, LocalizedItemInfo>> BuildMapAsync(IItemDirectory itemDirectory)
+            => LocalizedItemCatalog.BuildAsync(itemDirectory);
 
-            return names;
-        }
+        public static string NameOf(ushort itemId, IReadOnlyDictionary<string, LocalizedItemInfo> names, string language = "en")
+            => LocalizedItemCatalog.DisplayName(itemId, names, language);
 
-        public static string NameOf(ushort itemId, IReadOnlyDictionary<string, string> names)
-        {
-            var id = itemId.ToString(CultureInfo.InvariantCulture);
-            return names.TryGetValue(id, out var n) && n.Length > 0 ? n : "#" + id;
-        }
+        public static bool ShowsQuality(ushort itemId, IReadOnlyDictionary<string, LocalizedItemInfo> names)
+            => LocalizedItemCatalog.Get(itemId, names).ShowsQuality;
     }
 }

@@ -52,6 +52,18 @@ namespace well404.WebPanel.Tests
             Assert.Contains("candidate.includes(\"..\")", html);
         }
 
+        [Theory]
+        [InlineData(".index.html")]
+        [InlineData(".player.html")]
+        public void GenericRenderer_SupportsLocalizedPrimaryAndSecondaryNames(string suffix)
+        {
+            var html = ReadHtml(suffix);
+
+            Assert.Contains("function localizedText(value, className=\"\")", html);
+            Assert.Contains("localized-secondary", html);
+            Assert.Contains("lines[lines.length - 1]", html);
+        }
+
         private static string ReadHtml(string suffix)
         {
             var assembly = typeof(WebPanelPlugin).Assembly;

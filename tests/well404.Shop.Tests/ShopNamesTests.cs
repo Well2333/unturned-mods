@@ -1,3 +1,4 @@
+using UnturnedMods.Shared.Items;
 using well404.Shop;
 using Xunit;
 
@@ -13,12 +14,12 @@ namespace well404.Shop.Tests
             => Assert.Equal(expected, ShopNames.ParseName(input));
 
         [Fact]
-        public void Combine_PrefersBilingualNameAndFallsBackToEnglish()
+        public void DisplayName_UsesBilingualChineseAndEnglishOnlyForEnglishUi()
         {
-            Assert.Equal("瓶装水 (Bottled Water)",
-                ShopNames.Combine("Bottled Water", "瓶装水", null));
-            Assert.Equal("Bottled Water",
-                ShopNames.Combine("Bottled Water", null, "ignored"));
+            var item = new LocalizedItemInfo("Bottled Water", "瓶装水", false);
+
+            Assert.Equal("瓶装水\nBottled Water", item.DisplayName("zh"));
+            Assert.Equal("Bottled Water", item.DisplayName("en"));
         }
     }
 }

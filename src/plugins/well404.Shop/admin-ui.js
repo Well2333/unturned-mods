@@ -17,6 +17,7 @@ const L=zh?{
   buy:"Buy",sell:"Sell",saved:"Saved.",deleted:"Deleted.",orderSaved:"Order saved.",loading:"Loading…",requestFailed:"Request failed.",defaultGroupLocked:"The default group cannot be deleted."
 };
 const make=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=text;return node};
+const localizedName=text=>{const lines=String(text||"").split("\n").filter(Boolean),wrap=make("span","name-copy");const primary=!zh&&lines.length>1?lines[lines.length-1]:(lines[0]||"");wrap.append(make("span","name-primary",primary));if(zh&&lines.length>1)wrap.append(make("span","name-secondary",lines.slice(1).join(" ")));return wrap};
 const $=selector=>root.querySelector(selector);
 const modulePath=id=>`api/modules/${panel.encode(panel.module.id)}/${panel.encode(id)}`;
 const state={groups:[],records:[],activeGroup:"",dragKey:"",loading:false};
@@ -116,7 +117,7 @@ function productCard(record,visible){
   const card=make("article","product-card"),title=make("div","product-name");
   const values=record.values||{};
   const badge=`#${values.itemId||record.key.slice(5)}`;
-  title.append(make("span","badge",badge),document.createTextNode(record.label||badge));
+  title.append(make("span","badge",badge),localizedName(record.label||badge));
   card.append(title,make("div","product-note",values.note||""));
   const meta=make("div","meta");
   for(const tag of record.tags||[]){
@@ -367,7 +368,8 @@ async function searchItems(){
       add.onclick=()=>openProductModal(null,{
         itemId:id,group:state.activeGroup,note:"",buyPrice:"0",sellPrice:"0",searchName:name
       });
-      card.append(make("span","search-id",`#${id}`),make("span","search-name",name),add);
+      const displayName=localizedName(name);displayName.classList.add("search-name");
+      card.append(make("span","search-id","#"+id),displayName,add);
       results.append(card);
     }
   }catch(error){

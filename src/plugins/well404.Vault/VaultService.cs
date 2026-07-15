@@ -21,7 +21,7 @@ namespace well404.Vault
     }
 
     /// <summary>
-    /// A distinct item variant (a group of copies with identical id + amount + quality + state) and
+    /// A raw item variant (copies with identical id + amount + quality + state) and
     /// how many copies of it there are. <see cref="State"/> is the base64 of the raw item state.
     /// </summary>
     public readonly struct ItemVariant
@@ -205,9 +205,11 @@ namespace well404.Vault
         public Task<StoreResult> StoreAsync(UnturnedUser user, ushort itemId, int amount)
             => StoreMatchingAsync(user, itemId, _ => true, amount);
 
-        /// <summary>Stores up to <paramref name="count"/> copies matching an exact variant.</summary>
-        public Task<StoreResult> StoreVariantAsync(UnturnedUser user, ushort itemId, byte amount, byte quality, byte[] state, int count)
-            => StoreMatchingAsync(user, itemId, it => it.amount == amount && it.quality == quality && BytesEqual(it.state, state), count);
+        /// <summary>Stores up to <paramref name="count"/> copies matching amount and state; quality is optional for assets that do not expose durability.</summary>
+        public Task<StoreResult> StoreVariantAsync(UnturnedUser user, ushort itemId, byte amount, byte? quality, byte[] state, int count)
+            => StoreMatchingAsync(user, itemId, it => it.amount == amount
+                && (!quality.HasValue || it.quality == quality.Value)
+                && BytesEqual(it.state, state), count);
 
         private async Task<StoreResult> StoreMatchingAsync(UnturnedUser user, ushort itemId, Func<Item, bool> matches, int amount)
         {
@@ -297,9 +299,10 @@ namespace well404.Vault
         public Task<int> TakeAsync(UnturnedUser user, ushort itemId, int amount)
             => TakeMatchingAsync(user, x => x.ItemId == itemId, amount);
 
-        /// <summary>Withdraws up to <paramref name="count"/> copies matching an exact variant.</summary>
-        public Task<int> TakeVariantAsync(UnturnedUser user, ushort itemId, byte amount, byte quality, string state, int count)
-            => TakeMatchingAsync(user, x => x.ItemId == itemId && x.Amount == amount && x.Quality == quality
+        /// <summary>Withdraws up to <paramref name="count"/> copies matching amount and state; quality is optional for assets that do not expose durability.</summary>
+        public Task<int> TakeVariantAsync(UnturnedUser user, ushort itemId, byte amount, byte? quality, string state, int count)
+            => TakeMatchingAsync(user, x => x.ItemId == itemId && x.Amount == amount
+                && (!quality.HasValue || x.Quality == quality.Value)
                 && string.Equals(x.State, state, StringComparison.Ordinal), count);
 
         private async Task<int> TakeMatchingAsync(UnturnedUser user, Func<StoredItem, bool> matches, int amount)

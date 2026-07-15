@@ -99,7 +99,7 @@ namespace UnturnedMods.Shared.WebPanel
             string? group = null,
             string? badge = null,
             IReadOnlyList<PlayerCard>? children = null)
-            : this(key, label, lines, tags, buttons, group, badge, children, null, null)
+            : this(key, label, lines, tags, buttons, group, badge, children, null, null, null)
         {
         }
 
@@ -114,6 +114,22 @@ namespace UnturnedMods.Shared.WebPanel
             IReadOnlyList<PlayerCard>? children,
             string? placement,
             string? groupKey)
+            : this(key, label, lines, tags, buttons, group, badge, children, placement, groupKey, null)
+        {
+        }
+
+        public PlayerCard(
+            string key,
+            string label,
+            IReadOnlyList<string>? lines,
+            IReadOnlyList<string>? tags,
+            IReadOnlyList<PlayerButton>? buttons,
+            string? group,
+            string? badge,
+            IReadOnlyList<PlayerCard>? children,
+            string? placement,
+            string? groupKey,
+            IReadOnlyDictionary<string, string>? metadata)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
             Label = label ?? throw new ArgumentNullException(nameof(label));
@@ -125,6 +141,7 @@ namespace UnturnedMods.Shared.WebPanel
             Children = children ?? Array.Empty<PlayerCard>();
             Placement = placement;
             GroupKey = groupKey;
+            Metadata = metadata ?? new Dictionary<string, string>();
         }
 
         /// <summary>Identifies the entry; passed back as the <c>cardKey</c> on a button action.</summary>
@@ -164,6 +181,12 @@ namespace UnturnedMods.Shared.WebPanel
         public string? Placement { get; }
 
         public string? GroupKey { get; }
+
+        /// <summary>
+        /// Optional non-sensitive presentation metadata for plugin-owned player UIs. The WebPanel
+        /// host serializes these stable string values but does not interpret them.
+        /// </summary>
+        public IReadOnlyDictionary<string, string> Metadata { get; }
     }
 
     /// <summary>The rendered state of a player menu (one tab).</summary>

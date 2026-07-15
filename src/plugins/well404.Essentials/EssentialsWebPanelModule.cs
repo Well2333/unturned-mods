@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using OpenMod.Extensions.Games.Abstractions.Items;
+using UnturnedMods.Shared.Items;
 using UnturnedMods.Shared.WebPanel;
 using well404.Essentials.Warps;
 
@@ -252,7 +253,7 @@ namespace well404.Essentials
         private static async Task<IReadOnlyList<WebRecord>> LoadGiftRecordsAsync(
             EssentialsConfigStore store, IItemDirectory itemDirectory)
         {
-            var names = await BuildNameMapAsync(itemDirectory);
+            var names = await LocalizedItemCatalog.BuildAsync(itemDirectory);
 
             var records = new List<WebRecord>();
             foreach (var gift in store.Gifts)
@@ -262,7 +263,7 @@ namespace well404.Essentials
                 foreach (var item in gift.Items)
                 {
                     rawParts.Add(Raw(item.ItemId, item.Amount));
-                    pills.Add(FormatItem(item.ItemId, item.Amount, names));
+                    pills.Add(FormatItem(item.ItemId, item.Amount, names, "zh"));
                 }
 
                 if (!string.IsNullOrWhiteSpace(gift.Permission))
@@ -345,6 +346,7 @@ namespace well404.Essentials
 
             await UniTask.SwitchToMainThread();
             var assets = await itemDirectory.GetItemAssetsAsync();
+            var names = await LocalizedItemCatalog.BuildAsync(itemDirectory);
 
             var rows = new List<IReadOnlyList<string>>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -359,7 +361,10 @@ namespace well404.Essentials
                 {
                     if (string.Equals(asset.ItemAssetId, trimmed, StringComparison.Ordinal))
                     {
-                        rows.Add(new[] { asset.ItemAssetId ?? string.Empty, asset.ItemName ?? string.Empty });
+                        var exactId = asset.ItemAssetId ?? string.Empty;
+                        var exactName = names.TryGetValue(exactId, out var exactInfo)
+                            ? exactInfo.DisplayName(request.Language) : asset.ItemName ?? string.Empty;
+                        rows.Add(new[] { exactId, exactName });
                         seen.Add(trimmed);
                         break;
                     }
@@ -369,14 +374,17 @@ namespace well404.Essentials
             foreach (var asset in assets)
             {
                 var assetId = asset.ItemAssetId ?? string.Empty;
-                var itemName = asset.ItemName ?? string.Empty;
+                var hasResolvedName = names.TryGetValue(assetId, out var resolvedName);
+                var itemName = hasResolvedName
+                    ? resolvedName!.DisplayName(request.Language) : asset.ItemName ?? string.Empty;
                 if (seen.Contains(assetId))
                 {
                     continue;
                 }
 
                 var match = assetId.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0
-                    || itemName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                    || (hasResolvedName ? resolvedName!.Matches(query)
+                        : itemName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0);
                 if (!match)
                 {
                     continue;
@@ -397,33 +405,16 @@ namespace well404.Essentials
             return WebActionResult.Table(new[] { "Item ID", "Name" }, rows, message);
         }
 
-        private static async Task<IReadOnlyDictionary<string, string>> BuildNameMapAsync(IItemDirectory itemDirectory)
-        {
-            await UniTask.SwitchToMainThread();
-            var assets = await itemDirectory.GetItemAssetsAsync();
-            var names = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var asset in assets)
-            {
-                var assetId = asset.ItemAssetId;
-                if (assetId != null && !names.ContainsKey(assetId))
-                {
-                    names[assetId] = asset.ItemName ?? string.Empty;
-                }
-            }
-
-            return names;
-        }
-
         private static string Raw(ushort itemId, int amount)
             => itemId.ToString(CultureInfo.InvariantCulture) + "x" + amount.ToString(CultureInfo.InvariantCulture);
 
-        private static string FormatItem(ushort itemId, int amount, IReadOnlyDictionary<string, string> names)
+        private static string FormatItem(ushort itemId, int amount, IReadOnlyDictionary<string, LocalizedItemInfo> names, string language)
         {
             var id = itemId.ToString(CultureInfo.InvariantCulture);
             var qty = amount.ToString(CultureInfo.InvariantCulture);
-            return names.TryGetValue(id, out var name) && name.Length > 0
-                ? $"{name}({id})*{qty}"
-                : $"{id}*{qty}";
+            var display = LocalizedItemCatalog.DisplayName(itemId, names, language);
+            return string.Join("\n", display.Split(new[] { "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(name => name + "(" + id + ")*" + qty));
         }
 
         /// <summary>Parses an "items" string (comma/semicolon separated <c>itemId</c> or <c>itemId×amount</c>).</summary>

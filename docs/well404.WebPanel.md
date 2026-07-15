@@ -22,7 +22,7 @@ Collection schema 还可声明分组标签和 reorder handler:管理页会以响
 `admin-language.yaml`(单值);因此即使管理面 URL(快速隧道域名)每次重启变化、浏览器 localStorage 丢失,
 下次打开仍沿用上次所选语言(旧的 `*.txt` 会在首次加载时自动迁移为 `.yaml`)。给开发者:网页文案用
 `IWebTranslationRegistry`(英文源串为键 + 中文映射表),详见
-[development-standards.md §9](../memory/guidelines/development-standards.md)。
+[development-standards.md §9](../memory/guidelines/development-standards.md)。物品名称统一由共享目录解析：中文界面显示中文主标题，英文名在下一行以灰色小字参考；英文界面只显示英文名。
 
 ## UI 扩展与自动刷新
 
@@ -32,6 +32,10 @@ HTML/CSS/JavaScript 作为程序集资源注册，WebPanel 会在 Shadow DOM 中
 
 两个面板默认每 5 秒刷新安全数据。页面隐藏、存在弹窗或输入框正在编辑时会暂停，避免覆盖未保存
 内容；手动刷新按钮始终保留。可在 web 配置段设置 refreshIntervalSeconds，设为 0 关闭自动刷新。
+
+插件自建玩家 UI 可通过 `PlayerCard.Metadata` 为卡片附加非敏感字符串键值。WebPanel 将其作为
+JSON `metadata` 对象原样传给 Shadow DOM 运行时，并按键稳定序列化，但不解释任何插件字段。
+旧的 8 参数与 10 参数 `PlayerCard` 构造函数仍保留；需要元数据时使用新增重载。
 
 ## 安装
 

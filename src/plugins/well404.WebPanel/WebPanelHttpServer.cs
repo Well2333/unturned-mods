@@ -690,6 +690,9 @@ namespace well404.WebPanel
                     .Append("\"groupKey\":").Append(Json.Encode(card.GroupKey)).Append(',')
                     .Append("\"badge\":").Append(Json.Encode(card.Badge)).Append(',')
                     .Append("\"placement\":").Append(Json.Encode(card.Placement)).Append(',')
+                    .Append("\"metadata\":");
+                AppendStringDictionary(sb, card.Metadata);
+                sb.Append(',')
                     .Append("\"lines\":");
                 AppendStringArray(sb, card.Lines);
                 sb.Append(",\"tags\":");
@@ -733,6 +736,25 @@ namespace well404.WebPanel
             }
 
             sb.Append(']');
+        }
+
+        private static void AppendStringDictionary(
+            StringBuilder sb, IReadOnlyDictionary<string, string> values)
+        {
+            sb.Append('{');
+            var first = true;
+            foreach (var pair in values.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                if (!first)
+                {
+                    sb.Append(',');
+                }
+
+                first = false;
+                sb.Append(Json.Encode(pair.Key)).Append(':').Append(Json.Encode(pair.Value));
+            }
+
+            sb.Append('}');
         }
 
         private static string? GetPlayerToken(HttpListenerRequest request)

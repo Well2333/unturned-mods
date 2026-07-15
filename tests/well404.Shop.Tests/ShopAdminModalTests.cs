@@ -22,6 +22,8 @@ namespace well404.Shop.Tests
             Assert.Contains("pressedOutside&&releasedOutside", script);
             Assert.DoesNotContain("overlay.onclick", script);
             Assert.Contains("aria-modal", script);
+            Assert.Contains("const localizedName=text=>", script);
+            Assert.Contains("name-secondary", script);
         }
 
         [Theory]
@@ -39,6 +41,7 @@ namespace well404.Shop.Tests
 
             Assert.Contains("grid-template-columns:repeat(6,minmax(0,1fr))", css);
             Assert.Contains("max-width:1280px", css);
+            Assert.Contains(".name-secondary", css);
         }
     }
 }

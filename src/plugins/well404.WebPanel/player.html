@@ -36,6 +36,7 @@
   .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; min-width:0; transition:border-color .12s, box-shadow .12s, transform .12s; }
   .card:hover { border-color:#4a4d55; box-shadow:0 4px 14px rgba(0,0,0,.25); }
   .card h3 { margin:0 0 8px; font-size:15px; }
+  .card-title { margin:0 0 8px; font-size:15px; font-weight:700; }
   .card .lines { color:var(--muted); font-size:13px; margin:0 0 8px; }
   .card .lines div { margin:2px 0; }
   .pills { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 10px; }
@@ -90,6 +91,8 @@
   .pmodal .qchoices button { padding:9px 5px; }
   .pmodal .pmbtns { display:flex; gap:8px; margin-top:14px; justify-content:flex-end; }
   button.act.ghost { background:transparent; }
+  .localized-name { display:inline-flex; min-width:0; flex-direction:column; vertical-align:top; }
+  .localized-secondary { color:var(--muted); font-size:10px; font-weight:400; line-height:1.25; margin-top:2px; }
   .plugin-ui-host { display:block; width:100%; }
   @media (max-width:900px){ .plist.three { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   @media (max-width:620px){ .plist.three { grid-template-columns:1fr; } }
@@ -149,6 +152,14 @@ function el(tag, attrs={}, ...children) {
     else if (v !== null && v !== undefined) node.setAttribute(k, v);
   }
   for (const c of children) if (c) node.append(c);
+  return node;
+}
+
+function localizedText(value, className="") {
+  const lines = String(value || "").split("\n").filter(Boolean);
+  const primary = lang !== "zh" && lines.length > 1 ? lines[lines.length - 1] : (lines[0] || "");
+  const node = el("span", { class:(className + " localized-name").trim() }, el("span", { text:primary }));
+  if (lang === "zh" && lines.length > 1) node.append(el("span", { class:"localized-secondary", text:lines.slice(1).join(" ") }));
   return node;
 }
 
@@ -397,8 +408,8 @@ function buildRow(menu, card) {
   const row = el("div", { class: "prow" });
   const top = el("div", { class: "ptop" });
   if (card.badge) top.append(el("span", { class: "badge", text: card.badge }));
-  if (card.label) top.append(el("span", { class: "nm", text: card.label }));
-  if (hasTags) { const mid = el("div", { class: "mid" }); for (const t of card.tags) mid.append(el("span", { class: "pill", text: t })); top.append(mid); }
+  if (card.label) top.append(localizedText(card.label, "nm"));
+  if (hasTags) { const mid = el("div", { class: "mid" }); for (const t of card.tags) mid.append(localizedText(t, "pill")); top.append(mid); }
   row.append(top);
   if (card.lines && card.lines.length) {
     row.append(el("div", { class:"rowlines" }, ...card.lines.map(line => el("span", { text:line }))));
@@ -429,9 +440,9 @@ function buildRow(menu, card) {
 
 function buildCard(menu, card) {
   // A card with no buttons and a "cmds:" key prefix is rendered as a command list (intro page).
-  const node = el("div", { class: "card" }, el("h3", { text: card.label }));
+  const node = el("div", { class: "card" }, localizedText(card.label, "card-title"));
   if (card.lines && card.lines.length) node.append(el("div", { class: "lines" }, ...card.lines.map(l => el("div", { text: l }))));
-  if (card.tags && card.tags.length) node.append(el("div", { class: "pills" }, ...card.tags.map(t => el("span", { class: "pill", text: t }))));
+  if (card.tags && card.tags.length) node.append(el("div", { class: "pills" }, ...card.tags.map(t => localizedText(t, "pill"))));
   if (card.buttons && card.buttons.length) {
     node.append(el("div", { class: "btns" }, ...card.buttons.map(b => {
       const btn = el("button", { class: "act " + (b.style || ""), text: b.label, onclick: () => invoke(menu, card, b, btn) });

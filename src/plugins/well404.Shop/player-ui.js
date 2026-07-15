@@ -1,5 +1,6 @@
 const root=panel.root.querySelector("#shop"),view=panel.view,cards=view.cards||[],zh=panel.lang==="zh";
 const make=(t,c,x)=>{const n=document.createElement(t);if(c)n.className=c;if(x!=null)n.textContent=x;return n};
+const localizedName=text=>{const lines=String(text||"").split("\n").filter(Boolean),wrap=make("span","name-copy");const primary=!zh&&lines.length>1?lines[lines.length-1]:(lines[0]||"");wrap.append(make("span","name-primary",primary));if(zh&&lines.length>1)wrap.append(make("span","name-secondary",lines.slice(1).join(" ")));return wrap};
 const top=make("div","top"),balance=make("div","balance",view.header||view.title);top.append(balance);if(view.message)top.append(make("div","notice",view.message));root.append(top);
 const groups=[];for(const c of cards){const key=c.groupKey||c.group||"default";if(!groups.some(g=>g.key===key))groups.push({key,label:c.group||key})}
 const stateKey="well404.shop.player.group";let saved="";try{saved=sessionStorage.getItem(stateKey)||""}catch{}
@@ -11,7 +12,7 @@ function paint(){
   const visible=cards.filter(c=>(c.groupKey||c.group||"default")===active);
   for(const c of visible.filter(c=>c.placement==="group-header"))for(const b of c.buttons||[])bar.append(button(c,b));
   for(const c of visible.filter(c=>c.placement!=="group-header")){
-    const item=make("article","item"),name=make("div","name");if(c.badge)name.append(make("span","badge",c.badge));name.append(document.createTextNode(c.label));item.append(name);
+    const item=make("article","item"),name=make("div","name");if(c.badge)name.append(make("span","badge",c.badge));name.append(localizedName(c.label));item.append(name);
     if(c.lines?.length)item.append(make("div","lines",c.lines.join(" · ")));
     if(c.tags?.length){const tags=make("div","tags");c.tags.forEach(x=>tags.append(make("span","tag",x)));item.append(tags)}
     const actions=make("div","actions");for(const b of c.buttons||[])actions.append(button(c,b));item.append(actions);grid.append(item)

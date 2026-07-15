@@ -179,7 +179,7 @@ namespace well404.Shop
             {
                 var id = item.ItemId.ToString(CultureInfo.InvariantCulture);
                 ordered.Add(new KeyValuePair<int, WebRecord>(item.Order,
-                    new WebRecord("item:" + id, ShopNames.NameOf(item.ItemId, names),
+                    new WebRecord("item:" + id, ShopNames.NameOf(item.ItemId, names, "zh"),
                         new Dictionary<string, string>
                         {
                             ["itemId"] = id,
@@ -395,7 +395,7 @@ namespace well404.Shop
                     {
                         var exactId = asset.ItemAssetId ?? string.Empty;
                         rows.Add(new[] { exactId,
-                            names.TryGetValue(exactId, out var exactName) ? exactName : asset.ItemName ?? string.Empty });
+                            names.TryGetValue(exactId, out var exactName) ? exactName.DisplayName(request.Language) : asset.ItemName ?? string.Empty });
                         seen.Add(trimmed);
                         break;
                     }
@@ -405,15 +405,17 @@ namespace well404.Shop
             foreach (var asset in assets)
             {
                 var assetId = asset.ItemAssetId ?? string.Empty;
-                var itemName = names.TryGetValue(assetId, out var resolvedName)
-                    ? resolvedName : asset.ItemName ?? string.Empty;
+                var hasResolvedName = names.TryGetValue(assetId, out var resolvedName);
+                var itemName = hasResolvedName
+                    ? resolvedName!.DisplayName(request.Language) : asset.ItemName ?? string.Empty;
                 if (seen.Contains(assetId))
                 {
                     continue;
                 }
 
                 var match = assetId.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0
-                    || itemName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                    || (hasResolvedName ? resolvedName!.Matches(query)
+                        : itemName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0);
                 if (!match)
                 {
                     continue;

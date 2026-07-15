@@ -15,7 +15,7 @@
     <IsPackable>true</IsPackable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>well404.UnturnedMods.Shared</PackageId>
-    <Version>1.1.0</Version>
+    <Version>1.3.0</Version>
     <Description>Shared runtime abstractions for the well404 OpenMod plugin family.</Description>
     <PackageTags>openmod unturned well404 shared abstractions</PackageTags>
   </PropertyGroup>
