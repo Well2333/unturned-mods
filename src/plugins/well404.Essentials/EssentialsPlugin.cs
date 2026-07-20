@@ -105,8 +105,9 @@ namespace well404.Essentials
 
             var store = LifetimeScope.Resolve<EssentialsConfigStore>();
             var warps = LifetimeScope.Resolve<WarpService>();
+            var warpMap = LifetimeScope.Resolve<WarpMapService>();
             var itemDirectory = LifetimeScope.Resolve<IItemDirectory>();
-            registry.RegisterModule(EssentialsWebPanelModule.Create(store, warps, itemDirectory));
+            registry.RegisterModule(EssentialsWebPanelModule.Create(store, warps, warpMap, itemDirectory));
             m_WebPanelRegistry = registry;
             m_Logger.LogInformation("Essentials: registered the management module with the web panel.");
         }
@@ -128,7 +129,9 @@ namespace well404.Essentials
 
             var menu = new EssentialsPlayerMenu(
                 LifetimeScope.Resolve<PlayerDataStore>(),
+                LifetimeScope.Resolve<EssentialsConfigStore>(),
                 LifetimeScope.Resolve<WarpService>(),
+                LifetimeScope.Resolve<WarpMapService>(),
                 LifetimeScope.Resolve<TeleportService>(),
                 LifetimeScope.Resolve<TeleportRequestManager>(),
                 LifetimeScope.Resolve<PartyInviteManager>(),

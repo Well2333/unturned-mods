@@ -59,15 +59,15 @@ namespace well404.Vault.Tests
         [InlineData("SIGHT", "attachments")]
         [InlineData("STRUCTURE", "building")]
         [InlineData("TIRE", "vehicles")]
+        [InlineData("CLOUD", "other")]
         [InlineData("FUTURE_WORKSHOP_TYPE", "other")]
-        public void NativeItemTypes_MapToStableFilters(string itemType, string expected)
+        public void NativeItemTypes_MapToBroadFilters(string itemType, string expected)
             => Assert.Equal(expected, LocalizedItemCatalog.CategoryForType(itemType));
 
         [Fact]
-        public void AmmoSupplyBlueprint_OverridesGenericMaterialCategory()
+        public void SupplyCategory_IsDeterminedOnlyByNativeItemType()
         {
-            Assert.Equal("materials", LocalizedItemCatalog.CategoryForType("SUPPLY", false));
-            Assert.Equal("ammunition", LocalizedItemCatalog.CategoryForType("SUPPLY", true));
+            Assert.Equal("materials", LocalizedItemCatalog.CategoryForType("SUPPLY"));
         }
 
 
@@ -89,7 +89,7 @@ namespace well404.Vault.Tests
                 "Military Magazine", "军用弹匣", false,
                 "MAGAZINE", "rare", 2, "ammunition");
 
-            var metadata = VaultPlayerMenu.ItemMetadata(item, 6, 9, 18);
+            var metadata = VaultPlayerMenu.ItemMetadata(item, 6, 9, 18, "personal", "backpack", "backpack");
 
             Assert.Equal("6", metadata["itemId"]);
             Assert.Equal("9", metadata["count"]);
@@ -98,6 +98,47 @@ namespace well404.Vault.Tests
             Assert.Equal("2", metadata["rarityRank"]);
             Assert.Equal("ammunition", metadata["category"]);
             Assert.Equal("MAGAZINE", metadata["itemType"]);
+            Assert.Equal("backpack", metadata["inventoryContainer"]);
+        }
+
+        [Fact]
+        public void CarriedInventoryContainers_RemainDistinctAndAreEncodedInActionKeys()
+        {
+            var backpack = new ItemVariant(43, 40, 100, string.Empty, 2, 4, 40, 3);
+            var pants = new ItemVariant(43, 40, 100, string.Empty, 1, 4, 40, 6);
+
+            var merged = VaultPlayerMenu.MergeVisibleVariants(new[] { backpack, pants }, false);
+
+            Assert.Equal(2, merged.Count);
+            Assert.Equal("43|40|*||3", VaultPlayerMenu.VariantKey(backpack, false));
+            Assert.Equal((byte)3, VaultPlayerMenu.ParseVariant("43|40|*||3")!.Value.inventoryPage);
+            Assert.Equal("43@3", VaultPlayerMenu.ItemContainerKey(43, 3));
+        }
+
+        [Fact]
+        public void DuplicateIds_SelectTheAssetChosenByUnturnedRegardlessOfDirectoryOrder()
+        {
+            var wrongAsset = new object();
+            var authoritativeAsset = new object();
+            var wrong = new Candidate("wrong", wrongAsset);
+            var expected = new Candidate("authoritative", authoritativeAsset);
+
+            var selected = LocalizedItemCatalog.SelectAuthoritativeCandidate(
+                new[] { wrong, expected }, authoritativeAsset, candidate => candidate.Asset);
+
+            Assert.Same(expected, selected);
+        }
+
+        private sealed class Candidate
+        {
+            public Candidate(string name, object asset)
+            {
+                Name = name;
+                Asset = asset;
+            }
+
+            public string Name { get; }
+            public object Asset { get; }
         }
 
     }

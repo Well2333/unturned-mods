@@ -1,0 +1,235 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "互动式传送点地图技术可行性报告",
+    "description": "验证在 Essentials 传送界面中显示当前地图并叠加可点击传送点的可行性、架构、风险与实施边界。",
+    "generatedAt": "2026-07-19T00:00:00+08:00",
+    "charts": [
+      {
+        "id": "map_asset_sizes",
+        "title": "Chart.png 更适合作为网页默认底图",
+        "subtitle": "三张内置地图样本中，Map.png 的体积约为 Chart.png 的 15 至 21 倍。",
+        "type": "bar",
+        "dataset": "map_asset_sizes",
+        "sourceId": "map_asset_sample",
+        "encodings": {
+          "x": { "field": "map", "type": "nominal", "label": "地图" },
+          "y": { "field": "size_mib", "type": "quantitative", "label": "文件大小（MiB）", "format": "number" },
+          "color": { "field": "asset", "type": "nominal", "label": "图片类型" },
+          "tooltip": [
+            { "field": "dimensions", "type": "nominal", "label": "像素尺寸" },
+            { "field": "bytes", "type": "quantitative", "label": "字节数", "format": "number" }
+          ]
+        },
+        "yAxisTitle": "文件大小（MiB）",
+        "valueFormat": "number",
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "feasibility",
+        "title": "关键能力逐项验证",
+        "subtitle": "现有能力足以支撑功能，但地图资源出口与地图归属需要新增。",
+        "dataset": "feasibility",
+        "sourceId": "evidence_review",
+        "defaultSort": { "field": "order", "direction": "asc" },
+        "density": "comfortable",
+        "layout": "full",
+        "columns": [
+          { "field": "order", "label": "序号", "format": "number" },
+          { "field": "area", "label": "能力", "type": "text" },
+          { "field": "result", "label": "结论", "type": "text" },
+          { "field": "evidence", "label": "依据", "type": "text" },
+          { "field": "needed", "label": "正式实现仍需补充", "type": "text" }
+        ]
+      },
+      {
+        "id": "risks",
+        "title": "主要风险与处理办法",
+        "subtitle": "最高风险在地图归属、玩法规则和文件读取安全，而不是标记绘制。",
+        "dataset": "risks",
+        "sourceId": "evidence_review",
+        "defaultSort": { "field": "priority", "direction": "asc" },
+        "density": "comfortable",
+        "layout": "full",
+        "columns": [
+          { "field": "priority", "label": "优先级", "type": "text" },
+          { "field": "risk", "label": "风险", "type": "text" },
+          { "field": "impact", "label": "影响", "type": "text" },
+          { "field": "mitigation", "label": "建议处理", "type": "text" },
+          { "field": "gate", "label": "上线门槛", "type": "text" }
+        ]
+      },
+      {
+        "id": "phases",
+        "title": "推荐实施顺序",
+        "subtitle": "先把数据与安全边界做正确，再做地图交互；列表始终保留。",
+        "dataset": "phases",
+        "sourceId": "project_source",
+        "defaultSort": { "field": "order", "direction": "asc" },
+        "density": "comfortable",
+        "layout": "full",
+        "columns": [
+          { "field": "order", "label": "阶段", "format": "number" },
+          { "field": "deliverable", "label": "交付内容", "type": "text" },
+          { "field": "scope", "label": "改动范围", "type": "text" },
+          { "field": "difficulty", "label": "工作量", "type": "text" },
+          { "field": "acceptance", "label": "完成标准", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      { "id": "u3sdk_map_ui", "label": "官方 U3-SDK：玩家地图界面与坐标投影", "url": "https://github.com/SmartlyDressedGames/U3-SDK/blob/21dd044d31f15b92a79fc351432714c95305603e/Assets/Runtime/Assembly-CSharp/Unturned/UI/Player/PlayerDashboardInformationUI.cs" },
+      { "id": "u3sdk_level", "label": "官方 U3-SDK：地图尺寸与边界", "url": "https://github.com/SmartlyDressedGames/U3-SDK/blob/21dd044d31f15b92a79fc351432714c95305603e/Assets/Runtime/Assembly-CSharp/Unturned/Level/Level.cs" },
+      { "id": "project_source", "label": "当前工作区 Essentials、WebPanel 与 Shared 源码", "path": "src/plugins/well404.Essentials; src/plugins/well404.WebPanel; src/Shared/UnturnedMods.Shared/WebPanel" },
+      { "id": "map_asset_sample", "label": "本地 U3DS 内置地图资源抽样（2026-07-19）", "path": "Maps/{PEI,Russia,Germany}/{Chart.png,Map.png}" },
+      { "id": "evidence_review", "label": "本次只读可行性核查证据集", "path": "当前项目源码、官方 U3-SDK 21dd044d、官方文档及内置地图资源元数据" }
+    ],
+    "blocks": [
+      { "id": "title", "type": "markdown", "body": "# 互动式传送点地图技术可行性报告" },
+      {
+        "id": "decision",
+        "type": "markdown",
+        "body": "## 结论：可做，建议采用“原生二维地图 + 网页标记层”\n\n这个功能在当前项目结构里**技术上可行**。游戏地图目录已有二维 `Chart.png`，传送点已经保存 X/Y/Z，玩家传送页也由插件自己的 HTML、CSS 和 JavaScript 控制。\n\n但它不是只改页面样式的小功能。安全上线必须补齐四件事：**传送点所属地图、服务器端坐标换算、受控的地图图片出口、地图与列表双视图**。第一版建议只使用 `Chart.png`、保留现有列表，并默认遵守游戏原本的地图可见性规则。"
+      },
+      { "id": "feasibility_table", "type": "table", "tableId": "feasibility", "layout": "full" },
+      {
+        "id": "native_projection",
+        "type": "markdown",
+        "sourceId": "u3sdk_map_ui",
+        "body": "## 坐标换算有官方依据，不需要猜\n\n官方源码会从当前地图目录读取 `Chart.png` 和 `Map.png`，并在地图上叠加玩家与标记。普通地图使用世界 X/Z：横向来自 X，纵向来自 Z 且上下翻转，有效边长为 `Level.size - 2 × Level.border`。\n\n特殊地图可以放置“制图范围”，此时要使用该范围自己的平移、旋转和缩放。推荐在服务器端直接按原生逻辑算出每个传送点的 0–1 百分比位置，再发给网页；不要维护手工尺寸表，也不要让前端自己猜世界边界。"
+      },
+      { "id": "asset_chart", "type": "chart", "chartId": "map_asset_sizes", "layout": "full" },
+      {
+        "id": "asset_strategy",
+        "type": "markdown",
+        "sourceId": "map_asset_sample",
+        "body": "## 图片策略：第一版只发 Chart.png\n\n抽样中，PEI、Russia、Germany 的 `Chart.png` 约为 0.24、1.41、1.78 MiB，同地图 `Map.png` 约为 4.93、25.08、26.94 MiB。`Chart.png` 更像游戏内纸质地图，也更适合 Steam 内置浏览器一次加载后缓存。\n\n页面每五秒刷新时只刷新传送点，不重新下载图片。图片响应应带版本标识和缓存；自定义地图缺少 `Chart.png` 时自动回到列表，不把几十 MiB 的 `Map.png` 当成无条件回退。"
+      },
+      {
+        "id": "architecture",
+        "type": "markdown",
+        "sourceId": "project_source",
+        "body": "## 推荐架构：地图只负责选择，传送仍走现有后端\n\n1. Essentials 取得当前地图标识、`Chart.png` 和制图范围。\n2. 服务器为当前地图的可用传送点计算 `left%` 与 `top%`，连同名称、标签和卡片键发给玩家页。\n3. WebPanel 增加**通用只读资源注册能力**。浏览器只能请求已注册的资源编号，不能提交服务器文件路径；宿主不能写死 Essentials 插件名。\n4. 玩家页在图片上放置按钮式标记，支持缩放、拖动、标签过滤和键盘焦点。\n5. 点击标记仍调用现有 `warp:<名称>` 的 `go` 动作。服务端重新检查传送点、玩家权限、当前地图、冷却、预热、费用和安全条件；客户端坐标不参与传送决定。"
+      },
+      {
+        "id": "map_identity",
+        "type": "markdown",
+        "sourceId": "project_source",
+        "body": "## 数据模型必须先补地图归属\n\n目前 WarpEntry 有名称、X/Y/Z、朝向、多个标签和排序，但没有地图归属。换图后直接沿用旧坐标，会把标记画错并可能传送到错误地点。\n\n建议 `/warp set` 自动记录稳定地图标识，玩家页只显示当前地图的点。旧数据不能悄悄猜测：应保持“未归属”，由管理员确认或执行明确的“全部归到当前地图”迁移动作。地图名可作主标识，并保留创意工坊文件号或地图哈希用于诊断同名地图。"
+      },
+      {
+        "id": "native_visibility",
+        "type": "markdown",
+        "sourceId": "u3sdk_map_ui",
+        "body": "## 必须避免绕过原生地图规则\n\n原生游戏并非始终显示地图：生存模式中是否能看纸质图或卫星图，取决于服务器玩法设置以及玩家是否持有相应地图物品。WebPanel 若无条件展示 `Chart.png`，会改变玩法平衡。\n\n建议增加可见性策略并默认设为“遵守原生规则”；只有管理员明确选择“始终显示”才对所有有传送页权限的玩家开放。第一版不显示其他玩家、实时玩家位置或任意点传送，只显示已授权传送点。"
+      },
+      { "id": "risk_table", "type": "table", "tableId": "risks", "layout": "full" },
+      {
+        "id": "ux",
+        "type": "markdown",
+        "body": "## 推荐的玩家操作方式\n\n传送区域顶部提供“地图 / 列表”切换并记住上次选择。标签同时过滤地图标记和列表卡片。点击标记先显示名称、标签和“传送”按钮，真正传送由服务端确认。\n\n列表不能删除：它负责窄屏、键盘、缺图、加载失败和标记重叠时的回退。地图支持滚轮缩放、拖动和复位，限制缩放范围；重叠点至少可循环选择或展开，不能让下面的点永远点不到。"
+      },
+      { "id": "phase_table", "type": "table", "tableId": "phases", "layout": "full" },
+      {
+        "id": "validation",
+        "type": "markdown",
+        "body": "## 上线前验收清单\n\n- 坐标：普通地图四角、中心、边界外点，以及带旋转/缩放制图范围的地图，必须与原生地图对点。\n- 数据：新点自动带地图归属；旧点不被猜测；换图后旧点不可见且不可通过旧请求调用。\n- 安全：未登录、过期会话、任意路径、目录穿越、伪造坐标、跨地图卡片键全部拒绝；图片限定类型和大小。\n- 缓存：首次返回图片，后续刷新不重复传输；地图图片变化后缓存自动失效。\n- 浏览器：在桌面和窄 Steam WebView 实际测试缩放、拖动、筛选、标记点击、列表回退、自动刷新、空地图和长名称。\n- 地图覆盖：至少一张普通内置地图、一张大型内置地图、一张创意工坊地图，以及一张带制图范围的地图。"
+      },
+      {
+        "id": "scope",
+        "type": "markdown",
+        "body": "## 工作量与第一版边界\n\n这是一个**中等规模、横跨 Shared / WebPanel / Essentials / 玩家 UI 的功能**。难点不是画标记，而是通用图片出口、安全测试、旧数据迁移和特殊地图对点。\n\n第一版不建议加入卫星图切换、其他玩家实时位置、路线规划、复杂聚合算法或任意地点点击传送。按报告中的四阶段完成后，再根据实际地图密度决定是否增加聚合。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 本次验证范围与未实测项\n\n本报告完成了当前项目源码、官方 U3-SDK 固定提交、官方文档和本地内置地图资源的只读核查；没有修改功能代码、没有启动服务器、没有部署，也没有构造浏览器原型。\n\n剩余不确定性主要是：创意工坊地图可能缺少 `Chart.png` 或使用非常规制图范围；专用服务器上不同自定义地图的制图对象需要在原型阶段逐图确认。这不会否定总体可行性，但会影响回退覆盖率和测试量。向网页提供创意工坊地图图片还可能涉及地图作者的分发条款，正式上线应保持玩家会话鉴权、禁止公开 CDN，并核对目标地图许可。"
+      },
+      {
+        "id": "sources",
+        "type": "markdown",
+        "body": "## 主要依据\n\n- [官方 U3-SDK：玩家地图图片加载、可见性和坐标投影](https://github.com/SmartlyDressedGames/U3-SDK/blob/21dd044d31f15b92a79fc351432714c95305603e/Assets/Runtime/Assembly-CSharp/Unturned/UI/Player/PlayerDashboardInformationUI.cs)\n- [官方 U3-SDK：地图尺寸与边界常量](https://github.com/SmartlyDressedGames/U3-SDK/blob/21dd044d31f15b92a79fc351432714c95305603e/Assets/Runtime/Assembly-CSharp/Unturned/Level/Level.cs)\n- [Unturned 官方 Charts 文档](https://docs.smartlydressedgames.com/en/stable/mapping/charts.html)\n- 当前工作区的 Essentials、WebPanel 与 Shared WebPanel 源码。"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-19T00:00:00+08:00",
+    "status": "ready",
+    "datasets": {
+      "map_asset_sizes": [
+        { "map": "PEI", "asset": "Chart.png", "size_mib": 0.238, "bytes": 249945, "dimensions": "1923 × 1927" },
+        { "map": "PEI", "asset": "Map.png", "size_mib": 4.928, "bytes": 5167101, "dimensions": "1923 × 1927" },
+        { "map": "Russia", "asset": "Chart.png", "size_mib": 1.410, "bytes": 1478870, "dimensions": "4096 × 4096" },
+        { "map": "Russia", "asset": "Map.png", "size_mib": 25.083, "bytes": 26301797, "dimensions": "4096 × 4096" },
+        { "map": "Germany", "asset": "Chart.png", "size_mib": 1.781, "bytes": 1867967, "dimensions": "4096 × 4096" },
+        { "map": "Germany", "asset": "Map.png", "size_mib": 26.938, "bytes": 28246797, "dimensions": "4096 × 4096" }
+      ],
+      "feasibility": [
+        { "order": 1, "area": "二维地图底图", "result": "可直接复用", "evidence": "原生界面读取当前地图目录的 Chart.png；本地检查的 10 张内置地图均存在。", "needed": "以受控 Web 资源提供给已登录玩家，缺图时回退列表。" },
+        { "order": 2, "area": "传送点位置", "result": "数据足够画点", "evidence": "WarpEntry 已保存 X/Y/Z 与朝向，/warp set 从玩家当前位置写入。", "needed": "增加地图归属，服务器输出百分比坐标。" },
+        { "order": 3, "area": "坐标换算", "result": "有官方公式", "evidence": "U3-SDK 同时提供普通地图和 CartographyVolume 投影。", "needed": "特殊地图按制图范围变换，不能写死尺寸表。" },
+        { "order": 4, "area": "网页交互", "result": "现有 UI 可承载", "evidence": "Essentials 已有插件自建 UI、标签过滤和动作调用。", "needed": "地图/列表切换、缩放拖动、标记弹层、窄屏和键盘操作。" },
+        { "order": 5, "area": "点击传送", "result": "复用现有后端", "evidence": "go 动作会重新解析传送点、检查权限并进入统一传送流程。", "needed": "标记只提交卡片键；服务端补当前地图检查。" },
+        { "order": 6, "area": "图片出口", "result": "当前缺失但可扩展", "evidence": "WebPanel 只有固定 favicon 路由；WebUiExtension 只注册文本资源。", "needed": "增加与具体插件无关的资源注册、鉴权、缓存和大小限制。" }
+      ],
+      "risks": [
+        { "priority": "1-高", "risk": "旧传送点没有地图归属", "impact": "换图后标记和目的地错误。", "mitigation": "新增 MapId；旧数据保持未归属，由管理员确认迁移。", "gate": "跨地图数据测试通过。" },
+        { "priority": "1-高", "risk": "绕过原生地图可见性", "impact": "无需地图物品或服务器许可即可看全图。", "mitigation": "默认遵守原生 Chart 规则，管理员才能改为始终显示。", "gate": "生存模式有图/无图场景均验证。" },
+        { "priority": "1-高", "risk": "任意文件读取", "impact": "攻击者可能读取配置或令牌。", "mitigation": "只接收不透明资源 ID；校验注册路径、类型、大小和玩家会话。", "gate": "目录穿越和未授权访问测试通过。" },
+        { "priority": "2-中", "risk": "特殊地图投影", "impact": "标记旋转、偏移或缩放错误。", "mitigation": "优先使用主 CartographyVolume；无范围时才用 Level.size/border。", "gate": "至少一张特殊地图与原生界面对点。" },
+        { "priority": "2-中", "risk": "大图导致 WebView 卡顿", "impact": "首次加载慢、内存高或反复下载。", "mitigation": "默认 Chart.png、ETag、缓存、不在刷新 JSON 中塞 base64。", "gate": "刷新时无重复图片下载。" },
+        { "priority": "2-中", "risk": "创意工坊缺图或许可", "impact": "无法显示或不宜公开再分发。", "mitigation": "缺图回列表；会话鉴权；不上公开 CDN；核对目标地图许可。", "gate": "目标创意工坊地图完成实测和许可判断。" },
+        { "priority": "3-低", "risk": "标记重叠和窄屏", "impact": "密集点难以点击。", "mitigation": "保留列表；选中置顶；首版支持循环或展开选择。", "gate": "20+ 点、同坐标和窄屏可用。" }
+      ],
+      "phases": [
+        { "order": 1, "deliverable": "地图感知的传送点数据", "scope": "Essentials 配置、命令、迁移、管理 UI、纯逻辑测试", "difficulty": "中", "acceptance": "新点自动归属；旧点不猜测；跨地图不可见也不可调用。" },
+        { "order": 2, "deliverable": "通用受控图片资源", "scope": "Shared、WebPanel 路由、会话鉴权、缓存、安全测试", "difficulty": "中高", "acceptance": "仅能读取注册图片；支持 ETag/304；攻击和超限安全失败。" },
+        { "order": 3, "deliverable": "地图视图与标记", "scope": "Essentials 玩家 UI、标签联动、列表回退、多语言", "difficulty": "中", "acceptance": "桌面/窄屏可缩放拖动；键盘可用；复用现有传送动作。" },
+        { "order": 4, "deliverable": "真实地图与浏览器验收", "scope": "坐标对点、内置/大型/创意工坊/特殊地图、实际 WebView", "difficulty": "中", "acceptance": "位置、缓存、权限、换图、缺图和刷新状态均正确。" }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "u3sdk_map_ui",
+      "label": "官方 U3-SDK：玩家地图界面与坐标投影",
+      "url": "https://github.com/SmartlyDressedGames/U3-SDK/blob/21dd044d31f15b92a79fc351432714c95305603e/Assets/Runtime/Assembly-CSharp/Unturned/UI/Player/PlayerDashboardInformationUI.cs",
+      "query": { "engine": "source-review", "description": "核对地图图片加载、可见性和两类坐标投影。", "executed_at": "2026-07-19T00:00:00+08:00", "language": "csharp" }
+    },
+    {
+      "id": "u3sdk_level",
+      "label": "官方 U3-SDK：地图尺寸与边界",
+      "url": "https://github.com/SmartlyDressedGames/U3-SDK/blob/21dd044d31f15b92a79fc351432714c95305603e/Assets/Runtime/Assembly-CSharp/Unturned/Level/Level.cs",
+      "query": { "engine": "source-review", "description": "核对 Level.size 与 Level.border。", "executed_at": "2026-07-19T00:00:00+08:00", "language": "csharp" }
+    },
+    {
+      "id": "project_source",
+      "label": "当前工作区 Essentials、WebPanel 与 Shared 源码",
+      "path": "src/plugins/well404.Essentials; src/plugins/well404.WebPanel; src/Shared/UnturnedMods.Shared/WebPanel",
+      "query": { "engine": "source-review", "description": "核对 WarpEntry、/warp set、玩家 UI、现有传送动作和 HTTP 资源能力。", "executed_at": "2026-07-19T00:00:00+08:00", "language": "csharp/javascript" }
+    },
+    {
+      "id": "map_asset_sample",
+      "label": "本地 U3DS 内置地图资源抽样（2026-07-19）",
+      "path": "Maps/{PEI,Russia,Germany}/{Chart.png,Map.png}",
+      "query": {
+        "engine": "sqlite",
+        "sql": "WITH inspected_assets(map, asset, bytes, dimensions) AS (VALUES ('PEI', 'Chart.png', 249945, '1923 × 1927'), ('PEI', 'Map.png', 5167101, '1923 × 1927'), ('Russia', 'Chart.png', 1478870, '4096 × 4096'), ('Russia', 'Map.png', 26301797, '4096 × 4096'), ('Germany', 'Chart.png', 1867967, '4096 × 4096'), ('Germany', 'Map.png', 28246797, '4096 × 4096')) SELECT map, asset, ROUND(bytes / 1048576.0, 3) AS size_mib, bytes, dimensions FROM inspected_assets",
+        "description": "把 stat/file 只读采集的图片元数据整理为图表快照；另核对本地 10 张内置地图均有 Chart.png 和 Map.png。",
+        "executed_at": "2026-07-19T00:00:00+08:00",
+        "language": "sql"
+      }
+    },
+    {
+      "id": "evidence_review",
+      "label": "本次只读可行性核查证据集",
+      "path": "当前项目源码、官方 U3-SDK 21dd044d、官方文档及内置地图资源元数据",
+      "query": { "engine": "evidence-review", "description": "汇总当前项目实现、官方游戏行为和地图资源元数据。", "executed_at": "2026-07-19T00:00:00+08:00", "language": "mixed" }
+    }
+  ]
+}

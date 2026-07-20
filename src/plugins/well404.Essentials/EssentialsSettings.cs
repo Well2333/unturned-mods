@@ -15,6 +15,10 @@ namespace well404.Essentials
 
         public SleepSettings Sleep { get; set; } = new SleepSettings();
 
+        public WarpMapSettings WarpMap { get; set; } = new WarpMapSettings();
+
+        public WarpTagSettings WarpTags { get; set; } = new WarpTagSettings();
+
         public List<WarpEntry> Warps { get; set; } = new List<WarpEntry>();
 
         public List<GiftEntry> Gifts { get; set; } = new List<GiftEntry>();
@@ -32,7 +36,7 @@ namespace well404.Essentials
         /// <summary>How far (metres) the player may drift during warmup before it counts as moving.</summary>
         public decimal MoveThreshold { get; set; } = 0.5m;
 
-        /// <summary>Per-command cooldown in seconds (0 = no cooldown). Applies after a successful teleport.</summary>
+        /// <summary>Shared cooldown duration in seconds (0 = no cooldown). Every warp destination uses the same warp cooldown bucket.</summary>
         public int CooldownSeconds { get; set; } = 0;
 
         /// <summary>
@@ -87,10 +91,47 @@ namespace well404.Essentials
         public decimal RequiredRatio { get; set; } = 0.5m;
     }
 
+    public class WarpMapSettings
+    {
+        /// <summary>Enables the optional interactive map view; the warp list always remains available.</summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>
+        /// <c>native</c> follows Unturned's chart gameplay rule and map-item access;
+        /// <c>always</c> exposes the chart to every player who can open this menu.
+        /// </summary>
+        public string Visibility { get; set; } = "native";
+    }
+
+    public class WarpTagSettings
+    {
+        /// <summary>True after the built-in presets have been materialized into config.yaml once.</summary>
+        public bool Initialized { get; set; }
+
+        public List<WarpTagDefinition> Presets { get; set; } = new List<WarpTagDefinition>();
+
+        public List<WarpTagDefinition> Custom { get; set; } = new List<WarpTagDefinition>();
+    }
+
+    public class WarpTagDefinition
+    {
+        /// <summary>Stable lower-case ID stored on warp entries and used by filters.</summary>
+        public string Id { get; set; } = string.Empty;
+
+        public string NameEn { get; set; } = string.Empty;
+
+        public string NameZh { get; set; } = string.Empty;
+
+        public string Emoji { get; set; } = string.Empty;
+    }
+
     public class WarpEntry
     {
         /// <summary>The name used in <c>/warp &lt;name&gt;</c>. Case-insensitive.</summary>
         public string Name { get; set; } = string.Empty;
+
+        /// <summary>Map name this destination belongs to. Empty legacy entries stay unassigned.</summary>
+        public string Map { get; set; } = string.Empty;
 
         public decimal X { get; set; }
         public decimal Y { get; set; }
@@ -99,11 +140,11 @@ namespace well404.Essentials
         /// <summary>Facing yaw (degrees) applied on arrival.</summary>
         public decimal Yaw { get; set; }
 
-        /// <summary>Per-warp cooldown in seconds (0 = use the global teleport cooldown).</summary>
-        public int CooldownSeconds { get; set; } = 0;
+        /// <summary>Read-only player-facing filter tags. Missing legacy values become default.</summary>
+        public List<string> Tags { get; set; } = new List<string>();
 
-        /// <summary>Read-only player-facing filter label. Missing legacy values become default.</summary>
-        public string Category { get; set; } = "default";
+        /// <summary>Legacy single-label field used only to migrate existing configuration.</summary>
+        public string Category { get; set; } = string.Empty;
 
         /// <summary>Stable administrator-controlled display order.</summary>
         public int Order { get; set; } = 0;

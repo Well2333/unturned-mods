@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Cysharp.Threading.Tasks;
@@ -32,6 +33,8 @@ namespace well404.Vault
         private IWebPanelRegistry? m_WebPanelRegistry;
         // Captured at load so unload never resolves from the (by-then disposed) Autofac scope.
         private IPlayerCommandRegistry? m_PlayerCommandRegistry;
+        private CancellationTokenSource? m_RecoveryCancellation;
+        private Task? m_RecoveryTask;
 
         public VaultPlugin(
             IConfiguration configuration,
@@ -52,12 +55,34 @@ namespace well404.Vault
             var vault = LifetimeScope.Resolve<VaultService>();
             await vault.InitializeAsync(Path.Combine(WorkingDirectory, "vault.sqlite3"));
 
-            RegisterWebPanelExtensions();
+            var recovered = await vault.RecoverPendingTeamPurchasesAsync();
+            if (recovered > 0)
+            {
+                m_Logger.LogWarning(
+                    "Vault recovered {Count} paid vault-capacity purchase(s) left pending by an earlier interruption.",
+                    recovered);
+            }
+            var interruptedTransfers = vault.InterruptedTransferCount;
+            if (interruptedTransfers > 0)
+            {
+                m_Logger.LogWarning(
+                    "Vault found {Count} interrupted inventory transfer audit record(s). They are left for manual reconciliation to avoid duplicating uncertain game inventory state.",
+                    interruptedTransfers);
+            }
+            m_RecoveryCancellation = new CancellationTokenSource();
+            // Start outside Unity's synchronization context. If this loop captures the main-thread
+            // context, cancelling it during OpenMod shutdown deadlocks: unload waits for the loop,
+            // while the loop waits for the main thread to run its cancellation continuation.
+            var recoveryToken = m_RecoveryCancellation.Token;
+            m_RecoveryTask = Task.Run(
+                () => RunRecoveryLoopAsync(vault, recoveryToken), CancellationToken.None);
+
+            await RegisterWebPanelExtensionsAsync();
 
             m_Logger.LogInformation("Vault loaded: base capacity {Slots} grid cells.", vault.BaseMaxSlots);
         }
 
-        internal void RegisterWebPanelExtensions()
+        internal Task RegisterWebPanelExtensionsAsync()
         {
             var vault = LifetimeScope.Resolve<VaultService>();
             var translations = LifetimeScope.ResolveOptional<IWebTranslationRegistry>();
@@ -72,11 +97,59 @@ namespace well404.Vault
             {
                 RegisterWebPanel(vault);
             }
+            return Task.CompletedTask;
         }
 
         protected override async UniTask OnUnloadAsync()
         {
-            await UniTask.SwitchToMainThread();
+            var recoveryCancellation = m_RecoveryCancellation;
+            var recoveryTask = m_RecoveryTask;
+            recoveryCancellation?.Cancel();
+
+            // Never let an auxiliary reconciliation loop block OpenMod reload/shutdown forever.
+            // Normal cancellation is immediate; the timeout is only a last-resort guard for a
+            // provider call that ignores its cancellation token.
+            if (recoveryTask != null)
+            {
+                try
+                {
+                    var completed = await Task.WhenAny(
+                            recoveryTask, Task.Delay(TimeSpan.FromSeconds(5)))
+                        .ConfigureAwait(false);
+                    if (completed == recoveryTask)
+                    {
+                        await recoveryTask.ConfigureAwait(false);
+                        recoveryCancellation?.Dispose();
+                        recoveryCancellation = null;
+                    }
+                    else
+                    {
+                        m_Logger.LogWarning(
+                            "Vault recovery loop did not stop within 5 seconds; continuing plugin unload.");
+                        if (recoveryCancellation != null)
+                        {
+                            var cancellationToDispose = recoveryCancellation;
+                            _ = recoveryTask.ContinueWith(
+                                _ => cancellationToDispose.Dispose(),
+                                CancellationToken.None,
+                                TaskContinuationOptions.ExecuteSynchronously,
+                                TaskScheduler.Default);
+                            recoveryCancellation = null;
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    recoveryCancellation?.Dispose();
+                    recoveryCancellation = null;
+                }
+            }
+            m_RecoveryTask = null;
+            recoveryCancellation?.Dispose();
+            m_RecoveryCancellation = null;
+
+            // Registry operations do not touch Unturned/Unity state, so they must not switch back
+            // to a main thread that may already be paused by the runtime shutdown sequence.
             m_PlayerMenuRegistry?.UnregisterMenu(VaultPlayerMenu.MenuId);
             m_PlayerMenuRegistry = null;
             m_WebPanelRegistry?.UnregisterModule(VaultWebPanelModule.ModuleId);
@@ -85,6 +158,37 @@ namespace well404.Vault
             m_PlayerCommandRegistry = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
+
+        private async Task RunRecoveryLoopAsync(VaultService vault, CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken)
+                    .ConfigureAwait(false);
+                try
+                {
+                    var recovered = await vault.RecoverPendingTeamPurchasesAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    if (recovered > 0)
+                    {
+                        m_Logger.LogWarning(
+                            "Vault recovered {Count} paid vault-capacity purchase(s) during periodic reconciliation.",
+                            recovered);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    m_Logger.LogWarning(ex, "Vault periodic capacity-purchase recovery failed; it will retry.");
+                }
+            }
+        }
+
+        internal Task RecoverPendingPurchasesAsync()
+            => LifetimeScope.Resolve<VaultService>().RecoverPendingTeamPurchasesAsync();
 
         /// <summary>Registers the player-facing vault menu + intro command help, if a web panel is present.</summary>
         private void RegisterPlayerMenu(VaultService vault, IWebTranslationRegistry? translations)
@@ -109,13 +213,18 @@ namespace well404.Vault
                 new PlayerCommandInfo("/vault", "Open the personal vault — store, take and list your items.", "well404.Vault:commands.vault", "Vault"),
                 new PlayerCommandInfo("/vault store <id> [amount]", "Store items from your backpack into the vault (by item id).", "well404.Vault:commands.vault.store", "Vault"),
                 new PlayerCommandInfo("/vault take <id> [amount]", "Withdraw items from the vault into your backpack (by item id).", "well404.Vault:commands.vault.take", "Vault"),
-                new PlayerCommandInfo("/vault list", "List your vault contents and how full it is.", "well404.Vault:commands.vault.list", "Vault")
+                new PlayerCommandInfo("/vault list", "List your vault contents and how full it is.", "well404.Vault:commands.vault.list", "Vault"),
+                new PlayerCommandInfo("/vault upgrade", "Spend your own balance to buy personal vault capacity.", "well404.Vault:commands.vault.upgrade", "Vault"),
+                new PlayerCommandInfo("/vault team store <id> [amount]", "Store backpack items in your current party's shared vault.", "well404.Vault:commands.vault.team.store", "Vault"),
+                new PlayerCommandInfo("/vault team take <id> [amount]", "Take items from your current party's shared vault.", "well404.Vault:commands.vault.team.take", "Vault"),
+                new PlayerCommandInfo("/vault team list", "List the current party's shared vault.", "well404.Vault:commands.vault.team.list", "Vault"),
+                new PlayerCommandInfo("/vault team upgrade", "Spend your own balance to buy shared vault capacity for the party.", "well404.Vault:commands.vault.team.upgrade", "Vault")
             });
 
             m_Logger.LogInformation("Vault: registered the player vault menu with the web panel.");
         }
 
-        /// <summary>Registers the capacity settings + per-player overrides with the web panel, if present.</summary>
+        /// <summary>Registers capacity settings, unified vault inspection, and recovery data with the web panel, if present.</summary>
         private void RegisterWebPanel(VaultService vault)
         {
             var registry = LifetimeScope.ResolveOptional<IWebPanelRegistry>();
@@ -127,7 +236,8 @@ namespace well404.Vault
             registry.RegisterModule(VaultWebPanelModule.Create(
                 new VaultConfigStore(m_Configuration, WorkingDirectory),
                 vault,
-                LifetimeScope.Resolve<OpenMod.Extensions.Games.Abstractions.Items.IItemDirectory>()));
+                LifetimeScope.Resolve<OpenMod.Extensions.Games.Abstractions.Items.IItemDirectory>(),
+                LifetimeScope.Resolve<IUserManager>()));
             m_WebPanelRegistry = registry;
         }
     }
@@ -141,10 +251,14 @@ namespace well404.Vault
             m_PluginAccessor = pluginAccessor;
         }
 
-        public Task HandleEventAsync(object? sender, PluginLoadedEvent @event)
+        public async Task HandleEventAsync(object? sender, PluginLoadedEvent @event)
         {
-            m_PluginAccessor.Instance?.RegisterWebPanelExtensions();
-            return Task.CompletedTask;
+            var plugin = m_PluginAccessor.Instance;
+            if (plugin != null)
+            {
+                await plugin.RegisterWebPanelExtensionsAsync().ConfigureAwait(false);
+                await plugin.RecoverPendingPurchasesAsync().ConfigureAwait(false);
+            }
         }
     }
 }

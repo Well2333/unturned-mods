@@ -122,6 +122,26 @@ namespace well404.Essentials.Data
             await SaveAsync();
         }
 
+        public async Task<string> GetWarpMapSizeAsync(string steamId)
+        {
+            var document = await GetDocumentAsync();
+            return document.Players.TryGetValue(steamId, out var record)
+                ? NormalizeWarpMapSize(record.WarpMapSize)
+                : "compact";
+        }
+
+        public async Task SetWarpMapSizeAsync(string steamId, string value)
+        {
+            var document = await GetDocumentAsync();
+            GetOrAdd(document, steamId).WarpMapSize = NormalizeWarpMapSize(value);
+            await SaveAsync();
+        }
+
+        internal static string NormalizeWarpMapSize(string? value)
+            => string.Equals(value, "large", StringComparison.OrdinalIgnoreCase)
+                ? "large"
+                : "compact";
+
         /// <summary>Last claim time (Unix UTC seconds) for the gift, or null if never claimed.</summary>
         public async Task<long?> GetGiftClaimAsync(string steamId, string giftId)
         {

@@ -9,7 +9,7 @@ errors:
   invalid_amount: "Enter a valid amount."
 
 vault:
-  help: "Personal vault: /vault store <itemId> [amount], /vault take <itemId> [amount], /vault list. Or use /menu vault for the web UI."
+  help: "Vault: personal commands are /vault store|take|list|upgrade; party commands are /vault team store|take|list|upgrade. Or use /menu vault."
 
 store:
   done: "Stored {amount}x {name} in your vault."
@@ -24,3 +24,27 @@ list:
   header: "Vault: {used} / {max} grid cells used."
   empty: "Your vault is empty."
   line: "{name} (#{id}) x{amount} — {slots} cells"
+
+upgrade:
+  done: "Bought {slots} personal-vault cells for {price}. New capacity: {max}."
+  disabled: "Personal-vault capacity purchasing is disabled."
+  economy_missing: "The economy plugin is required to buy personal-vault capacity."
+  maximum: "Your personal vault is already at its maximum capacity."
+  invalid_config: "Personal-vault capacity purchasing is not configured correctly."
+  failed: "Could not buy personal-vault capacity."
+
+team:
+  help: "Party vault: /vault team store <itemId> [amount], /vault team take <itemId> [amount], /vault team list, /vault team upgrade."
+  not_in_team: "Join or create a party first."
+  full: "Your party vault is full."
+  store_done: "Stored {amount}x {name} in the party vault."
+  take_none: "The party vault has no {name}."
+  take_done: "Took {amount}x {name} from the party vault."
+  header: "Party vault {team}: {used} / {max} grid cells used."
+  empty: "The party vault is empty."
+  upgrade_done: "Bought {slots} party-vault cells for {price}. New capacity: {max}."
+  upgrade_disabled: "Party-vault capacity purchasing is disabled."
+  upgrade_economy_missing: "The economy plugin is required to buy party-vault capacity."
+  upgrade_maximum: "The party vault is already at its maximum capacity."
+  upgrade_invalid_config: "Party-vault capacity purchasing is not configured correctly."
+  upgrade_failed: "Could not buy party-vault capacity."

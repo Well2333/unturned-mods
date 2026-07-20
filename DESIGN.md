@@ -34,7 +34,7 @@ competes with status, inventory, prices or actions.
 - Primary form buttons are 34–40px high; dense catalog-card actions may use 27–32px controls when
   their labels remain legible. Accent means primary, green means a successful transaction, red is
   reserved for destructive or irreversible operations.
-- Cards expose title, useful state, then actions. Use a compact row or tile for simple actions.
+- Cards expose title, useful state, then actions. Use a compact row or tile for simple actions. Repeated utility commands such as home/back use content-width command bars (roughly one control-height), not equal-width cards.
 - Tags are short, read-only metadata. Never pack unrelated values into one long string.
 - Forms show labels above controls and keep destructive actions visually separate.
 - Empty states explain what is absent without occupying most of the viewport.
@@ -43,7 +43,7 @@ competes with status, inventory, prices or actions.
 
 - Both panels refresh safe data every five seconds by default. Pause while hidden, while a modal is
   open, or while an input is active; never overwrite unsaved edits.
-- Keep selected tabs and expanded context across refreshes.
+- Keep selected tabs, expanded context, map base layer, zoom and pan across refreshes. Data refresh must not reset an active spatial task.
 - Every irreversible bulk action requires confirmation. Disable its button during the request.
 - Retain manual refresh as an immediate escape hatch.
 
@@ -59,6 +59,9 @@ competes with status, inventory, prices or actions.
 ## Guardrails
 
 - Do not return to oversized pills, full-width single-action cards or arbitrary emoji decoration.
+- Map markers are a separate overlay with a constant 18–26px visual size; zoom changes their position, never their size. Labels appear on hover, focus or selection rather than permanently covering the map.
+- Pause periodic host refresh while a user is manipulating a spatial canvas, and resume it when they leave that view. Marker activation should perform the primary action through the normal confirmation flow rather than revealing a second action row.
+- Map frames may offer a small set of server-persisted size preferences. The compact default is viewport-aware and may require only a short vertical scroll; the large mode may intentionally extend farther below the fold.
 - Do not hard-code fixed desktop widths; the Steam overlay can be narrow.
 - Do not load third-party frontend frameworks or remote assets.
 - Do not use color as the only signal; retain labels and disabled/loading states.

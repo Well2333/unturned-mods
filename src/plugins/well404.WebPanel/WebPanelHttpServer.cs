@@ -20,6 +20,7 @@ namespace well404.WebPanel
     /// <list type="bullet">
     /// <item><c>GET /&lt;token&gt;/</c> — the SPA (its API calls are relative, so they stay in-path).</item>
     /// <item><c>GET /&lt;token&gt;/api/modules</c> — module + action metadata to render from.</item>
+    /// <item><c>GET /&lt;token&gt;/api/modules/{module}/asset/{asset}</c> — read a module-owned image.</item>
     /// <item><c>POST /&lt;token&gt;/api/modules/{module}/{action}</c> — invoke an action.</item>
     /// </list>
     /// The token is mandatory (the plugin generates one when config leaves it empty); anything
@@ -31,6 +32,7 @@ namespace well404.WebPanel
     /// <item><c>GET /p</c> — the player SPA (reads the <c>?t=</c> session token).</item>
     /// <item><c>GET /api/p/view</c> — the player's menus, each pre-rendered.</item>
     /// <item><c>POST /api/p/invoke/{menu}</c> — execute a card button as that player.</item>
+    /// <item><c>GET /api/p/asset/{menu}/{asset}</c> — read a menu-owned image asset.</item>
     /// </list>
     /// Player <c>/api/p</c> calls carry the session token in <c>?t=</c> (or the
     /// <c>X-Player-Token</c> header); it is validated against <see cref="PlayerWebSessionManager"/>.
@@ -38,6 +40,7 @@ namespace well404.WebPanel
     /// </summary>
     public sealed class WebPanelHttpServer : IDisposable
     {
+        private const int MaxPlayerAssetBytes = 16 * 1024 * 1024;
         private readonly IWebPanelRegistry m_Registry;
         private readonly IPlayerMenuRegistry m_PlayerRegistry;
         private readonly IWebTranslationRegistry m_Translations;
@@ -257,6 +260,14 @@ namespace well404.WebPanel
                 }
 
                 var segments = adminPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                // ["api", "modules", "{module}", "asset", "{assetId}"]
+                if (request.HttpMethod == "GET" && segments.Length == 5 &&
+                    segments[1] == "modules" && segments[3] == "asset")
+                {
+                    await AdminAssetAsync(context, segments[2], segments[4]).ConfigureAwait(false);
+                    return;
+                }
+
                 if (segments.Length == 5 && segments[1] == "modules")
                 {
                     // ["api", "modules", "{module}", "{action}", "values" | "records" | "delete"]
@@ -306,6 +317,31 @@ namespace well404.WebPanel
                     // The response may already be closed; nothing more to do.
                 }
             }
+        }
+
+        private async Task AdminAssetAsync(HttpListenerContext context, string moduleId, string assetId)
+        {
+            var module = m_Registry.GetModules()
+                .FirstOrDefault(candidate => string.Equals(candidate.Id, moduleId, StringComparison.OrdinalIgnoreCase));
+            if (module?.AssetProvider == null)
+            {
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            PlayerMenuAsset? asset;
+            try
+            {
+                asset = await module.AssetProvider.GetAssetAsync(assetId).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: module {Module} asset {Asset} threw.", moduleId, assetId);
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            WriteAssetResponse(context, asset);
         }
 
         private async Task InvokeActionAsync(HttpListenerContext context, string moduleId, string actionId)
@@ -545,6 +581,13 @@ namespace well404.WebPanel
             var lang = m_PlayerLanguages.Get(session.SteamId) ?? LangOf(context.Request);
             var ctx = new PlayerMenuContext(session.SteamId, session.DisplayName, lang);
 
+            // ["api", "p", "asset", "{menuId}", "{assetId}"]
+            if (context.Request.HttpMethod == "GET" && segments.Length == 5 && segments[2] == "asset")
+            {
+                await PlayerAssetAsync(context, ctx, segments[3], segments[4]).ConfigureAwait(false);
+                return;
+            }
+
             // ["api", "p", "view"]
             if (context.Request.HttpMethod == "GET" && segments.Length == 3 && segments[2] == "view")
             {
@@ -644,6 +687,77 @@ namespace well404.WebPanel
             sb.Append('}');
             WriteJson(context.Response, 200, sb.ToString());
         }
+
+        private async Task PlayerAssetAsync(
+            HttpListenerContext context, PlayerMenuContext ctx, string menuId, string assetId)
+        {
+            var menu = m_PlayerRegistry.GetMenu(menuId);
+            if (!(menu is IPlayerMenuAssetProvider provider))
+            {
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            PlayerMenuAsset? asset;
+            try
+            {
+                asset = await provider.GetAssetAsync(ctx, assetId).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} asset {Asset} threw.", menuId, assetId);
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            WriteAssetResponse(context, asset);
+        }
+
+        private static void WriteAssetResponse(HttpListenerContext context, PlayerMenuAsset? asset)
+        {
+            if (asset == null || asset.Content.Length == 0 || asset.Content.Length > MaxPlayerAssetBytes ||
+                !IsAllowedPlayerAssetContentType(asset.ContentType))
+            {
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            var etagToken = new string(asset.EntityTag
+                .Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.')
+                .Take(128)
+                .ToArray());
+            if (etagToken.Length == 0)
+            {
+                etagToken = asset.Content.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            var etag = "\"" + etagToken + "\"";
+            SetCorsHeaders(context.Response);
+            context.Response.Headers["Cache-Control"] = "private, max-age=" +
+                asset.MaxAgeSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            context.Response.Headers["ETag"] = etag;
+            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+
+            if (string.Equals(context.Request.Headers["If-None-Match"], etag, StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = 304;
+                context.Response.ContentLength64 = 0;
+                context.Response.Close();
+                return;
+            }
+
+            context.Response.StatusCode = 200;
+            context.Response.ContentType = asset.ContentType;
+            context.Response.ContentLength64 = asset.Content.Length;
+            context.Response.OutputStream.Write(asset.Content, 0, asset.Content.Length);
+            context.Response.OutputStream.Close();
+        }
+
+        private static bool IsAllowedPlayerAssetContentType(string contentType)
+            => string.Equals(contentType, "image/png", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(contentType, "image/jpeg", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(contentType, "image/webp", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(contentType, "image/gif", StringComparison.OrdinalIgnoreCase);
 
         private async Task<PlayerMenuView> RenderSafeAsync(IPlayerMenu menu, PlayerMenuContext ctx)
         {

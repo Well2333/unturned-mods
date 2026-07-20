@@ -295,6 +295,7 @@ function mountCustomAdminUi(module, main) {
   };
   const panel = {
     root, module, lang, el, t:T, find, api:scopedApi, encode:enc,
+    assetUrl:assetId => `api/modules/${enc(module.id)}/asset/${enc(assetId)}`,
     invoke:(id, values) => invoke(module, find(id), values instanceof URLSearchParams ? values : new URLSearchParams(values || {})),
     values:id => api(`api/modules/${enc(module.id)}/${enc(id)}/values`, { headers:headers() }),
     records:id => api(`api/modules/${enc(module.id)}/${enc(id)}/records`, { headers:headers() }),

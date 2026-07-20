@@ -41,6 +41,7 @@ tpa:
 warp:
   not_found: "No warp named '{name}'."
   no_permission: "You do not have access to the warp '{name}'."
+  wrong_map: "Warp '{name}' belongs to a different map."
   success: "Warped to '{name}'."
   set: "Warp '{name}' saved at your location."
   deleted: "Warp '{name}' deleted."

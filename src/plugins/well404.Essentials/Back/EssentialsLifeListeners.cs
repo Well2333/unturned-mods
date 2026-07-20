@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using OpenMod.API.Eventing;
 using OpenMod.Unturned.Players.Life.Events;
+using SDG.Unturned;
 using well404.Essentials.Data;
 
 namespace well404.Essentials.Back
@@ -21,7 +22,7 @@ namespace well404.Essentials.Back
         public async Task HandleEventAsync(object? sender, UnturnedPlayerDeathEvent @event)
         {
             var pos = @event.DeathPosition; // System.Numerics.Vector3
-            var location = new PlayerLocation(pos.X, pos.Y, pos.Z, 0f);
+            var location = new PlayerLocation(pos.X, pos.Y, pos.Z, 0f, Level.info?.name);
             await m_PlayerData.SetLastDeathAsync(@event.Player.SteamId.ToString(), location);
         }
     }

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -26,14 +28,16 @@ namespace well404.Essentials
     /// all driven through the same services as the in-game commands. Web text is localized to the
     /// player's chosen language; in-game notices use the server's language.
     /// </summary>
-    public sealed class EssentialsPlayerMenu : IPlayerMenu, IPlayerMenuUiProvider
+    public sealed class EssentialsPlayerMenu : IPlayerMenu, IPlayerMenuUiProvider, IPlayerMenuAssetProvider
     {
         public const string MenuId = "essentials";
         private const string WarpPrefix = "warp:";
         private static readonly WebUiExtension s_Ui = WebUiExtension.FromEmbeddedResources(
-            typeof(EssentialsPlayerMenu).Assembly, "player-ui.html", "player-ui.css", "player-ui.js");
+            typeof(EssentialsPlayerMenu).Assembly, "player-ui.html", "player-ui.css", "player-map-ui.js");
 
         private readonly PlayerDataStore m_PlayerData;
+        private readonly EssentialsConfigStore m_ConfigStore;
+        private readonly WarpMapService m_WarpMap;
         private readonly WarpService m_Warps;
         private readonly TeleportService m_Teleport;
         private readonly TeleportRequestManager m_Requests;
@@ -47,13 +51,16 @@ namespace well404.Essentials
         private readonly IStringLocalizer m_StringLocalizer;
 
         public EssentialsPlayerMenu(
-            PlayerDataStore playerData, WarpService warps, TeleportService teleport,
+            PlayerDataStore playerData, EssentialsConfigStore configStore,
+            WarpService warps, WarpMapService warpMap, TeleportService teleport,
             TeleportRequestManager requests, PartyInviteManager invites, PartyService party,
             GiftService gifts, SleepVoteService sleep, IUnturnedUserDirectory userDirectory,
             IConfiguration configuration, IWebTranslationRegistry translations, IStringLocalizer stringLocalizer)
         {
             m_PlayerData = playerData;
+            m_ConfigStore = configStore;
             m_Warps = warps;
+            m_WarpMap = warpMap;
             m_Teleport = teleport;
             m_Requests = requests;
             m_Invites = invites;
@@ -91,6 +98,7 @@ namespace well404.Essentials
             var cards = new List<PlayerCard>();
 
             // --- home / back / warps ---
+            var mapState = m_WarpMap.GetState(me);
             var home = await m_PlayerData.GetHomeAsync(context.SteamId);
             var homeButtons = new List<PlayerButton>();
             if (home != null)
@@ -98,32 +106,87 @@ namespace well404.Essentials
                 homeButtons.Add(new PlayerButton("go", L(lang, "Go home"), "primary"));
             }
 
-            homeButtons.Add(new PlayerButton("sethome", L(lang, "Set home here")));
-            cards.Add(new PlayerCard("home", "🏠 " + L(lang, "Home"),
+            homeButtons.Add(new PlayerButton("sethome", L(lang, "Set as home")));
+            cards.Add(new PlayerCard(
+                "home",
+                "⌂ " + L(lang, "Home location"),
                 home != null ? null : new[] { L(lang, "No home set yet — tap “Set home here”.") },
-                null, homeButtons.ToArray()));
+                null,
+                homeButtons.ToArray(),
+                null, null, null, null, null,
+                home == null ? null : BuildLocationMapMetadata(home, "home", "🏠")));
 
             var death = await m_PlayerData.GetLastDeathAsync(context.SteamId);
-            cards.Add(death != null
-                ? new PlayerCard("back", "↩ " + L(lang, "Back to death point"), null, null, new[] { new PlayerButton("go", L(lang, "Return")) })
-                : new PlayerCard("back", "↩ " + L(lang, "Back to death point"), new[] { L(lang, "No death point yet — it appears after you die.") }));
+            cards.Add(new PlayerCard(
+                "back",
+                "↩ " + L(lang, "Back to death point"),
+                death == null ? new[] { L(lang, "No death point yet — it appears after you die.") } : null,
+                null,
+                death == null ? null : new[] { new PlayerButton("go", L(lang, "Return")) },
+                null, null, null, null, null,
+                death == null ? null : BuildLocationMapMetadata(death, "death", "💀")));
+            var mapSize = await m_PlayerData.GetWarpMapSizeAsync(context.SteamId);
+            cards.Add(new PlayerCard(
+                "warp-map",
+                "🗺 " + (mapState.MapName.Length > 0 ? mapState.MapName : L(lang, "Warps")),
+                null, null,
+                new[]
+                {
+                    new PlayerButton("mapsize-compact", L(lang, "Compact")),
+                    new PlayerButton("mapsize-large", L(lang, "Large"))
+                },
+                null, null, null, null, null,
+                new Dictionary<string, string>
+                {
+                    ["mapName"] = mapState.MapName,
+                    ["mapAvailable"] = mapState.Available ? "true" : "false",
+                    ["mapReason"] = mapState.Reason,
+                    ["chartAvailable"] = mapState.ChartAvailable ? "true" : "false",
+                    ["chartReason"] = mapState.ChartReason,
+                    ["chartAssetId"] = WarpMapService.ChartAssetId,
+                    ["gpsAvailable"] = mapState.GpsAvailable ? "true" : "false",
+                    ["gpsReason"] = mapState.GpsReason,
+                    ["gpsAssetId"] = WarpMapService.GpsAssetId,
+                    ["mapSize"] = mapSize
+                }));
 
             // Warps the player may use; show a hint card when they have access to none, so the
             // feature stays visible instead of the section silently disappearing.
             var warpCount = 0;
             foreach (var warp in m_Warps.All)
             {
-                if (await m_Warps.HasAccessAsync(me, warp.Name))
+                if (m_WarpMap.IsCurrentMap(warp) && await m_Warps.HasAccessAsync(me, warp.Name))
                 {
                     warpCount++;
+                    var displayTags = warp.Tags
+                        .Select(tag => m_ConfigStore.ResolveWarpTagLabel(tag, lang))
+                        .ToArray();
+                    var emoji = m_ConfigStore.ResolveWarpTagEmoji(warp.Tags);
+                    var metadata = new Dictionary<string, string>
+                    {
+                        ["warpTags"] = string.Join("\n", warp.Tags),
+                        ["warpTagLabels"] = string.Join("\n", displayTags),
+                        ["warpEmoji"] = emoji
+                    };
+                    if (m_WarpMap.TryProject(warp, out var mapX, out var mapY))
+                    {
+                        metadata["mapX"] = mapX.ToString(CultureInfo.InvariantCulture);
+                        metadata["mapY"] = mapY.ToString(CultureInfo.InvariantCulture);
+                    }
+
                     cards.Add(new PlayerCard(
                         WarpPrefix + warp.Name,
-                        "📍 " + warp.Name,
+                        (emoji.Length > 0 ? emoji : "📍") + " " + warp.Name,
                         null,
-                        new[] { warp.Category },
-                        new[] { new PlayerButton("go", L(lang, "Teleport")) },
+                        displayTags,
+                        new[]
+                        {
+                            new PlayerButton(
+                                "go", L(lang, "Teleport"), "primary", null, null, null,
+                                m_Tr.Format(lang, "Teleport to {0}?", warp.Name))
+                        },
                         null, null, null, null, null,
-                        new Dictionary<string, string> { ["warpCategory"] = warp.Category }));
+                        metadata));
                 }
             }
 
@@ -240,6 +303,21 @@ namespace well404.Essentials
             return new PlayerMenuView(L(lang, "Utilities"), L(lang, "Tap to use; some teleports need you to stand still briefly."), cards);
         }
 
+
+        public async Task<PlayerMenuAsset?> GetAssetAsync(PlayerMenuContext context, string assetId)
+        {
+            if (!WarpMapService.IsMapAssetId(assetId) ||
+                !ulong.TryParse(context.SteamId, out var steamId))
+            {
+                return null;
+            }
+
+            await UniTask.SwitchToMainThread();
+            var user = m_UserDirectory.FindUser(new CSteamID(steamId));
+            return user == null
+                ? null
+                : await m_WarpMap.GetAssetAsync(user, assetId).ConfigureAwait(false);
+        }
         public async Task<PlayerActionResult> InvokeAsync(
             PlayerMenuContext context, string actionId, string cardKey, string? value)
         {
@@ -264,6 +342,14 @@ namespace well404.Essentials
                     var location = LocationHelper.FromPlayer(me.Player);
                     await m_PlayerData.SetHomeAsync(me.Id, location);
                     return PlayerActionResult.Ok(L(lang, "Home set to your current location."));
+                }
+
+                case "mapsize-compact":
+                case "mapsize-large":
+                {
+                    var mapSize = actionId.Substring("mapsize-".Length);
+                    await m_PlayerData.SetWarpMapSizeAsync(me.Id, mapSize);
+                    return PlayerActionResult.Ok(L(lang, "Map size preference saved."), refresh: false);
                 }
 
                 case "tpreq":
@@ -385,12 +471,28 @@ namespace well404.Essentials
             }
         }
 
+        private IReadOnlyDictionary<string, string> BuildLocationMapMetadata(
+            PlayerLocation location, string markerKind, string emoji)
+        {
+            var metadata = new Dictionary<string, string>
+            {
+                ["mapMarkerKind"] = markerKind,
+                ["mapMarkerEmoji"] = emoji
+            };
+            if (m_WarpMap.TryProject(location, out var mapX, out var mapY))
+            {
+                metadata["mapX"] = mapX.ToString(CultureInfo.InvariantCulture);
+                metadata["mapY"] = mapY.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return metadata;
+        }
+
         private async Task<PlayerActionResult> TeleportToAsync(UnturnedUser me, string cardKey, string lang)
         {
             PlayerLocation destination;
             TeleportKind kind;
             string cooldownKey;
-            int? cooldownOverride = null;
 
             if (cardKey == "home")
             {
@@ -409,15 +511,16 @@ namespace well404.Essentials
                 var name = cardKey.Substring(WarpPrefix.Length);
                 var warp = m_Warps.Find(name);
                 if (warp == null) return PlayerActionResult.Fail(L(lang, "Warp not found."));
+                if (!m_WarpMap.IsCurrentMap(warp)) return PlayerActionResult.Fail(L(lang, "That warp belongs to a different map."));
                 if (!await m_Warps.HasAccessAsync(me, warp.Name)) return PlayerActionResult.Fail(L(lang, "You don't have access to that warp."));
-                destination = WarpService.ToLocation(warp); kind = TeleportKind.Warp; cooldownKey = WarpPrefix + warp.Name.ToLowerInvariant(); cooldownOverride = warp.CooldownSeconds;
+                destination = WarpService.ToLocation(warp); kind = TeleportKind.Warp; cooldownKey = "warp";
             }
             else
             {
                 return PlayerActionResult.Fail(L(lang, "Unknown destination."));
             }
 
-            var ok = await m_Teleport.TryTeleportAsync(me, destination, kind, cooldownKey, cooldownOverride);
+            var ok = await m_Teleport.TryTeleportAsync(me, destination, kind, cooldownKey);
             return ok ? PlayerActionResult.Ok(L(lang, "Teleported.")) : PlayerActionResult.Fail(L(lang, "Teleport didn't complete — check the in-game notice."), refresh: true);
         }
 

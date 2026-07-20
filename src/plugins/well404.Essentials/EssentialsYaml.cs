@@ -49,6 +49,17 @@ namespace well404.Essentials
             sb.Append("  requiredRatio: ").Append(Num(s.Sleep.RequiredRatio)).Append('\n');
             sb.Append('\n');
 
+            sb.Append("warpMap:\n");
+            sb.Append("  enabled: ").Append(Bool(s.WarpMap.Enabled)).Append('\n');
+            sb.Append("  visibility: ").Append(Quote(NormalizeWarpMapVisibility(s.WarpMap.Visibility))).Append('\n');
+            sb.Append('\n');
+
+            sb.Append("warpTags:\n");
+            sb.Append("  initialized: ").Append(Bool(s.WarpTags.Initialized)).Append('\n');
+            AppendWarpTags(sb, "presets", s.WarpTags.Presets);
+            AppendWarpTags(sb, "custom", s.WarpTags.Custom);
+            sb.Append('\n');
+
             if (s.Warps.Count == 0)
             {
                 sb.Append("warps: []\n");
@@ -59,13 +70,17 @@ namespace well404.Essentials
                 foreach (var w in s.Warps)
                 {
                     sb.Append("  - name: ").Append(Quote(w.Name)).Append('\n');
-                    sb.Append("    category: ").Append(Quote(w.Category)).Append('\n');
+                    sb.Append("    map: ").Append(Quote(w.Map)).Append('\n');
+                    sb.Append("    tags:\n");
+                    foreach (var tag in EssentialsConfigStore.NormalizeTags(w.Tags))
+                    {
+                        sb.Append("      - ").Append(Quote(tag)).Append('\n');
+                    }
                     sb.Append("    order: ").Append(Int(w.Order)).Append('\n');
                     sb.Append("    x: ").Append(Num(w.X)).Append('\n');
                     sb.Append("    y: ").Append(Num(w.Y)).Append('\n');
                     sb.Append("    z: ").Append(Num(w.Z)).Append('\n');
                     sb.Append("    yaw: ").Append(Num(w.Yaw)).Append('\n');
-                    sb.Append("    cooldownSeconds: ").Append(Int(w.CooldownSeconds)).Append('\n');
                 }
             }
 
@@ -102,6 +117,25 @@ namespace well404.Essentials
             return sb.ToString();
         }
 
+        private static void AppendWarpTags(
+            StringBuilder sb, string key, IReadOnlyCollection<WarpTagDefinition> definitions)
+        {
+            if (definitions.Count == 0)
+            {
+                sb.Append("  ").Append(key).Append(": []\n");
+                return;
+            }
+
+            sb.Append("  ").Append(key).Append(":\n");
+            foreach (var definition in definitions)
+            {
+                sb.Append("    - id: ").Append(Quote(definition.Id)).Append('\n');
+                sb.Append("      nameEn: ").Append(Quote(definition.NameEn)).Append('\n');
+                sb.Append("      nameZh: ").Append(Quote(definition.NameZh)).Append('\n');
+                sb.Append("      emoji: ").Append(Quote(definition.Emoji)).Append('\n');
+            }
+        }
+
         private static string Bool(bool value) => value ? "true" : "false";
 
         private static string Int(int value) => value.ToString(CultureInfo.InvariantCulture);
@@ -109,6 +143,10 @@ namespace well404.Essentials
         private static string Int(ushort value) => value.ToString(CultureInfo.InvariantCulture);
 
         private static string Num(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+        private static string NormalizeWarpMapVisibility(string value)
+            => string.Equals(value?.Trim(), "always", System.StringComparison.OrdinalIgnoreCase)
+                ? "always" : "native";
 
         /// <summary>Double-quotes a scalar and escapes backslashes and quotes for YAML.</summary>
         private static string Quote(string value)

@@ -13,7 +13,7 @@ namespace UnturnedMods.Shared.WebPanel
             string title,
             IReadOnlyList<WebPanelAction> actions,
             string? icon = null)
-            : this(id, title, actions, icon, null)
+            : this(id, title, actions, icon, null, null)
         {
         }
 
@@ -23,12 +23,24 @@ namespace UnturnedMods.Shared.WebPanel
             IReadOnlyList<WebPanelAction> actions,
             string? icon,
             WebUiExtension? ui)
+            : this(id, title, actions, icon, ui, null)
+        {
+        }
+
+        public WebPanelModule(
+            string id,
+            string title,
+            IReadOnlyList<WebPanelAction> actions,
+            string? icon,
+            WebUiExtension? ui,
+            IWebPanelModuleAssetProvider? assetProvider)
         {
             Id = id ?? throw new ArgumentNullException(nameof(id));
             Title = title ?? throw new ArgumentNullException(nameof(title));
             Actions = actions ?? throw new ArgumentNullException(nameof(actions));
             Icon = icon;
             Ui = ui;
+            AssetProvider = assetProvider;
         }
 
         /// <summary>Stable, unique module id (e.g. <c>well404.economy</c>). Used for routing.</summary>
@@ -43,7 +55,19 @@ namespace UnturnedMods.Shared.WebPanel
         /// <summary>Optional plugin-owned management surface mounted in an isolated Shadow DOM.</summary>
         public WebUiExtension? Ui { get; }
 
+        /// <summary>Optional opaque, read-only image assets for the custom management surface.</summary>
+        public IWebPanelModuleAssetProvider? AssetProvider { get; }
+
         public IReadOnlyList<WebPanelAction> Actions { get; }
+    }
+
+    /// <summary>
+    /// Supplies module-owned images to the authenticated admin surface. Asset ids are opaque and
+    /// providers must never interpret them as file paths.
+    /// </summary>
+    public interface IWebPanelModuleAssetProvider
+    {
+        Task<PlayerMenuAsset?> GetAssetAsync(string assetId);
     }
 
     /// <summary>How the panel renders and drives an action.</summary>

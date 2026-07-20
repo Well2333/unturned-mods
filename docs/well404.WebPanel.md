@@ -31,7 +31,8 @@ HTML/CSS/JavaScript 作为程序集资源注册，WebPanel 会在 Shadow DOM 中
 插件判断。Essentials、Shop、Vault 已迁移到这种自建 UI，其余模块继续使用描述符制。
 
 两个面板默认每 5 秒刷新安全数据。页面隐藏、存在弹窗或输入框正在编辑时会暂停，避免覆盖未保存
-内容；手动刷新按钮始终保留。可在 web 配置段设置 refreshIntervalSeconds，设为 0 关闭自动刷新。
+内容；手动刷新按钮始终保留。玩家动作会使先前 GET 失效，多笔动作只接受最后发起动作的视图，全部动作结束后再执行一次
+权威刷新，因此慢响应不会把页面回滚到旧库存。可在 web 配置段设置 refreshIntervalSeconds，设为 0 关闭自动刷新。
 
 插件自建玩家 UI 可通过 `PlayerCard.Metadata` 为卡片附加非敏感字符串键值。WebPanel 将其作为
 JSON `metadata` 对象原样传给 Shadow DOM 运行时，并按键稳定序列化，但不解释任何插件字段。
@@ -386,6 +387,7 @@ tunnel:
 | GET | `/<token>/api/modules/{module}/{action}/records` | 列出集合动作的记录 |
 | POST | `/<token>/api/modules/{module}/{action}` | 提交动作(表单 / 搜索) |
 | POST | `/<token>/api/modules/{module}/{action}/delete` | 删除集合中的一条记录 |
+| GET | `/<token>/api/modules/{module}/asset/{asset}` | 当前管理模块提供的只读图片资源 |
 | GET | `/<token>/dev-player` | 开发预览:签发 `devPlayer` 会话并 302 跳转 `/p`(仅 `web.devPlayer.enabled` 为真时;否则 404) |
 
 ### 玩家面接口(`/p`,独立鉴权)
@@ -395,6 +397,7 @@ tunnel:
 | GET | `/p` | 否 | 玩家单页应用(令牌从 `?t=` 读取) |
 | GET | `/api/p/view` | 玩家令牌 | 该玩家的全部菜单,每个菜单已预渲染 |
 | POST | `/api/p/invoke/{menu}` | 玩家令牌 | 以该玩家身份执行某张卡片的按钮 |
+| GET | `/api/p/asset/{menu}/{asset}` | 玩家令牌 | 当前玩家菜单提供的只读图片资源 |
 
 > 玩家令牌经 `?t=`(或 `X-Player-Token` 头)传入,由短时会话校验。**有效期至少 15 分钟,
 > 之后只要玩家仍在线就一直有效,一旦下线即失效**。管理员 token 在玩家面无效,反之亦然。
@@ -432,6 +435,13 @@ tunnel:
   一并提交。Shop 的「检索→＋(弹窗填买卖价)一键加入商品」即用它。
 
 参考实现见 Economy 的 `EconomyWebPanelModule.cs` 与 Shop 的 `ShopWebPanelModule.cs`。
+
+### 自建 UI 的只读图片资源
+
+复杂 UI 若要显示地图等插件自有图片，不应创建公开静态目录。管理模块把 `IWebPanelModuleAssetProvider` 传给 `WebPanelModule`；玩家菜单实现 `IPlayerMenuAssetProvider`。两者都按不透明 `assetId` 返回 `PlayerMenuAsset`，自建 JavaScript 通过 `panel.assetUrl(assetId)` 取得限定在当前模块/菜单的 URL。提供者必须使用固定 id 白名单，不能把 id 拼成磁盘路径。
+
+宿主在读取提供者前已经完成管理 token 或玩家会话校验；返回时只接受 PNG、JPEG、WebP、GIF，拒绝空内容和超过 16 MiB 的内容，添加 `Cache-Control: private`、ETag、`X-Content-Type-Options: nosniff`，并支持 `If-None-Match` 返回 304。图片内容仍由业务插件决定，WebPanel 不判断地图、物品等具体用途。
+
 
 ## 给插件开发者:注册自己的玩家菜单
 

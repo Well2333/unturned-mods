@@ -12,7 +12,15 @@
   </nav>
   <section class="tab-panel active" data-panel="teleport"><div id="teleport"></div></section>
   <section class="tab-panel" data-panel="rules"><div id="rules"></div></section>
-  <section class="tab-panel" data-panel="warps"><div id="warps"></div></section>
+  <section class="tab-panel" data-panel="warps">
+    <section class="panel warp-panel">
+      <div class="panel-head"><div><h3 id="warps-title">Warp directory</h3><p id="warps-help" class="desc">Manage the same labeled warp directory players see.</p></div><div class="panel-actions"><button id="manage-tags" class="ghost" type="button">Manage tags</button><button id="add-warp" type="button">＋ Add warp</button></div></div>
+      <div id="warps-message" class="msg" role="status"></div>
+      <nav id="warp-tabs" class="filter-tabs" aria-label="Warp labels"></nav>
+      <div id="warp-grid" class="items"></div>
+    </section>
+  </section>
   <section class="tab-panel" data-panel="gifts"><div id="gifts"></div></section>
   <section class="tab-panel" data-panel="search"><div id="search"></div></section>
+  <div id="modal-root"></div>
 </div>

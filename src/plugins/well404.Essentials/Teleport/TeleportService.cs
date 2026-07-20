@@ -23,7 +23,7 @@ namespace well404.Essentials.Teleport
     }
 
     /// <summary>
-    /// The shared teleport pipeline used by /home, /tp, /warp and /back: per-command cooldown,
+    /// The shared teleport pipeline used by /home, /tp, /warp and /back: shared configured cooldown with one bucket per command type,
     /// optional economy fee, a stand-still warmup that cancels if the player moves, and finally
     /// the teleport itself. All player-facing intermediate messages (warmup hint, cooldown,
     /// insufficient funds, cancellation, fee charged) are printed here; callers only print their
@@ -82,15 +82,12 @@ namespace well404.Essentials.Teleport
             UnturnedUser user,
             PlayerLocation destination,
             TeleportKind kind,
-            string cooldownKey,
-            int? cooldownSecondsOverride = null)
+            string cooldownKey)
         {
             var settings = Settings;
 
             // 1) Cooldown (unless exempt).
-            var cooldownSeconds = cooldownSecondsOverride.GetValueOrDefault() > 0
-                ? cooldownSecondsOverride!.Value
-                : settings.CooldownSeconds;
+            var cooldownSeconds = settings.CooldownSeconds;
             if (cooldownSeconds > 0
                 && await m_PermissionChecker.CheckPermissionAsync(user, CooldownExemptPermission) != PermissionGrantResult.Grant)
             {

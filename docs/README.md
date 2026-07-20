@@ -9,7 +9,7 @@
 | `well404.WebPanel` | [Web 管理面板](well404.WebPanel.md) — 通用可视化管理面板(供各插件挂载模块)+ 面向玩家的网页界面(`/menu`:服务器介绍、商店买卖、钱包转账、实用工具);路径式 token 鉴权 + 可选内置反代(cloudflared/ngrok,**缺 cloudflared 时自动下载便携版**);**网页中英双语可切换** |
 | `well404.Essentials` | [实用功能](well404.Essentials.md) — 面向玩家的 home/tp/warp/gift/sleep/back/party，统一传送规则，经济收费可选;玩家网页「实用工具」 |
 | `well404.AdminTools` | [管理员工具](well404.AdminTools.md) — 无敌、全身装备维修、踢出、临时封禁/解封;命令 + 管理面板 |
-| `well404.Vault` | [私人仓库](well404.Vault.md) — 玩家存取背包物品(完整保真,按背包格子计容量);命令 + 玩家网页仓库 |
+| `well404.Vault` | [个人与小队仓库](well404.Vault.md) — 完整保真存取、共享小队容量购买、命令与玩家/管理员网页界面 |
 | `well404.AutoSave` | [定时保存与备份](well404.AutoSave.md) — 按 crontab 墙钟定时保存,每 N 次保存做一次 LZMA 实体压缩备份(`.tar.lz`);可配备份目录/排除规则/保留上限;无游戏内指令,配置走 `config.yaml` + 管理面板 |
 
 > `well404.Shop` **硬依赖** `well404.Economy`(由它提供 `IEconomyProvider` 结算交易)。
@@ -89,3 +89,8 @@ scripts/build.sh well404.Economy --deploy /path/to/server/openmod/plugins
 
 OpenMod 命令权限形如 `<PluginId>:commands.<command>`（子命令追加路径），需在 OpenMod
 的权限角色里授予。各命令的权限串见对应插件文档。
+
+## 研究存档
+
+- [背包二维物品图标研究](item-images-research.md) — 已存档，功能暂缓。
+- [EItemType 两级物品筛选研究](item-type-hierarchy-research.md) — 现有大类下使用原生物品类型小类。

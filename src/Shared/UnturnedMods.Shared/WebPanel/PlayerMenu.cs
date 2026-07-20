@@ -286,6 +286,38 @@ namespace UnturnedMods.Shared.WebPanel
     }
 
     /// <summary>
+    /// Optional companion capability for a player menu that exposes a small, trusted set of
+    /// read-only image assets. The browser requests an opaque asset id; it never supplies a file
+    /// path. WebPanel applies player-session authentication, content-type and size limits, and
+    /// private caching before writing the response.
+    /// </summary>
+    public interface IPlayerMenuAssetProvider
+    {
+        Task<PlayerMenuAsset?> GetAssetAsync(PlayerMenuContext context, string assetId);
+    }
+
+    /// <summary>Immutable bytes returned by an <see cref="IPlayerMenuAssetProvider"/>.</summary>
+    public sealed class PlayerMenuAsset
+    {
+        public PlayerMenuAsset(byte[] content, string contentType, string entityTag, int maxAgeSeconds = 3600)
+        {
+            Content = content ?? System.Array.Empty<byte>();
+            ContentType = contentType ?? string.Empty;
+            EntityTag = entityTag ?? string.Empty;
+            MaxAgeSeconds = maxAgeSeconds < 0 ? 0 : maxAgeSeconds;
+        }
+
+        public byte[] Content { get; }
+
+        public string ContentType { get; }
+
+        /// <summary>Unquoted stable version token used for HTTP ETag handling.</summary>
+        public string EntityTag { get; }
+
+        public int MaxAgeSeconds { get; }
+    }
+
+    /// <summary>
     /// Registration surface for player-facing menus, implemented by <c>well404.WebPanel</c> as a
     /// global singleton (same cross-plugin pattern as <see cref="IWebPanelRegistry"/>). Feature
     /// plugins inject it optionally and register their menus.

@@ -8,8 +8,9 @@
 
 ```bash
 openmod install well404.Economy
-openmod reload
 ```
+
+安装或替换 DLL 后必须完整重启服务器；`openmod reload` 只用于未更换二进制的配置生命周期验证。
 
 或手动部署（见 [docs/README](README.md#本地构建与调试)）。
 
@@ -55,6 +56,14 @@ killRewards:
 >
 > 切换 `backend` 后两套余额各自独立（DB 账本与 XP 是两个数）。`experience` 模式下对
 > 离线玩家的操作会返回「玩家需在线」的提示。
+
+### 持久幂等操作
+
+SQLite 后端实现共享抽象 `IIdempotentEconomyProvider`。调用方提供唯一 `operationId` 后，扣款、退款或发放
+会在 `idempotent_operations` 与交易流水中原子记录；服务重试或重启恢复时，相同操作号不会重复改变余额。
+操作号若被复用于不同账户或金额会被拒绝。余额不足时整个事务回滚，不会占用该操作号。
+
+经验值后端没有独立持久账本，因而 `SupportsDurableOperations=false`。Vault 仍允许在线玩家用经验值购买个人或小队容量，但只能在当前进程内完成扣款与补偿；如果进程恰好在扣款阶段中断，不确定操作会留在恢复隔离区，禁止自动猜测扣款或退款。经验值只能使用整数，因此以经验值计价时，转账金额、商店价格和仓库扩容价格都必须是整数。需要完整跨重启幂等保证时应使用 `backend: database`。
 
 ## 命令
 

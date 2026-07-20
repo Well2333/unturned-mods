@@ -17,18 +17,20 @@ namespace well404.Essentials
         private readonly IPluginAccessor<EssentialsPlugin> m_PluginAccessor;
         private readonly object m_Lock = new object();
         private readonly EssentialsSettings m_Settings;
-        private bool m_WarpMigrationPending;
+        private bool m_ConfigMigrationPending;
 
         public EssentialsConfigStore(IConfiguration configuration, IPluginAccessor<EssentialsPlugin> pluginAccessor)
         {
             m_PluginAccessor = pluginAccessor;
             m_Settings = configuration.Get<EssentialsSettings>() ?? new EssentialsSettings();
-            m_WarpMigrationPending = NormalizeWarps(m_Settings.Warps);
+            m_Settings.WarpTags = m_Settings.WarpTags ?? new WarpTagSettings();
+            m_ConfigMigrationPending = NormalizeWarps(m_Settings.Warps)
+                | NormalizeWarpTagSettings(m_Settings.WarpTags, m_Settings.Warps);
         }
 
         /// <summary>
-        /// Persists legacy warp category/order defaults after the plugin instance and working
-        /// directory are available. The store can be constructed before that point.
+        /// Persists legacy warp fields, default tag definitions and unknown-tag migration after the
+        /// plugin instance and working directory are available.
         /// </summary>
         public void PersistMigrationIfNeeded(string workingDirectory)
         {
@@ -39,10 +41,10 @@ namespace well404.Essentials
 
             lock (m_Lock)
             {
-                if (!m_WarpMigrationPending) return;
+                if (!m_ConfigMigrationPending) return;
                 var path = Path.Combine(workingDirectory, "config.yaml");
                 File.WriteAllText(path, EssentialsYaml.Serialize(m_Settings), new UTF8Encoding(false));
-                m_WarpMigrationPending = false;
+                m_ConfigMigrationPending = false;
             }
         }
 
@@ -94,7 +96,7 @@ namespace well404.Essentials
                 if (index >= 0)
                 {
                     var existing = m_Settings.Warps[index];
-                    if (string.IsNullOrWhiteSpace(entry.Category)) entry.Category = existing.Category;
+                    if (entry.Tags == null || entry.Tags.Count == 0) entry.Tags = new List<string>(existing.Tags);
                     if (entry.Order <= 0) entry.Order = existing.Order;
                     m_Settings.Warps[index] = entry;
                 }
@@ -104,33 +106,37 @@ namespace well404.Essentials
                     m_Settings.Warps.Add(entry);
                 }
 
-                entry.Category = NormalizeCategory(entry.Category);
+                entry.Tags = NormalizeTags(entry.Tags);
+                entry.Category = string.Empty;
                 NormalizeWarps(m_Settings.Warps);
+                EnsureCustomWarpTagsLocked(entry.Tags);
                 Save();
             }
         }
 
-        /// <summary>Reorders every entry in exactly one category and rejects partial/stale lists.</summary>
-        public bool ReorderWarps(string category, IReadOnlyList<string> names)
+        /// <summary>Reorders the entries visible through one tag filter while preserving the others.</summary>
+        public bool ReorderWarps(string tag, IReadOnlyList<string> names)
         {
             lock (m_Lock)
             {
-                category = NormalizeCategory(category);
+                tag = NormalizeTag(tag);
                 var ordered = m_Settings.Warps.OrderBy(w => w.Order).ToList();
-                var categoryEntries = ordered.Where(w => string.Equals(w.Category, category, StringComparison.OrdinalIgnoreCase)).ToList();
-                if (categoryEntries.Count != names.Count
+                var taggedEntries = string.Equals(tag, "__all__", StringComparison.Ordinal)
+                    ? ordered
+                    : ordered.Where(w => HasTag(w, tag)).ToList();
+                if (taggedEntries.Count != names.Count
                     || names.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Count
-                    || names.Any(name => categoryEntries.All(w => !string.Equals(w.Name, name, StringComparison.OrdinalIgnoreCase))))
+                    || names.Any(name => taggedEntries.All(w => !string.Equals(w.Name, name, StringComparison.OrdinalIgnoreCase))))
                 {
                     return false;
                 }
 
-                var byName = categoryEntries.ToDictionary(w => w.Name, StringComparer.OrdinalIgnoreCase);
+                var byName = taggedEntries.ToDictionary(w => w.Name, StringComparer.OrdinalIgnoreCase);
                 var replacements = names.Select(name => byName[name]).ToList();
                 var replacementIndex = 0;
                 for (var i = 0; i < ordered.Count; i++)
                 {
-                    if (string.Equals(ordered[i].Category, category, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(tag, "__all__", StringComparison.Ordinal) || HasTag(ordered[i], tag))
                     {
                         ordered[i] = replacements[replacementIndex++];
                     }
@@ -156,6 +162,122 @@ namespace well404.Essentials
                 return true;
             }
         }
+
+        public IReadOnlyList<WarpTagDefinition> PresetWarpTags
+        {
+            get
+            {
+                lock (m_Lock) return m_Settings.WarpTags.Presets.Select(CloneTag).ToList();
+            }
+        }
+
+        public IReadOnlyList<WarpTagDefinition> CustomWarpTags
+        {
+            get
+            {
+                lock (m_Lock) return m_Settings.WarpTags.Custom.Select(CloneTag).ToList();
+            }
+        }
+
+        public WarpTagDefinition? FindWarpTag(string id)
+        {
+            lock (m_Lock)
+            {
+                var found = AllWarpTagsLocked().FirstOrDefault(tag =>
+                    string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase));
+                return found == null ? null : CloneTag(found);
+            }
+        }
+
+        public string ResolveWarpTagLabel(string id, string language, bool includeEmoji = true)
+        {
+            lock (m_Lock)
+            {
+                var found = AllWarpTagsLocked().FirstOrDefault(tag =>
+                    string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (found == null) return id;
+                var name = string.Equals(language, "zh", StringComparison.OrdinalIgnoreCase)
+                    ? found.NameZh : found.NameEn;
+                if (string.IsNullOrWhiteSpace(name)) name = found.Id;
+                return includeEmoji && !string.IsNullOrWhiteSpace(found.Emoji)
+                    ? found.Emoji + " " + name : name;
+            }
+        }
+
+        public string ResolveWarpTagEmoji(IEnumerable<string>? ids)
+        {
+            lock (m_Lock)
+            {
+                foreach (var id in ids ?? Array.Empty<string>())
+                {
+                    var found = AllWarpTagsLocked().FirstOrDefault(tag =>
+                        string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase));
+                    if (found != null && !string.IsNullOrWhiteSpace(found.Emoji)) return found.Emoji;
+                }
+
+                return string.Empty;
+            }
+        }
+
+        public void UpsertWarpTag(WarpTagDefinition definition, bool preset)
+        {
+            if (definition == null) throw new ArgumentNullException(nameof(definition));
+            lock (m_Lock)
+            {
+                var normalized = NormalizeDefinition(definition);
+                if (normalized.Id.Length == 0) throw new ArgumentException("A tag ID is required.", nameof(definition));
+                m_Settings.WarpTags.Presets.RemoveAll(tag =>
+                    string.Equals(tag.Id, normalized.Id, StringComparison.OrdinalIgnoreCase));
+                m_Settings.WarpTags.Custom.RemoveAll(tag =>
+                    string.Equals(tag.Id, normalized.Id, StringComparison.OrdinalIgnoreCase));
+                (preset ? m_Settings.WarpTags.Presets : m_Settings.WarpTags.Custom).Add(normalized);
+                Save();
+            }
+        }
+
+        public bool RemoveWarpTag(string id)
+        {
+            lock (m_Lock)
+            {
+                var removed = m_Settings.WarpTags.Presets.RemoveAll(tag =>
+                                  string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase))
+                              + m_Settings.WarpTags.Custom.RemoveAll(tag =>
+                                  string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (removed == 0) return false;
+                Save();
+                return true;
+            }
+        }
+
+        public void EnsureCustomWarpTags(IEnumerable<string>? ids)
+        {
+            lock (m_Lock)
+            {
+                if (EnsureCustomWarpTagsLocked(ids)) Save();
+            }
+        }
+
+        private bool EnsureCustomWarpTagsLocked(IEnumerable<string>? ids)
+        {
+            var changed = false;
+            foreach (var id in NormalizeTags(ids))
+            {
+                if (AllWarpTagsLocked().Any(tag => string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase))) continue;
+                m_Settings.WarpTags.Custom.Add(new WarpTagDefinition
+                {
+                    Id = id,
+                    NameEn = id,
+                    NameZh = id,
+                    Emoji = string.Empty
+                });
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private IEnumerable<WarpTagDefinition> AllWarpTagsLocked()
+            => m_Settings.WarpTags.Presets.Concat(m_Settings.WarpTags.Custom);
 
         public IReadOnlyList<GiftEntry> Gifts
         {
@@ -188,8 +310,33 @@ namespace well404.Essentials
             }
         }
 
-        internal static string NormalizeCategory(string? category)
-            => string.IsNullOrWhiteSpace(category) ? "default" : category.Trim();
+        internal static string NormalizeTag(string? tag)
+            => string.IsNullOrWhiteSpace(tag) ? "default" : tag.Trim().ToLowerInvariant();
+
+        internal static List<string> ParseTags(IEnumerable<string>? values)
+        {
+            var tags = new List<string>();
+            if (values != null)
+            {
+                foreach (var value in values)
+                {
+                    foreach (var tag in (value ?? string.Empty)
+                                 .Split(new[] { ' ', '\t', '\r', '\n', ',' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var normalized = NormalizeTag(tag);
+                        if (!tags.Contains(normalized, StringComparer.OrdinalIgnoreCase)) tags.Add(normalized);
+                    }
+                }
+            }
+
+            if (tags.Count == 0) tags.Add("default");
+            return tags;
+        }
+
+        internal static List<string> NormalizeTags(IEnumerable<string>? tags) => ParseTags(tags);
+
+        internal static bool HasTag(WarpEntry warp, string tag)
+            => warp.Tags.Any(value => string.Equals(value, tag, StringComparison.OrdinalIgnoreCase));
 
         internal static bool NormalizeWarps(List<WarpEntry> warps, bool forceOrder = false)
         {
@@ -198,9 +345,14 @@ namespace well404.Essentials
             var next = 1;
             foreach (var warp in warps)
             {
-                var category = NormalizeCategory(warp.Category);
-                if (!string.Equals(category, warp.Category, StringComparison.Ordinal)) changed = true;
-                warp.Category = category;
+                IEnumerable<string> sourceTags = warp.Tags == null || warp.Tags.Count == 0
+                    ? new[] { warp.Category }
+                    : warp.Tags;
+                var tags = NormalizeTags(sourceTags);
+                if (warp.Tags == null || !warp.Tags.SequenceEqual(tags, StringComparer.Ordinal)) changed = true;
+                warp.Tags = tags;
+                if (!string.IsNullOrEmpty(warp.Category)) changed = true;
+                warp.Category = string.Empty;
 
                 if (forceOrder || warp.Order <= 0 || used.Contains(warp.Order))
                 {
@@ -213,6 +365,116 @@ namespace well404.Essentials
             }
             return changed;
         }
+
+        internal static bool NormalizeWarpTagSettings(WarpTagSettings settings, IEnumerable<WarpEntry>? warps)
+        {
+            var changed = false;
+            settings.Presets = settings.Presets ?? new List<WarpTagDefinition>();
+            settings.Custom = settings.Custom ?? new List<WarpTagDefinition>();
+            if (!settings.Initialized)
+            {
+                foreach (var definition in DefaultWarpTags())
+                {
+                    if (!settings.Presets.Concat(settings.Custom).Any(tag =>
+                            string.Equals(tag.Id, definition.Id, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        settings.Presets.Add(definition);
+                    }
+                }
+
+                settings.Initialized = true;
+                changed = true;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            changed |= NormalizeDefinitions(settings.Presets, seen);
+            changed |= NormalizeDefinitions(settings.Custom, seen);
+            foreach (var id in (warps ?? Array.Empty<WarpEntry>()).SelectMany(warp => NormalizeTags(warp.Tags)))
+            {
+                if (seen.Add(id))
+                {
+                    settings.Custom.Add(new WarpTagDefinition
+                    {
+                        Id = id,
+                        NameEn = id,
+                        NameZh = id,
+                        Emoji = string.Empty
+                    });
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        internal static IReadOnlyList<WarpTagDefinition> DefaultWarpTags()
+            => new[]
+            {
+                new WarpTagDefinition { Id = "default", NameEn = "Other", NameZh = "其他", Emoji = "📍" },
+                new WarpTagDefinition { Id = "city", NameEn = "City", NameZh = "城市", Emoji = "🏙️" },
+                new WarpTagDefinition { Id = "countryside", NameEn = "Countryside", NameZh = "乡村", Emoji = "🌾" },
+                new WarpTagDefinition { Id = "military-base", NameEn = "Military Base", NameZh = "军事基地", Emoji = "🪖" },
+                new WarpTagDefinition { Id = "safe-zone", NameEn = "Safe Zone", NameZh = "安全区", Emoji = "🛡️" },
+                new WarpTagDefinition { Id = "virus-zone", NameEn = "Virus Zone", NameZh = "病毒区", Emoji = "☣️" },
+                new WarpTagDefinition { Id = "resource-point", NameEn = "Resource Point", NameZh = "资源点", Emoji = "⛏️" },
+                new WarpTagDefinition { Id = "npc", NameEn = "NPC", NameZh = "NPC", Emoji = "🧑" }
+            };
+
+        private static bool NormalizeDefinitions(List<WarpTagDefinition> definitions, ISet<string> seen)
+        {
+            var changed = false;
+            for (var i = definitions.Count - 1; i >= 0; i--)
+            {
+                var original = definitions[i];
+                if (original == null || string.IsNullOrWhiteSpace(original.Id))
+                {
+                    definitions.RemoveAt(i);
+                    changed = true;
+                    continue;
+                }
+
+                var normalized = NormalizeDefinition(original);
+                if (!seen.Add(normalized.Id))
+                {
+                    definitions.RemoveAt(i);
+                    changed = true;
+                    continue;
+                }
+
+                if (original.Id != normalized.Id || original.NameEn != normalized.NameEn
+                    || original.NameZh != normalized.NameZh || original.Emoji != normalized.Emoji)
+                {
+                    definitions[i] = normalized;
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        private static WarpTagDefinition NormalizeDefinition(WarpTagDefinition definition)
+        {
+            var id = string.IsNullOrWhiteSpace(definition.Id)
+                ? string.Empty : definition.Id.Trim().ToLowerInvariant();
+            var nameEn = string.IsNullOrWhiteSpace(definition.NameEn) ? id : definition.NameEn.Trim();
+            var nameZh = string.IsNullOrWhiteSpace(definition.NameZh) ? nameEn : definition.NameZh.Trim();
+            return new WarpTagDefinition
+            {
+                Id = id,
+                NameEn = nameEn,
+                NameZh = nameZh,
+                Emoji = definition.Emoji?.Trim() ?? string.Empty
+            };
+        }
+
+        private static WarpTagDefinition CloneTag(WarpTagDefinition definition)
+            => new WarpTagDefinition
+            {
+                Id = definition.Id,
+                NameEn = definition.NameEn,
+                NameZh = definition.NameZh,
+                Emoji = definition.Emoji
+            };
 
         private void Save()
             => File.WriteAllText(ConfigPath, EssentialsYaml.Serialize(m_Settings), new UTF8Encoding(false));
