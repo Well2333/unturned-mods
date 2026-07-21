@@ -94,26 +94,18 @@ namespace well404.WebPanel
         public string Command { get; set; } = "cloudflared";
 
         /// <summary>
-        /// Only for <c>type: cloudflare</c>. When <see cref="Command"/> ("cloudflared") is not found on
-        /// disk or <c>PATH</c>, download a <b>portable</b> copy of the latest official release into the
-        /// plugin's data directory and run that — it is never installed system-wide / onto <c>PATH</c>.
-        /// Cached and reused across restarts. Supported on Windows and Linux (x64/arm64); on other
-        /// platforms (e.g. macOS) install cloudflared manually. Default true.
+        /// Automatic download is disabled by default and unavailable in this build because no pinned
+        /// official version/SHA-256 allowlist is bundled. Install cloudflared manually and set
+        /// <see cref="Command"/> to its path. This compatibility switch is retained for old configs.
         /// </summary>
-        public bool AutoDownload { get; set; } = true;
+        public bool AutoDownload { get; set; } = false;
 
         /// <summary>
-        /// Only for <c>type: cloudflare</c> auto-download. Ordered list of download sources, tried top
-        /// to bottom (first that works wins). Each entry is either a full URL template containing
-        /// <c>{asset}</c> (the platform file name, e.g. <c>cloudflared-windows-amd64.exe</c>), or a bare
-        /// proxy prefix that gets the canonical GitHub release URL appended (e.g.
-        /// <c>https://ghproxy.com/</c>); an empty string means a direct github.com download. Empty list
-        /// = use the built-in defaults (a few GitHub-release proxies first, then direct GitHub). Note:
-        /// jsDelivr only mirrors repo files, not release binaries, so it cannot serve cloudflared.
+        /// Reserved for configuration compatibility. Ignored while verified auto-download is unavailable.
         /// </summary>
         public List<string> DownloadMirrors { get; set; } = new List<string>();
 
-        /// <summary>How many times to retry each download source before moving to the next. Default 2.</summary>
+        /// <summary>Reserved for configuration compatibility; currently ignored.</summary>
         public int DownloadAttempts { get; set; } = 2;
 
         /// <summary>

@@ -58,11 +58,24 @@ namespace well404.Shop
             var canonicalGroups = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var group in settings.Groups) canonicalGroups[group.Id] = group.Id;
 
+            var normalizedItems = new List<ShopItemConfig>();
+            var seenItems = new HashSet<ushort>();
+            foreach (var item in settings.Items)
+            {
+                if (!seenItems.Add(item.ItemId))
+                {
+                    changed = true;
+                    continue;
+                }
+                changed |= NormalizeProduct(item.Group, item.Note, canonicalGroups,
+                    (group, note) => { item.Group = group; item.Note = note; });
+                normalizedItems.Add(item);
+            }
+            settings.Items = normalizedItems;
+
             var positions = new List<CatalogPosition>();
             foreach (var item in settings.Items)
             {
-                changed |= NormalizeProduct(item.Group, item.Note, canonicalGroups,
-                    (group, note) => { item.Group = group; item.Note = note; });
                 positions.Add(new CatalogPosition(item.Order, value => item.Order = value));
             }
 

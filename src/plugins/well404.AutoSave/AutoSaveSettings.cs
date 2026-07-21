@@ -9,6 +9,8 @@ namespace well404.AutoSave
 
         public BackupSettings Backup { get; set; } = new BackupSettings();
 
+        public IdleBackupSettings IdleBackup { get; set; } = new IdleBackupSettings();
+
         public RetentionSettings Retention { get; set; } = new RetentionSettings();
     }
 
@@ -55,6 +57,19 @@ namespace well404.AutoSave
             "**/*~",
             "**/*.bak"
         };
+    }
+
+    /// <summary>Reduces archive frequency while the server has no online players.</summary>
+    public sealed class IdleBackupSettings
+    {
+        /// <summary>
+        /// When true, the first normally due backup after the server becomes empty still runs, then
+        /// later backups use <see cref="IntervalHours"/> until a player connects.
+        /// </summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>Hours between backups after the first empty-server backup. Range: 1-8760.</summary>
+        public int IntervalHours { get; set; } = 24;
     }
 
     /// <summary>Limits that trigger deletion of the oldest backups. 0 = unlimited.</summary>

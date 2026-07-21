@@ -39,33 +39,16 @@ web:
     # The tunnel binary (or a full path to it). For cloudflare this is the only field that matters.
     command: "cloudflared"
 
-    # Only for type: "cloudflare". If `command` isn't found on disk or PATH, download a PORTABLE
-    # cloudflared (latest official release) into this plugin's data dir and run that — it is NEVER
-    # installed system-wide or added to PATH, and is cached/reused across restarts. Supported on
-    # Windows and Linux (x64/arm64); on other platforms (e.g. macOS) install cloudflared yourself.
-    # Set false to require a pre-installed cloudflared instead.
-    autoDownload: true
+    # Security default: network-downloaded executables are disabled until this plugin maintains a
+    # pinned official version and per-platform SHA-256 allowlist. Install cloudflared yourself and
+    # set `command` to its executable path. Setting this true currently logs a warning and refuses.
+    autoDownload: false
 
-    # Download sources for autoDownload (type: "cloudflare" only), tried top-to-bottom — first that
-    # works wins, each retried `downloadAttempts` times; the system / HTTPS_PROXY|HTTP_PROXY|ALL_PROXY
-    # proxy is honoured. Each entry is EITHER a full URL template with `{asset}` (the platform file
-    # name, e.g. cloudflared-windows-amd64.exe), OR a bare proxy prefix that gets the canonical GitHub
-    # release URL appended (e.g. "https://ghproxy.com/"), OR "" for a direct github.com download.
-    # Leave empty ([]) to use the built-in defaults: GitHub itself first, then a jsDelivr CDN mirror,
-    # then proxies verified to actually stream the binary. The jsDelivr entry points at a small
-    # auto-updated mirror repo (Well2333/asset-mirror) that stores each release binary GZIP-compressed
-    # (so even the >50 MB Windows build fits jsDelivr's 50 MB limit); the plugin gunzips a source whose
-    # URL ends in ".gz" after download. (Plain jsDelivr CANNOT serve GitHub *release assets* directly —
-    # that's why the mirror repo exists.)
+    # Security: this build does not auto-download executables until a pinned official version and
+    # per-platform SHA-256 allowlist are maintained. Install cloudflared manually and set command.
+    # These legacy fields are retained for config compatibility and are currently ignored.
     downloadMirrors: []
-    # Example (put your most reliable source first; "" = direct github.com):
-    #   downloadMirrors:
-    #     - ""                          # GitHub itself
-    #     - "https://cdn.jsdelivr.net/gh/Well2333/asset-mirror@main/cloudflared/{asset}.gz"   # jsDelivr (gzip)
-    #     - "https://gh-proxy.com/"
-    #     - "https://gh.ddlc.top/"
-    #     - "https://your-mirror/{asset}"   # or any full template with {asset} (append .gz to gunzip)
-    downloadAttempts: 2   # retries per source before moving to the next
+    downloadAttempts: 2   # legacy compatibility; currently ignored
 
     # The following four only apply when type: "custom". `{port}` is replaced with the panel port.
     args: "http {port}"
@@ -91,7 +74,7 @@ web:
   # When no usable URL is available, /menu tells the player the panel isn't reachable.
   publicBaseUrl: ""
 
-  # How long a player's /menu link stays valid, in minutes.
+  # How long a player's /menu link stays valid while that player remains online (minimum 15 minutes).
   playerSessionMinutes: 5
 
   # Refresh safe browser data every N seconds. Pauses while the page is hidden or being edited.

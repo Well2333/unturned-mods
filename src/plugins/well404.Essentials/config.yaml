@@ -13,7 +13,7 @@ teleport:
   # Cancel the warmup if the player moves more than moveThreshold metres.
   cancelOnMove: true
   moveThreshold: 0.5
-  # Per-command cooldown after a successful teleport (0 = none).
+  # Shared cooldown after a successful teleport (0 = none). All warp destinations use one warp cooldown.
   cooldownSeconds: 0
   # Economy fee per teleport, by command. All 0 by default (free).
   costs:
@@ -42,17 +42,69 @@ sleep:
   # Fraction of online players who must /sleep to flip day<->night (0.5 = half).
   requiredRatio: 0.5
 
-# Travel points. /warp <name> teleports here; /warp set <name> [cooldown] adds one.
+# Optional interactive map above the warp list in the player WebPanel.
+warpMap:
+  enabled: true
+  # native = follow Unturned's Chart gameplay setting / map-item access.
+  # always = show the chart to every player who can open the Essentials player menu.
+  visibility: "native"
+
+# Stable tag IDs are stored on warp entries. Presets and custom tags are edited independently
+# in WebPanel; every definition persists its English/Chinese display names and Emoji.
+warpTags:
+  initialized: true
+  presets:
+    - id: "default"
+      nameEn: "Other"
+      nameZh: "其他"
+      emoji: "📍"
+    - id: "city"
+      nameEn: "City"
+      nameZh: "城市"
+      emoji: "🏙️"
+    - id: "countryside"
+      nameEn: "Countryside"
+      nameZh: "乡村"
+      emoji: "🌾"
+    - id: "military-base"
+      nameEn: "Military Base"
+      nameZh: "军事基地"
+      emoji: "🪖"
+    - id: "safe-zone"
+      nameEn: "Safe Zone"
+      nameZh: "安全区"
+      emoji: "🛡️"
+    - id: "virus-zone"
+      nameEn: "Virus Zone"
+      nameZh: "病毒区"
+      emoji: "☣️"
+    - id: "resource-point"
+      nameEn: "Resource Point"
+      nameZh: "资源点"
+      emoji: "⛏️"
+    - id: "npc"
+      nameEn: "NPC"
+      nameZh: "NPC"
+      emoji: "🧑"
+  custom: []
+
+# Travel points. /warp <name> teleports here; /warp set <name> [tag ...] adds one.
+# New points record the current map automatically. Empty legacy map values stay unassigned.
+# Tags are lowercase player-panel filters; missing tags become default.
 # Each warp also needs `well404.Essentials:well404.essentials.warps.<name>`.
 warps: []
 # Example:
 # warps:
 #   - name: "spawn"
+#     map: "PEI"
+#     tags:
+#       - "public"
+#       - "city"
+#     order: 1
 #     x: 100.0
 #     y: 40.0
 #     z: -50.0
 #     yaw: 90.0
-#     cooldownSeconds: 0
 
 # Free gift packs. /gift lists what you can claim; /gift <id> claims one.
 # permission: empty = everyone; set a node (e.g. well404.essentials.gift.vip) for VIP packs.

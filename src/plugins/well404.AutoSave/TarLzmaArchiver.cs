@@ -20,7 +20,7 @@ namespace well404.AutoSave
         public void Create(string outputFilePath, IEnumerable<BackupEntry> entries)
         {
             using var fileStream = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write, FileShare.None);
-            using var lzip = new LZipStream(fileStream, CompressionMode.Compress);
+            using var lzip = LZipStream.Create(fileStream, CompressionMode.Compress);
             using var tar = new TarWriter(lzip, new TarWriterOptions(CompressionType.None, finalizeArchiveOnClose: true));
             foreach (var entry in entries)
             {

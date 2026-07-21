@@ -74,6 +74,23 @@ namespace well404.Shop.Tests
         }
 
         [Fact]
+        public void Normalize_DuplicateItemIds_KeepsOnlyFirstDefinition()
+        {
+            var settings = new ShopSettings
+            {
+                Items = new List<ShopItemConfig>
+                {
+                    new ShopItemConfig { ItemId = 15, SellPrice = 10m, Order = 1 },
+                    new ShopItemConfig { ItemId = 15, SellPrice = 999m, Order = 2 }
+                }
+            };
+
+            Assert.True(ShopConfiguration.Normalize(settings));
+            var item = Assert.Single(settings.Items);
+            Assert.Equal(10m, item.SellPrice);
+        }
+
+        [Fact]
         public void AvailableUnits_Item_UsesInventoryCount()
         {
             var counts = new Dictionary<ushort, int> { [15] = 7, [81] = 2 };

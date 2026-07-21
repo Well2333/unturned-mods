@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using OpenMod.API.Users;
 using OpenMod.Core.Users;
-using OpenMod.Extensions.Economy.Abstractions;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Users;
 using UnturnedMods.Shared.WebPanel;
@@ -26,7 +26,7 @@ namespace well404.Shop
         private readonly ShopCatalog m_Catalog;
         private readonly ShopService m_ShopService;
         private readonly DiscountService m_DiscountService;
-        private readonly IEconomyProvider m_Economy;
+        private readonly ShopTradeCoordinator m_Trades;
         private readonly IUserManager m_UserManager;
         private readonly IItemDirectory m_ItemDirectory;
         private readonly IWebTranslationRegistry m_Tr;
@@ -35,7 +35,7 @@ namespace well404.Shop
             ShopCatalog catalog,
             ShopService shopService,
             DiscountService discountService,
-            IEconomyProvider economy,
+            ShopTradeCoordinator trades,
             IUserManager userManager,
             IItemDirectory itemDirectory,
             IWebTranslationRegistry translations)
@@ -43,7 +43,7 @@ namespace well404.Shop
             m_Catalog = catalog;
             m_ShopService = shopService;
             m_DiscountService = discountService;
-            m_Economy = economy;
+            m_Trades = trades;
             m_UserManager = userManager;
             m_ItemDirectory = itemDirectory;
             m_Tr = translations;
@@ -60,10 +60,10 @@ namespace well404.Shop
         public async Task<PlayerMenuView> RenderAsync(PlayerMenuContext context)
         {
             var lang = context.Language;
-            var balance = await m_Economy.GetBalanceAsync(context.SteamId, KnownActorTypes.Player);
+            var balance = await m_Trades.GetBalanceAsync(context.SteamId, KnownActorTypes.Player);
             var user = await ResolveOnlineAsync(context.SteamId);
             var multiplier = user != null ? await m_DiscountService.GetMultiplierAsync(user) : 1m;
-            var symbol = m_Economy.CurrencySymbol;
+            var symbol = m_Trades.CurrencySymbol;
             IReadOnlyDictionary<ushort, int> inventory = new Dictionary<ushort, int>();
             if (user != null)
             {
@@ -121,7 +121,11 @@ namespace well404.Shop
             }
 
             var header = m_Tr.Format(lang, "Balance: {0}{1}", symbol, Money(balance));
-            var message = user == null ? m_Tr.Resolve("You must be online to buy or sell.", lang) : null;
+            var message = user == null
+                ? m_Tr.Resolve("You must be online to buy or sell.", lang)
+                : !m_Trades.SupportsDurableTrades
+                    ? m_Tr.Resolve("Trading requires the durable SQLite economy backend.", lang)
+                    : null;
             return new PlayerMenuView(m_Tr.Resolve("Shop", lang), header, cards, message, null, "tabbed-grid");
         }
 
@@ -171,40 +175,10 @@ namespace well404.Shop
 
             var multiplier = await m_DiscountService.GetMultiplierAsync(user);
             var unitPrice = DiscountService.ApplyDiscount(entry.BuyPrice, multiplier);
-            var amount = requested ?? 0;
-            if (requested == null)
-            {
-                var balance = await m_Economy.GetBalanceAsync(user.Id, user.Type);
-                var affordable = decimal.Floor(balance / unitPrice);
-                amount = affordable > int.MaxValue ? int.MaxValue : (int)affordable;
-                if (amount < 1)
-                {
-                    return PlayerActionResult.Fail(m_Tr.Resolve("Insufficient balance.", lang));
-                }
-            }
-            var total = unitPrice * amount;
-
-            try
-            {
-                await m_Economy.UpdateBalanceAsync(user.Id, user.Type, -total, "shop_buy:" + entry.Id);
-            }
-            catch (NotEnoughBalanceException)
-            {
-                return PlayerActionResult.Fail(m_Tr.Resolve("Insufficient balance.", lang));
-            }
-
-            try
-            {
-                await m_ShopService.GiveAsync(user, entry, amount);
-            }
-            catch
-            {
-                await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_buy_refund:" + entry.Id);
-                throw;
-            }
-
+            var result = await m_Trades.BuyAsync(user, entry, requested, unitPrice);
+            if (result.Status != ShopTradeStatus.Completed) return Failure(result, lang, name);
             return PlayerActionResult.Ok(m_Tr.Format(lang, "Bought {0}× {1} for {2}.",
-                amount, name, m_Economy.CurrencySymbol + Money(total)));
+                result.ItemCount, name, m_Trades.CurrencySymbol + Money(result.Total)));
         }
 
         private async Task<PlayerActionResult> SellAsync(UnturnedUser user, ShopEntry entry, string name, int? requested, string lang)
@@ -214,56 +188,52 @@ namespace well404.Shop
                 return PlayerActionResult.Fail(m_Tr.Format(lang, "{0} is not sellable.", name));
             }
 
-            var inventory = await m_ShopService.GetInventoryCountsAsync(user);
-            var available = ShopService.AvailableUnits(entry, inventory);
-            var amount = requested == null ? available : Math.Min(requested.Value, available);
-            if (amount < 1)
-            {
-                return PlayerActionResult.Fail(m_Tr.Format(lang, "You don't have enough {0} in your inventory.", name));
-            }
-            var took = await m_ShopService.TryTakeAsync(user, entry, amount);
-            if (!took)
-            {
-                return PlayerActionResult.Fail(m_Tr.Format(lang, "You don't have enough {0} in your inventory.", name));
-            }
-
-            var total = entry.SellPrice * amount;
-            await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_sell:" + entry.Id);
+            var result = await m_Trades.SellAsync(user, entry, requested);
+            if (result.Status != ShopTradeStatus.Completed) return Failure(result, lang, name);
             return PlayerActionResult.Ok(m_Tr.Format(lang, "Sold {0}× {1} for {2}.",
-                amount, name, m_Economy.CurrencySymbol + Money(total)));
+                result.ItemCount, name, m_Trades.CurrencySymbol + Money(result.Total)));
         }
 
         private async Task<PlayerActionResult> SellGroupAsync(UnturnedUser user, string groupId, string lang)
         {
-            var inGroup = new List<ShopEntry>();
-            foreach (var entry in m_Catalog.Entries)
-            {
-                if (string.Equals(entry.Group, groupId, StringComparison.OrdinalIgnoreCase))
-                {
-                    inGroup.Add(entry);
-                }
-            }
-            var eligible = ShopQuickSell.EligibleEntries(inGroup);
-            if (eligible.Count == 0)
+            if (!m_Catalog.Entries.Any(entry =>
+                    string.Equals(entry.Group, groupId, StringComparison.OrdinalIgnoreCase)
+                    && entry.SellPrice > 0m))
             {
                 return PlayerActionResult.Fail(m_Tr.Resolve("This group has no items eligible for quick sell.", lang));
             }
-
-            var removed = await m_ShopService.TakeAllAsync(user, eligible.Keys);
-            var total = ShopQuickSell.CalculateTotal(eligible, removed);
-            var itemCount = 0;
-            foreach (var amount in removed.Values)
-            {
-                itemCount += amount;
-            }
-            if (itemCount == 0 || total <= 0m)
-            {
-                return PlayerActionResult.Fail(m_Tr.Resolve("No sellable items were found in your inventory.", lang));
-            }
-
-            await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_sell_group:" + groupId);
+            var result = await m_Trades.SellGroupAsync(user, groupId);
+            if (result.Status == ShopTradeStatus.NotEnoughItems)
+                return PlayerActionResult.Fail(m_Tr.Resolve(
+                    "No sellable items were found in your inventory.", lang));
+            if (result.Status != ShopTradeStatus.Completed) return Failure(result, lang, groupId);
             return PlayerActionResult.Ok(m_Tr.Format(lang, "Sold {0} item(s) for {1}.",
-                itemCount, m_Economy.CurrencySymbol + Money(total)));
+                result.ItemCount, m_Trades.CurrencySymbol + Money(result.Total)));
+        }
+
+        private PlayerActionResult Failure(ShopTradeResult result, string lang, string itemName)
+        {
+            switch (result.Status)
+            {
+                case ShopTradeStatus.InsufficientBalance:
+                    return PlayerActionResult.Fail(m_Tr.Resolve("Insufficient balance.", lang));
+                case ShopTradeStatus.NotEnoughItems:
+                    return PlayerActionResult.Fail(m_Tr.Format(lang,
+                        "You don't have enough {0} in your inventory.", itemName));
+                case ShopTradeStatus.DurableEconomyRequired:
+                    return PlayerActionResult.Fail(m_Tr.Resolve(
+                        "Trading requires the durable SQLite economy backend.", lang));
+                case ShopTradeStatus.PendingOperation:
+                    return PlayerActionResult.Fail(m_Tr.Format(lang,
+                        "A previous trade is quarantined as {0}; ask an administrator to review it.",
+                        result.OperationId));
+                case ShopTradeStatus.Quarantined:
+                    return PlayerActionResult.Fail(m_Tr.Format(lang,
+                        "Trade {0} entered recovery quarantine; no automatic refund or replay was attempted.",
+                        result.OperationId), refresh: true);
+                default:
+                    return PlayerActionResult.Fail(m_Tr.Resolve("The trade request is invalid.", lang));
+            }
         }
 
         private string GroupName(string groupId)

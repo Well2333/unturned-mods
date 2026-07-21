@@ -49,7 +49,7 @@ namespace well404.Essentials.Warps
         public async Task<bool> HasAccessAsync(IPermissionActor actor, string name)
             => await m_PermissionChecker.CheckPermissionAsync(actor, PermissionFor(name)) == PermissionGrantResult.Grant;
 
-        public void Set(string name, PlayerLocation location, int cooldownSeconds)
+        public void Set(string name, PlayerLocation location, IReadOnlyList<string>? tags, string map)
         {
             var existing = Find(name);
             Upsert(new WarpEntry
@@ -59,8 +59,10 @@ namespace well404.Essentials.Warps
                 Y = (decimal)location.Y,
                 Z = (decimal)location.Z,
                 Yaw = (decimal)location.Yaw,
-                CooldownSeconds = cooldownSeconds,
-                Category = existing?.Category ?? "default",
+                Map = map?.Trim() ?? string.Empty,
+                Tags = tags == null || tags.Count == 0
+                    ? (existing != null ? new List<string>(existing.Tags) : new List<string> { "default" })
+                    : EssentialsConfigStore.NormalizeTags(tags),
                 Order = existing?.Order ?? 0
             });
         }
@@ -74,8 +76,8 @@ namespace well404.Essentials.Warps
 
         public bool Delete(string name) => m_Store.RemoveWarp(name);
 
-        public bool Reorder(string category, IReadOnlyList<string> names)
-            => m_Store.ReorderWarps(category, names);
+        public bool Reorder(string tag, IReadOnlyList<string> names)
+            => m_Store.ReorderWarps(tag, names);
 
         private void RegisterPermission(string name)
             => m_PermissionRegistry.RegisterPermission(
@@ -85,6 +87,6 @@ namespace well404.Essentials.Warps
 
         /// <summary>Converts a warp entry to a teleport destination.</summary>
         public static PlayerLocation ToLocation(WarpEntry warp)
-            => new PlayerLocation((float)warp.X, (float)warp.Y, (float)warp.Z, (float)warp.Yaw);
+            => new PlayerLocation((float)warp.X, (float)warp.Y, (float)warp.Z, (float)warp.Yaw, warp.Map);
     }
 }

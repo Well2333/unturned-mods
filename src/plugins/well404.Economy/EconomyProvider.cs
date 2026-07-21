@@ -9,6 +9,7 @@ using OpenMod.API.Ioc;
 using OpenMod.API.Plugins;
 using OpenMod.API.Users;
 using OpenMod.Extensions.Economy.Abstractions;
+using UnturnedMods.Shared.Economy;
 using well404.Economy.Currency;
 
 namespace well404.Economy
@@ -27,7 +28,7 @@ namespace well404.Economy
     /// </para>
     /// </summary>
     [ServiceImplementation(Lifetime = ServiceLifetime.Singleton)]
-    public sealed class EconomyProvider : IEconomyProvider
+    public sealed class EconomyProvider : IEconomyProvider, IIdempotentEconomyProvider
     {
         private readonly IPluginAccessor<EconomyPlugin> m_PluginAccessor;
         private readonly IUserManager m_UserManager;
@@ -59,7 +60,12 @@ namespace well404.Economy
         }
 
         private EconomySettings ReadSettings()
-            => Plugin.LifetimeScope.Resolve<IConfiguration>().Get<EconomySettings>() ?? new EconomySettings();
+        {
+            var settings = Plugin.LifetimeScope.Resolve<IConfiguration>().Get<EconomySettings>()
+                ?? new EconomySettings();
+            EconomySettingsGuard.Validate(settings);
+            return settings;
+        }
 
         private ICurrencyBackend GetBackend(EconomySettings settings)
         {
@@ -107,8 +113,85 @@ namespace well404.Economy
         public Task<decimal> UpdateBalanceAsync(string ownerId, string ownerType, decimal changeAmount, string? reason)
             => GetBackend(ReadSettings()).UpdateBalanceAsync(ownerId, ownerType, changeAmount, reason);
 
+        public bool SupportsDurableOperations
+        {
+            get
+            {
+                // This service is global while the plugin itself is reloadable. A dependent
+                // plugin may probe capabilities during the brief interval in which Economy is
+                // not alive, so capability discovery must fail closed instead of breaking that
+                // plugin's load/reload sequence.
+                try
+                {
+                    return GetBackend(ReadSettings()) is SqliteCurrencyBackend;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        public Task<decimal> ApplyOnceAsync(
+            string operationId,
+            string ownerId,
+            string ownerType,
+            decimal changeAmount,
+            string reason)
+        {
+            if (!(GetBackend(ReadSettings()) is SqliteCurrencyBackend sqlite))
+            {
+                throw new NotSupportedException(
+                    "Durable idempotent economy operations require the SQLite economy backend.");
+            }
+
+            return sqlite.ApplyOnceAsync(operationId, ownerId, ownerType, changeAmount, reason);
+        }
+
+        public Task<decimal?> GetAppliedBalanceAsync(
+            string operationId,
+            string ownerId,
+            string ownerType,
+            decimal changeAmount)
+        {
+            if (!(GetBackend(ReadSettings()) is SqliteCurrencyBackend sqlite))
+            {
+                throw new NotSupportedException(
+                    "Durable idempotent economy operations require the SQLite economy backend.");
+            }
+
+            // null has one precise meaning: the SQLite query completed successfully and no matching
+            // operation exists. Database/configuration errors must propagate so callers do not
+            // mistake an unavailable ledger for proof that a debit or refund never happened.
+            return sqlite.GetAppliedBalanceAsync(operationId, ownerId, ownerType, changeAmount);
+        }
+
         public Task SetBalanceAsync(string ownerId, string ownerType, decimal balance)
             => GetBackend(ReadSettings()).SetBalanceAsync(ownerId, ownerType, balance);
+
+        public bool SupportsAtomicTransfers
+        {
+            get
+            {
+                try { return GetBackend(ReadSettings()) is SqliteCurrencyBackend; }
+                catch { return false; }
+            }
+        }
+
+        /// <summary>
+        /// Performs an all-or-nothing player transfer. The experience backend is deliberately not
+        /// supported because two live game objects cannot participate in a durable transaction.
+        /// </summary>
+        public Task TransferAsync(
+            string senderId, string senderType,
+            string receiverId, string receiverType,
+            decimal amount, decimal received, string reason)
+        {
+            if (!(GetBackend(ReadSettings()) is SqliteCurrencyBackend sqlite))
+                throw new UserFriendlyException("Player transfers require the database economy backend.");
+            return sqlite.TransferAsync(
+                senderId, senderType, receiverId, receiverType, amount, received, reason);
+        }
 
         /// <summary>Deletes an account from the active backend. Not part of <see cref="IEconomyProvider"/>.</summary>
         public Task DeleteAccountAsync(string ownerId, string ownerType)

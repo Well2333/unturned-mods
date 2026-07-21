@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Localization;
 using OpenMod.API.Commands;
 using OpenMod.Core.Commands;
-using OpenMod.Extensions.Economy.Abstractions;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Users;
 
@@ -16,25 +15,22 @@ namespace well404.Shop.Commands
     public class CommandBuy : Command
     {
         private readonly ShopCatalog m_Catalog;
-        private readonly ShopService m_ShopService;
+        private readonly ShopTradeCoordinator m_Trades;
         private readonly DiscountService m_DiscountService;
-        private readonly IEconomyProvider m_Economy;
         private readonly IItemDirectory m_ItemDirectory;
         private readonly IStringLocalizer m_StringLocalizer;
 
         public CommandBuy(
             IServiceProvider serviceProvider,
             ShopCatalog catalog,
-            ShopService shopService,
+            ShopTradeCoordinator trades,
             DiscountService discountService,
-            IEconomyProvider economy,
             IItemDirectory itemDirectory,
             IStringLocalizer stringLocalizer) : base(serviceProvider)
         {
             m_Catalog = catalog;
-            m_ShopService = shopService;
+            m_Trades = trades;
             m_DiscountService = discountService;
-            m_Economy = economy;
             m_ItemDirectory = itemDirectory;
             m_StringLocalizer = stringLocalizer;
         }
@@ -70,27 +66,29 @@ namespace well404.Shop.Commands
 
             var multiplier = await m_DiscountService.GetMultiplierAsync(user);
             var unitPrice = DiscountService.ApplyDiscount(entry.BuyPrice, multiplier);
-            var total = unitPrice * amount;
-
-            // UpdateBalanceAsync throws NotEnoughBalanceException (user-friendly) if unaffordable.
-            await m_Economy.UpdateBalanceAsync(user.Id, user.Type, -total, "shop_buy:" + entry.Id);
-
-            try
+            var result = await m_Trades.BuyAsync(user, entry, amount, unitPrice);
+            switch (result.Status)
             {
-                await m_ShopService.GiveAsync(user, entry, amount);
-            }
-            catch
-            {
-                await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_buy_refund:" + entry.Id);
-                throw;
+                case ShopTradeStatus.InsufficientBalance:
+                    throw new UserFriendlyException(m_StringLocalizer["buy:insufficient"]);
+                case ShopTradeStatus.DurableEconomyRequired:
+                    throw new UserFriendlyException(m_StringLocalizer["errors:durable_required"]);
+                case ShopTradeStatus.PendingOperation:
+                    throw new UserFriendlyException(m_StringLocalizer["errors:pending_operation", new { operation = result.OperationId }]);
+                case ShopTradeStatus.Quarantined:
+                    throw new UserFriendlyException(m_StringLocalizer["errors:quarantined", new { operation = result.OperationId }]);
+                case ShopTradeStatus.Completed:
+                    break;
+                default:
+                    throw new UserFriendlyException(m_StringLocalizer["errors:invalid_trade"]);
             }
 
             await PrintAsync(m_StringLocalizer["buy:success", new
             {
-                amount,
+                amount = result.ItemCount,
                 name,
-                symbol = m_Economy.CurrencySymbol,
-                total
+                symbol = m_Trades.CurrencySymbol,
+                total = result.Total
             }]);
         }
     }

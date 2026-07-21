@@ -11,8 +11,8 @@ namespace well404.Vault
     /// The web panel's view of the vault's config settings (base capacity + permission tiers),
     /// persisted by rewriting the working-directory <c>config.yaml</c> (so OpenMod's config reload
     /// picks the change up for the game side). Seeded once from <see cref="IConfiguration"/> at
-    /// construction, like the other plugins' config stores. Per-player overrides are NOT here — those
-    /// are runtime data managed by <see cref="VaultService"/>.
+    /// construction, like the other plugins config stores. Runtime container capacity adjustments
+    /// are stored in SQLite and managed by <see cref="VaultService"/>.
     /// </summary>
     public sealed class VaultConfigStore
     {
@@ -36,12 +36,70 @@ namespace well404.Vault
             get { lock (m_Lock) { return new Dictionary<string, int>(m_Settings.Tiers); } }
         }
 
-        public void Save(int maxSlots, Dictionary<string, int> tiers)
+        public PersonalVaultPurchaseSettings PersonalPurchase
+        {
+            get
+            {
+                lock (m_Lock)
+                {
+                    var source = m_Settings.PersonalPurchase ?? new PersonalVaultPurchaseSettings();
+                    return new PersonalVaultPurchaseSettings
+                    {
+                        Enabled = source.Enabled,
+                        MaxSlots = source.MaxSlots,
+                        SlotsPerPurchase = source.SlotsPerPurchase,
+                        Price = source.Price
+                    };
+                }
+            }
+        }
+
+        public TeamVaultSettings TeamVault
+        {
+            get
+            {
+                lock (m_Lock)
+                {
+                    var source = m_Settings.TeamVault ?? new TeamVaultSettings();
+                    return new TeamVaultSettings
+                    {
+                        Enabled = source.Enabled,
+                        BaseSlots = source.BaseSlots,
+                        MaxSlots = source.MaxSlots,
+                        Purchase = new TeamVaultPurchaseSettings
+                        {
+                            Enabled = source.Purchase?.Enabled ?? true,
+                            SlotsPerPurchase = source.Purchase?.SlotsPerPurchase ?? 10,
+                            Price = source.Purchase?.Price ?? 500m
+                        }
+                    };
+                }
+            }
+        }
+
+        public void Save(int maxSlots, Dictionary<string, int> tiers,
+            PersonalVaultPurchaseSettings? personalPurchase = null, TeamVaultSettings? teamVault = null)
         {
             lock (m_Lock)
             {
                 m_Settings.MaxSlots = Math.Max(1, maxSlots);
                 m_Settings.Tiers = tiers;
+                if (personalPurchase != null)
+                {
+                    personalPurchase.MaxSlots = Math.Max(m_Settings.MaxSlots, personalPurchase.MaxSlots);
+                    personalPurchase.SlotsPerPurchase = Math.Max(1, personalPurchase.SlotsPerPurchase);
+                    personalPurchase.Price = Math.Max(0m, personalPurchase.Price);
+                    m_Settings.PersonalPurchase = personalPurchase;
+                }
+                if (teamVault != null)
+                {
+                    teamVault.BaseSlots = Math.Max(1, teamVault.BaseSlots);
+                    teamVault.MaxSlots = Math.Max(teamVault.BaseSlots, teamVault.MaxSlots);
+                    teamVault.Purchase ??= new TeamVaultPurchaseSettings();
+                    teamVault.Purchase.SlotsPerPurchase = Math.Max(1, teamVault.Purchase.SlotsPerPurchase);
+                    teamVault.Purchase.Price = Math.Max(0m, teamVault.Purchase.Price);
+                    m_Settings.TeamVault = teamVault;
+                }
                 WriteFile();
             }
         }
@@ -68,6 +126,27 @@ namespace well404.Vault
                         .Append("\": ").Append(tier.Value.ToString(CultureInfo.InvariantCulture)).Append('\n');
                 }
             }
+
+            var personal = m_Settings.PersonalPurchase ?? new PersonalVaultPurchaseSettings();
+            sb.Append("\n# Personal vault capacity purchases.\n");
+            sb.Append("personalPurchase:\n");
+            sb.Append("  enabled: ").Append(personal.Enabled ? "true" : "false").Append("\n");
+            sb.Append("  maxSlots: ").Append(Math.Max(m_Settings.MaxSlots, personal.MaxSlots).ToString(CultureInfo.InvariantCulture)).Append("\n");
+            sb.Append("  slotsPerPurchase: ").Append(Math.Max(1, personal.SlotsPerPurchase).ToString(CultureInfo.InvariantCulture)).Append("\n");
+            sb.Append("  price: ").Append(Math.Max(0m, personal.Price).ToString(CultureInfo.InvariantCulture)).Append("\n");
+
+            var team = m_Settings.TeamVault ?? new TeamVaultSettings();
+            var purchase = team.Purchase ?? new TeamVaultPurchaseSettings();
+            sb.Append('\n');
+            sb.Append("# Shared Unturned-party vault. Members buy capacity with their own balance.\n");
+            sb.Append("teamVault:\n");
+            sb.Append("  enabled: ").Append(team.Enabled ? "true" : "false").Append('\n');
+            sb.Append("  baseSlots: ").Append(Math.Max(1, team.BaseSlots).ToString(CultureInfo.InvariantCulture)).Append('\n');
+            sb.Append("  maxSlots: ").Append(Math.Max(team.BaseSlots, team.MaxSlots).ToString(CultureInfo.InvariantCulture)).Append('\n');
+            sb.Append("  purchase:\n");
+            sb.Append("    enabled: ").Append(purchase.Enabled ? "true" : "false").Append('\n');
+            sb.Append("    slotsPerPurchase: ").Append(Math.Max(1, purchase.SlotsPerPurchase).ToString(CultureInfo.InvariantCulture)).Append('\n');
+            sb.Append("    price: ").Append(Math.Max(0m, purchase.Price).ToString(CultureInfo.InvariantCulture)).Append('\n');
 
             File.WriteAllText(m_ConfigPath, sb.ToString(), new UTF8Encoding(false));
         }

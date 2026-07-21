@@ -29,6 +29,12 @@ namespace well404.Shop
             ["Sell all"] = "全部售卖",
             ["Quick actions"] = "快捷操作",
             ["You must be online to buy or sell."] = "你需要在线才能购买或出售物品。",
+            ["Trading requires the durable SQLite economy backend."] = "交易功能需要启用持久化 SQLite 经济后端。",
+            ["A previous trade is quarantined as {0}; ask an administrator to review it."]
+                = "上一笔交易已隔离为 {0}，请联系管理员审核。",
+            ["Trade {0} entered recovery quarantine; no automatic refund or replay was attempted."]
+                = "交易 {0} 已进入恢复隔离区；系统没有自动退款或重放库存操作。",
+            ["The trade request is invalid."] = "交易请求无效。",
             ["Item not found."] = "找不到该商品。",
             ["Enter a valid quantity."] = "请输入有效的数量。",
             ["You must be online to trade."] = "你需要在线才能交易。",

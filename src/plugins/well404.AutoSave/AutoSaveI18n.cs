@@ -21,6 +21,8 @@ namespace well404.AutoSave
             ["Time zone"] = "时区",
             ["Enable backups"] = "启用备份",
             ["Back up every N saves"] = "每 N 次保存备份一次",
+            ["Throttle backups while empty"] = "无人在线时降低备份频率",
+            ["Empty-server backup interval (hours)"] = "空服备份间隔（小时）",
             ["Backup directory"] = "备份目录",
             ["Exclude patterns"] = "排除规则",
             ["Max backups (0 = unlimited)"] = "最大备份数（0=不限）",
@@ -30,12 +32,13 @@ namespace well404.AutoSave
             ["minute hour day-of-month month day-of-week — e.g. */10 * * * *"] = "分 时 日 月 周 —— 例如 */10 * * * *",
             ["Empty = server local; e.g. Asia/Shanghai"] = "留空=服务器本地时区；例如 Asia/Shanghai",
             ["e.g. 6 — a backup after every 6th save"] = "例如 6 —— 每第 6 次保存后备份",
+            ["e.g. 24 — after the first normally due empty-server backup"] = "例如 24 —— 空服首次常规备份后每 24 小时备份",
             ["Empty = <install>/Backups/<server id>"] = "留空=<安装目录>/Backups/<服务器id>",
             ["One glob per line, relative to the savedata root (e.g. Workshop/**)"] = "每行一个 glob，相对存档根目录（如 Workshop/**）",
 
             // ---- descriptions ----
-            ["When saves fire (cron, wall-clock aligned), how often a backup is taken, where backups go, what to exclude, and how many/how large to keep. Backups use solid LZMA (.tar.lz)."]
-                = "保存何时触发（cron，按墙钟对齐）、多久备份一次、备份存放位置、排除哪些内容、保留多少/多大。备份采用 LZMA 实体压缩（.tar.lz）。",
+            ["When saves fire (cron, wall-clock aligned), how often active and empty-server backups are taken, where backups go, what to exclude, and how many/how large to keep. Automatic saves never slow down while empty. Backups use solid LZMA (.tar.lz)."]
+                = "保存何时触发（cron，按墙钟对齐）、活跃与空服时多久备份一次、备份存放位置、排除哪些内容、保留多少/多大。无人在线时自动保存频率不变，仅降低压缩归档频率。备份采用 LZMA 实体压缩（.tar.lz）。",
             ["Save the game and write a backup immediately (runs even if scheduled backups are off)."]
                 = "立即保存游戏并写入一次备份（即使关闭了定时备份也会执行）。",
             ["Existing backup archives (newest first)."] = "现有备份文件（最新在前）。",
@@ -49,6 +52,7 @@ namespace well404.AutoSave
             ["Invalid cron expression: {0}"] = "无效的 cron 表达式：{0}",
             ["Unknown time zone."] = "未知的时区。",
             ["Enter a whole number for 'Back up every N saves'."] = "请为「每 N 次保存备份一次」输入整数。",
+            ["Enter a whole number from 1 to 8760 for the empty-server backup interval."] = "请为空服备份间隔输入 1 到 8760 之间的整数。",
             ["Saved."] = "已保存。",
             ["The server is not fully loaded yet."] = "服务器尚未完全加载。",
             ["Saved and backed up: {0} ({1}, {2} files)."] = "已保存并备份：{0}（{1}，{2} 个文件）。",

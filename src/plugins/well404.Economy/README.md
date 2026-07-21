@@ -9,7 +9,7 @@
 
 - 💰 玩家货币账户,余额查询与管理命令
 - 🗄️ 两种后端:`database`(SQLite 单文件事务账本)或 `experience`(原生 Unturned 经验值)
-- 🔁 玩家间转账 `/pay`,可设最低额度与手续费税率
+- 🔁 `database` 后端支持原子玩家转账 `/pay`,可设最低额度与手续费税率
 - ⚔️ 击杀奖励:玩家 / 僵尸 / 巨型僵尸 / 动物可分别配置奖励金额
 - 🌐 可选 Web 管理面板集成(配合 [well404.WebPanel](https://www.nuget.org/packages/well404.WebPanel/))
 - 🎮 可选玩家网页钱包:玩家 `/menu` 即可在浏览器里查看余额、向在线玩家转账
@@ -20,14 +20,14 @@
 openmod install well404.Economy
 ```
 
-重启服务器或执行 `openmod reload` 后生效。
+安装或升级 DLL 后必须完整重启服务器；不要用 `openmod reload` 替换二进制。
 
 ## 命令
 
 | 命令 | 别名 | 说明 |
 | --- | --- | --- |
 | `/balance [玩家]` | `/bal`, `/money` | 查看自己或他人余额 |
-| `/pay <玩家> <金额>` | | 向其他玩家转账(需在配置中开启) |
+| `/pay <玩家> <金额>` | | 向其他玩家原子转账(需 `database` 后端并在配置中开启) |
 | `/eco give <玩家> <金额>` | | 管理:发放货币 |
 | `/eco take <玩家> <金额>` | | 管理:扣除货币 |
 | `/eco set <玩家> <金额>` | | 管理:设定余额 |
@@ -39,7 +39,7 @@ currency:
   name: "Credit"        # 货币名称(显示在消息中)
   symbol: "$"           # 货币符号
   startingBalance: 0    # 新账户初始余额(仅 database 后端)
-backend: "database"     # database | experience
+backend: "database"     # database | experience（experience 下转账自动不可用）
 # database 后端固定写入插件目录下的 economy.sqlite3
 transfer:
   enabled: true         # 是否允许 /pay 转账
@@ -55,6 +55,9 @@ killRewards:
 
 > 2.0.0 不读取或迁移旧 LiteDB `economy.db`，数据库后端会创建全新的 `economy.sqlite3`。
 > `backend: experience` 时不会创建、读取或写入 SQLite；已有文件只为切回数据库后端保留。
+
+`database` 后端还提供带唯一操作号的持久幂等扣款/退款能力，供仓库容量购买等跨插件流程使用。
+同一操作号重复提交只会入账一次。`experience` 后端也可供在线玩家购买个人与小队仓库容量，但不提供跨重启幂等账本；若进程恰好在扣除经验值期间中断，Vault 会把不确定操作留在恢复隔离区，禁止自动猜测扣款或退款。经验值没有小数，相关余额、奖励和仓库扩容价格必须为整数；`/pay` 与 Shop 在该后端安全拒绝。
 
 ## Web 管理面板
 

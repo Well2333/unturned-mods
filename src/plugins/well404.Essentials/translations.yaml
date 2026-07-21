@@ -15,6 +15,7 @@ teleport:
   cooldown: "Please wait {seconds}s before teleporting again."
   fee_charged: "Charged {symbol}{amount} for the teleport."
   not_enough_money: "You need {symbol}{amount} to teleport."
+  wrong_map: "That saved destination is not assigned to the current map."
 
 home:
   set: "Home set to your current location."
@@ -41,6 +42,11 @@ tpa:
 warp:
   not_found: "No warp named '{name}'."
   no_permission: "You do not have access to the warp '{name}'."
+  wrong_map: "Warp '{name}' belongs to a different map."
+  invalid_name: "Warp names must be 1-64 characters and contain no control characters."
+  invalid_map: "The current map name is empty or too long to save safely."
+  too_many_tags: "A warp can have at most {count} tags."
+  invalid_tag: "Invalid tag ID '{tag}'. Use lower-case ASCII letters, numbers, hyphens, or underscores (maximum 32)."
   success: "Warped to '{name}'."
   set: "Warp '{name}' saved at your location."
   deleted: "Warp '{name}' deleted."

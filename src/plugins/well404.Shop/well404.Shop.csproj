@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>1.2.0</Version>
+    <Version>2.0.0</Version>
     <Description>Shop</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -26,6 +26,9 @@
          ProjectReference to well404.Economy below — it makes that a hard, auto-installed
          dependency). -->
     <PackageReference Include="OpenMod.Extensions.Economy.Abstractions" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" />
+    <PackageReference Include="SQLitePCLRaw.provider.sqlite3" />
+    <PackageReference Include="SQLitePCLRaw.core" />
     <PackageReference Include="Legacy2CPSWorkaround">
       <PrivateAssets>All</PrivateAssets>
     </PackageReference>

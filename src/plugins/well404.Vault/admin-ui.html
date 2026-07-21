@@ -1,22 +1,58 @@
 <div class="vault-admin">
   <header class="topbar">
-    <div><h2 id="title">Vault capacity</h2><p id="subtitle">Base capacity, permission tiers and per-player overrides.</p></div>
+    <div><h2 id="title">Vault management</h2><p id="subtitle">Configure capacity and inspect personal or team vaults.</p></div>
     <button id="save" type="button">Save settings</button>
   </header>
   <nav class="tabs" aria-label="Vault sections">
     <button type="button" data-tab="settings" class="active">Capacity</button>
-    <button type="button" data-tab="overrides">Player overrides</button>
-    <button type="button" data-tab="contents">Player contents</button>
+    <button type="button" data-tab="teams">Team vaults</button>
+    <button type="button" data-tab="contents">Vault inspection</button>
   </nav>
   <section class="tab-panel active" data-panel="settings"><div id="settings"></div></section>
-  <section class="tab-panel" data-panel="overrides"><div id="overrides"></div></section>
+  <section class="tab-panel" data-panel="teams">
+    <div class="card contents-card">
+      <h3 id="teams-title">Team vaults</h3>
+      <p class="desc" id="teams-help">Choose a team here or in Vault inspection to view its inventory.</p>
+      <div id="teams-message" class="msg" role="status"></div>
+      <div id="team-list" class="team-list"></div>
+      <div class="section-divider"></div>
+      <h3 id="recovery-title">Recovery quarantine</h3>
+      <p class="desc" id="recovery-help">Purchases can be resolved only through an explicitly confirmed, audited action. Uncertain inventory transfers are never replayed automatically.</p>
+      <h4 id="purchase-recovery-title">Pending capacity purchases</h4>
+      <div id="pending-purchase-list" class="recovery-list"></div>
+      <h4 id="transfer-recovery-title">Interrupted inventory transfers</h4>
+      <div id="interrupted-transfer-list" class="recovery-list"></div>
+      <h4 id="resolution-audit-title">Purchase resolution audit</h4>
+      <div id="purchase-resolution-list" class="recovery-list"></div>
+    </div>
+  </section>
   <section class="tab-panel" data-panel="contents">
     <div class="card contents-card">
-      <h3 id="contents-title">Player vault contents</h3>
-      <p class="desc" id="contents-help">Load a player's exact stored rows to edit or delete them.</p>
+      <h3 id="contents-title">Vault inspection</h3>
+      <p class="desc" id="contents-help">Choose a player or team vault, or enter an owner ID manually. The selected vault capacity and exact rows can be edited.</p>
+      <div class="inspection-pickers">
+        <section class="owner-picker">
+          <div class="section-head compact">
+            <div><h4 id="owners-title">Players with stored items</h4><p id="owners-help" class="desc">Click a player to open the personal vault.</p></div>
+            <label class="owner-search"><span id="owners-search-label">Filter</span><input id="owner-search" type="search" autocomplete="off"></label>
+          </div>
+          <div id="owner-list" class="owner-list"></div>
+        </section>
+        <section class="owner-picker">
+          <div class="section-head compact"><div><h4 id="inspection-teams-title">Team vaults</h4><p id="inspection-teams-help" class="desc">Click a team to open its shared vault.</p></div></div>
+          <div id="inspection-team-list" class="owner-list"></div>
+        </section>
+      </div>
       <div class="lookup-row">
-        <label class="field"><span id="steam-label">Steam ID</span><input id="steam-id" inputmode="numeric" maxlength="17"></label>
+        <label class="field kind-field"><span id="kind-label">Vault type</span><select id="owner-kind"><option value="player">Personal</option><option value="team">Team</option></select></label>
+        <label class="field"><span id="owner-key-label">Owner ID</span><input id="owner-key" autocomplete="off"></label>
         <button id="load-contents" type="button">Load</button>
+        <button id="add-item" type="button" class="success">＋ Add item</button>
+      </div>
+      <div class="capacity-row">
+        <label class="field"><span id="capacity-label">Current capacity</span><input id="capacity" type="number" min="1" max="1000000"></label>
+        <button id="save-capacity" type="button">Update capacity</button>
+        <span id="capacity-used" class="capacity-used"></span>
       </div>
       <div class="bulk-row">
         <label class="field"><span id="bulk-label">Item ID to delete</span><input id="bulk-item-id" type="number" min="1" max="65535"></label>

@@ -26,6 +26,10 @@ fi
 
 PLUGIN_ID="$1"
 shift
+case "$PLUGIN_ID" in
+  well404.AdminTools|well404.AutoSave|well404.Economy|well404.Essentials|well404.Shop|well404.Vault|well404.WebPanel|well404.UnturnedMods.Shared) ;;
+  *) echo "Error: plugin is not in the release allowlist: $PLUGIN_ID" >&2; exit 1 ;;
+esac
 NOTES=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,6 +58,19 @@ if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
   exit 1
 fi
 
+if [[ "$(git -C "$REPO_ROOT" branch --show-current)" != "main" ]]; then
+  echo "Error: releases may only be created from the local main branch." >&2
+  exit 1
+fi
+
+git -C "$REPO_ROOT" fetch origin main --no-tags
+LOCAL_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+REMOTE_HEAD="$(git -C "$REPO_ROOT" rev-parse origin/main)"
+if [[ "$LOCAL_HEAD" != "$REMOTE_HEAD" ]]; then
+  echo "Error: local main must exactly match origin/main before release." >&2
+  exit 1
+fi
+
 VERSION="$("$REPO_ROOT/scripts/plugin-version.sh" "$PLUGIN_ID")"
 TAG="${PLUGIN_ID}/v${VERSION}"
 
@@ -69,6 +86,6 @@ gh release create "$TAG" \
   --repo Well2333/unturned-mods \
   --title "$PLUGIN_ID $VERSION" \
   --notes "$NOTES" \
-  --target "$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
+  --target "$LOCAL_HEAD"
 
 echo "Created release $TAG. The publish workflow will pack & push $PLUGIN_ID to NuGet."

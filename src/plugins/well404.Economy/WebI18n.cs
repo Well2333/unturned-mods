@@ -17,6 +17,7 @@ namespace well404.Economy
             ["Wallet"] = "钱包",
             ["Balance: {0}{1} {2}"] = "余额：{0}{1} {2}",
             ["Transfers are currently disabled."] = "转账功能当前已关闭。",
+            ["Player transfers require the database backend."] = "玩家转账仅支持数据库后端。",
             ["Send to this player"] = "向该玩家转账",
             ["Send to this player (fee {0}%)"] = "向该玩家转账（手续费 {0}%）",
             ["Transfer"] = "转账",

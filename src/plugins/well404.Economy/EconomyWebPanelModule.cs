@@ -119,6 +119,8 @@ namespace well404.Economy
             var symbol = request.Get("symbol");
             var startingBalance = request.GetDecimal("startingBalance");
             var backend = request.Get("backend");
+            if (startingBalance != null && startingBalance.Value < 0m)
+                return WebActionResult.Fail("Starting balance cannot be negative.");
 
             store.Update(s =>
             {
@@ -138,6 +140,9 @@ namespace well404.Economy
             var zombie = request.GetDecimal("zombie");
             var megaZombie = request.GetDecimal("megaZombie");
             var animal = request.GetDecimal("animal");
+            if ((player ?? 0m) < 0m || (zombie ?? 0m) < 0m
+                || (megaZombie ?? 0m) < 0m || (animal ?? 0m) < 0m)
+                return WebActionResult.Fail("Kill rewards cannot be negative.");
 
             store.Update(s =>
             {
@@ -156,6 +161,10 @@ namespace well404.Economy
             var enabled = ParseToggle(request.Get("enabled"));
             var minAmount = request.GetDecimal("minAmount");
             var taxPercent = request.GetDecimal("taxPercent");
+            if (minAmount != null && minAmount.Value < 0m)
+                return WebActionResult.Fail("Minimum transfer cannot be negative.");
+            if (taxPercent != null && (taxPercent.Value < 0m || taxPercent.Value > 100m))
+                return WebActionResult.Fail("Tax must be between 0 and 100 percent.");
 
             store.Update(s =>
             {
@@ -219,9 +228,9 @@ namespace well404.Economy
             await UniTask.SwitchToMainThread();
             var search = request.Get("player");
             var amount = request.GetDecimal("amount");
-            if (search == null || amount == null)
+            if (search == null || amount == null || amount.Value < 0m)
             {
-                return WebActionResult.Fail("Enter a player and a balance.");
+                return WebActionResult.Fail("Enter a player and a non-negative balance.");
             }
 
             var target = await PlayerResolver.ResolveAsync(userManager, search);

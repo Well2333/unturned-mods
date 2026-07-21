@@ -1,29 +1,11 @@
 name: Publish to NuGet
 
-# Per-plugin publishing for this multi-plugin monorepo.
-#
-# Release ONE plugin by publishing a GitHub Release whose tag is:
-#     <PluginId>/v<Version>      e.g.  well404.Economy/v0.2.0
-# The workflow then builds & packs ONLY that plugin and pushes it. The tag
-# version must match the plugin's <Version> in its .csproj (guards against
-# releasing a stale version).
-#
-# A release tag that does NOT match that pattern (e.g. v1.0.0) publishes ALL
-# packable plugins (useful for a coordinated repo-wide release).
-#
-# workflow_dispatch lets you publish a specific plugin (or "all") manually.
-#
-# --skip-duplicate means only versions not already on nuget.org are pushed, so
-# bump a plugin's <Version> before releasing it.
+# Publish exactly one allow-listed package from a GitHub Release tag:
+#   <PluginId>/v<MAJOR.MINOR.PATCH>
+# The tag must point to origin/main and match the project version.
 on:
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      plugin:
-        description: 'PluginId to publish (e.g. well404.Economy), or "all"'
-        required: true
-        default: 'all'
 
 env:
   DOTNET_NOLOGO: true
@@ -35,83 +17,74 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write   # allow GitHub OIDC token issuance for NuGet Trusted Publishing
+      id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Verify release source
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            echo "::error::Release tag must point to the current origin/main commit."
+            exit 1
+          fi
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2
         with:
           dotnet-version: 8.0.x
 
       - name: Determine release target
         id: target
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            INPUT="${{ github.event.inputs.plugin }}"
-            if [ "$INPUT" = "all" ]; then
-              echo "mode=all" >> "$GITHUB_OUTPUT"
-            else
-              echo "mode=single" >> "$GITHUB_OUTPUT"
-              echo "plugin=$INPUT" >> "$GITHUB_OUTPUT"
-            fi
+          TAG="$RELEASE_TAG"
+          if [[ "$TAG" =~ ^(well404\.(AdminTools|AutoSave|Economy|Essentials|Shop|Vault|WebPanel|UnturnedMods\.Shared))/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "plugin=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "version=${BASH_REMATCH[3]}" >> "$GITHUB_OUTPUT"
           else
-            TAG="${{ github.event.release.tag_name }}"
-            if [[ "$TAG" =~ ^(.+)/v(.+)$ ]]; then
-              echo "mode=single" >> "$GITHUB_OUTPUT"
-              echo "plugin=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-              echo "version=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
-            else
-              echo "mode=all" >> "$GITHUB_OUTPUT"
-            fi
+            echo "::error::Release tag must be an allow-listed PluginId/vMAJOR.MINOR.PATCH."
+            exit 1
           fi
-          echo "Resolved mode for tag/input."
 
       - name: Restore
         run: dotnet restore UnturnedMods.sln
 
-      - name: Build & pack
+      - name: Test release commit
+        run: dotnet test UnturnedMods.sln --configuration Release --no-restore
+
+      - name: Build and pack
         run: |
           set -euo pipefail
           OUT="${{ runner.temp }}/packages"
           mkdir -p "$OUT"
-          if [ "${{ steps.target.outputs.mode }}" = "single" ]; then
-            PLUGIN="${{ steps.target.outputs.plugin }}"
-            if [ "$PLUGIN" = "well404.UnturnedMods.Shared" ]; then
-              PROJ="src/Shared/UnturnedMods.Shared/UnturnedMods.Shared.csproj"
-            else
-              PROJ="src/plugins/$PLUGIN/$PLUGIN.csproj"
-            fi
-            if [ ! -f "$PROJ" ]; then
-              echo "::error::No such plugin project: $PROJ"; exit 1
-            fi
-            VER="${{ steps.target.outputs.version }}"
-            if [ -n "$VER" ]; then
-              CSVER=$(grep -oPm1 '(?<=<Version>)[^<]+' "$PROJ")
-              if [ "$VER" != "$CSVER" ]; then
-                echo "::error::Release tag version '$VER' does not match $PROJ <Version> '$CSVER'. Bump the .csproj first."; exit 1
-              fi
-            fi
-            echo "Publishing single plugin: $PLUGIN"
-            dotnet build "$PROJ" --configuration Release --no-restore
-            dotnet pack "$PROJ" --configuration Release --no-build --output "$OUT"
+          PLUGIN="${{ steps.target.outputs.plugin }}"
+          if [ "$PLUGIN" = "well404.UnturnedMods.Shared" ]; then
+            PROJ="src/Shared/UnturnedMods.Shared/UnturnedMods.Shared.csproj"
           else
-            echo "Publishing ALL packable plugins"
-            dotnet build UnturnedMods.sln --configuration Release --no-restore
-            dotnet pack UnturnedMods.sln --configuration Release --no-build --output "$OUT"
+            PROJ="src/plugins/$PLUGIN/$PLUGIN.csproj"
           fi
+          test -f "$PROJ"
+          TAG_VERSION="${{ steps.target.outputs.version }}"
+          PROJECT_VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' "$PROJ")
+          if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
+            echo "::error::Tag version '$TAG_VERSION' does not match $PROJ version '$PROJECT_VERSION'."
+            exit 1
+          fi
+          dotnet build "$PROJ" --configuration Release --no-restore
+          dotnet pack "$PROJ" --configuration Release --no-build --output "$OUT"
 
-      # Trusted Publishing: exchange a GitHub OIDC token for a short-lived (1h)
-      # nuget.org API key. No long-lived NUGET_API_KEY secret to manage. Requires
-      # a trusted-publishing policy on nuget.org for owner=Well2333,
-      # repo=unturned-mods, workflow=publish.yml. Run immediately before push
-      # since the temp key expires in 1 hour.
-      - name: NuGet login (OIDC -> temp API key)
-        uses: NuGet/login@v1
+      - name: NuGet login (OIDC)
+        uses: NuGet/login@d22cc5f58ff5b88bf9bd452535b4335137e24544
         id: nuget_login
         with:
-          user: Well404   # nuget.org username (profile name), not an email
+          user: Well404
 
       - name: Push to NuGet
         run: |

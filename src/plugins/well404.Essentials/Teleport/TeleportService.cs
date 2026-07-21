@@ -8,9 +8,11 @@ using Microsoft.Extensions.Logging;
 using OpenMod.API.Permissions;
 using OpenMod.Extensions.Economy.Abstractions;
 using OpenMod.Unturned.Users;
+using SDG.Unturned;
 using UnityEngine;
 using well404.Essentials.Data;
 using well404.Essentials.Util;
+using well404.Essentials.Warps;
 
 namespace well404.Essentials.Teleport
 {
@@ -23,7 +25,7 @@ namespace well404.Essentials.Teleport
     }
 
     /// <summary>
-    /// The shared teleport pipeline used by /home, /tp, /warp and /back: per-command cooldown,
+    /// The shared teleport pipeline used by /home, /tp, /warp and /back: shared configured cooldown with one bucket per command type,
     /// optional economy fee, a stand-still warmup that cancels if the player moves, and finally
     /// the teleport itself. All player-facing intermediate messages (warmup hint, cooldown,
     /// insufficient funds, cancellation, fee charged) are printed here; callers only print their
@@ -74,6 +76,9 @@ namespace well404.Essentials.Teleport
             }
         }
 
+        internal static bool IsDestinationOnCurrentMap(PlayerLocation? destination, string? currentMap)
+            => destination != null && WarpMapProjection.MatchesMap(destination.Map, currentMap ?? string.Empty);
+
         /// <summary>
         /// Runs the full pipeline. Returns true only if the player was teleported (and any fee
         /// charged). On any guard failure it prints the reason to the player and returns false.
@@ -82,15 +87,21 @@ namespace well404.Essentials.Teleport
             UnturnedUser user,
             PlayerLocation destination,
             TeleportKind kind,
-            string cooldownKey,
-            int? cooldownSecondsOverride = null)
+            string cooldownKey)
         {
             var settings = Settings;
 
+            // Stored positions are meaningful only on the map where they were captured. Legacy
+            // records have no map identity and fail safely instead of reusing their numeric
+            // coordinates on whichever map happens to be loaded now.
+            if (!IsDestinationOnCurrentMap(destination, Level.info?.name))
+            {
+                await user.PrintMessageAsync(m_StringLocalizer["teleport:wrong_map"]);
+                return false;
+            }
+
             // 1) Cooldown (unless exempt).
-            var cooldownSeconds = cooldownSecondsOverride.GetValueOrDefault() > 0
-                ? cooldownSecondsOverride!.Value
-                : settings.CooldownSeconds;
+            var cooldownSeconds = settings.CooldownSeconds;
             if (cooldownSeconds > 0
                 && await m_PermissionChecker.CheckPermissionAsync(user, CooldownExemptPermission) != PermissionGrantResult.Grant)
             {

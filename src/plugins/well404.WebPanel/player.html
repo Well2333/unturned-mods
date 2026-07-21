@@ -124,6 +124,11 @@ let activeId = decodeURIComponent((location.hash || "").replace(/^#/, "")) || nu
 let refreshIntervalSeconds = 5;
 let refreshTimer = null;
 let loading = false;
+let refreshPending = false;
+let actionInFlight = 0;
+let autoRefreshPaused = false;
+let viewGeneration = 0;
+let mutationGeneration = 0;
 
 // ---- frontend chrome i18n (server-driven content is localized server-side) ----
 const STR = {
@@ -173,11 +178,18 @@ async function api(path, opts={}) {
 
 // ---- minimal, safe Markdown renderer (escapes HTML first) ----
 function mdToHtml(src) {
-  const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const esc = s => s.replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[ch]);
   const lines = esc(src).split(/\r?\n/);
   let html = "", inList = false;
+  const safeLink = (all, label, value) => {
+    try {
+      const url = new URL(value.replace(/&amp;/g, "&"));
+      if (url.protocol !== "http:" && url.protocol !== "https:") return all;
+      return '<a href="' + esc(url.href) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+    } catch (_) { return all; }
+  };
   const inline = s => s
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, safeLink)
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")
     .replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -231,8 +243,8 @@ function scheduleRefresh() {
   if (refreshIntervalSeconds <= 0) return;
   refreshTimer = setInterval(() => {
     const tag = deepActiveElement()?.tagName;
-    const busy = document.hidden || $(".pmodal-overlay") || pluginUiModalOpen()
-      || ["INPUT","SELECT","TEXTAREA"].includes(tag);
+    const busy = actionInFlight > 0 || document.hidden || $(".pmodal-overlay") || pluginUiModalOpen()
+      || autoRefreshPaused || ["INPUT","SELECT","TEXTAREA"].includes(tag);
     if (!busy) load(true);
   }, refreshIntervalSeconds * 1000);
 }
@@ -251,13 +263,19 @@ function pluginUiModalOpen() {
 }
 
 async function load(silent=false) {
-  if (loading) return;
+  if (loading || actionInFlight > 0) { refreshPending = true; return; }
+  refreshPending = false;
+  const generation = ++viewGeneration;
   loading = true;
   let data;
   try { data = await api("/api/p/view"); }
   catch (e) {
     if (!silent) $("#main").replaceChildren(el("div", { class: "empty", text: e.message }));
-    loading = false;
+    finishLoad();
+    return;
+  }
+  if (generation !== viewGeneration || actionInFlight > 0) {
+    finishLoad();
     return;
   }
 
@@ -276,18 +294,27 @@ async function load(silent=false) {
   if (!menus.length) {
     $("#tabs").replaceChildren();
     $("#main").replaceChildren(el("div", { class: "empty", text: T("noFeatures") }));
-    loading = false;
+    finishLoad();
     return;
   }
   if (!menus.some(m => m.id === activeId)) activeId = menus[0].id;
   renderTabs();
   renderActive();
+  finishLoad();
+}
+
+function finishLoad() {
   loading = false;
+  if (refreshPending && actionInFlight === 0) {
+    refreshPending = false;
+    queueMicrotask(() => load(true));
+  }
 }
 
 function renderTabs() {
   $("#tabs").replaceChildren(...menus.map(m =>
     el("button", { class: m.id === activeId ? "active" : "", onclick: () => {
+      autoRefreshPaused = false;
       activeId = m.id; history.replaceState(null, "", "#" + enc(m.id)); renderTabs(); renderActive();
     } }, (m.icon ? m.icon + " " : "") + m.title)));
 }
@@ -301,9 +328,9 @@ function renderActive() {
 // its own look entirely through the data it returns — an optional Markdown body, a header
 // chip, a layout hint ("list" vs cards), and cards that may carry a section group + a badge.
 function renderView(menu, view) {
+  autoRefreshPaused = false;
   const main = $("#main");
   main.replaceChildren();
-  main.append(el("div", { class: "note" }, el("span", { text: "ℹ " + T("staleNote").replace("{0}", refreshIntervalSeconds) })));
 
   if (menu.ui) {
     mountCustomPlayerUi(menu, view, main);
@@ -391,6 +418,8 @@ function mountCustomPlayerUi(menu, view, main) {
   main.append(host);
   const panel = { root, menu, view, lang, el,
     invoke:(card, button, node) => invoke(menu, card, button, node),
+    setAutoRefreshPaused:paused => { autoRefreshPaused = !!paused; },
+    assetUrl:(assetId) => "/api/p/asset/" + enc(menu.id) + "/" + enc(assetId) + "?t=" + enc(TOKEN),
     flash, t:T };
   try { Function("panel", '"use strict";\n' + (menu.ui.javaScript || ""))(panel); }
   catch (error) {
@@ -521,6 +550,11 @@ async function invoke(menu, card, button, btnNode) {
   }
   if (button.confirmation && !await askConfirmation(button.confirmation)) return;
   btnNode.disabled = true;
+  actionInFlight++;
+  const mutation = ++mutationGeneration;
+  // Invalidate any GET that started before this mutation. Its stale response must never replace
+  // the authoritative view returned by the POST.
+  viewGeneration++;
   const body = new URLSearchParams();
   body.set("action", button.actionId);
   body.set("cardKey", card.key);
@@ -531,11 +565,25 @@ async function invoke(menu, card, button, btnNode) {
     r = await api("/api/p/invoke/" + enc(menu.id), {
       method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body
     });
-  } catch (e) { flash(e.message, false); btnNode.disabled = false; return; }
+  } catch (e) {
+    if (mutation === mutationGeneration) flash(e.message, false);
+    btnNode.disabled = false;
+    actionInFlight--;
+    if (actionInFlight === 0) load(true);
+    return;
+  }
 
-  flash(r.message, r.success);
-  if (r.refresh && r.view) { menu.view = r.view; if (menu.id === activeId) renderView(menu, r.view); }
-  else btnNode.disabled = false;
+  try {
+    if (mutation === mutationGeneration) flash(r.message, r.success);
+    if (mutation === mutationGeneration && r.refresh && r.view) {
+      menu.view = r.view;
+      if (menu.id === activeId) renderView(menu, r.view);
+    }
+    else btnNode.disabled = false;
+  } finally {
+    actionInFlight--;
+    if (actionInFlight === 0) load(true);
+  }
 }
 
 $("#refreshBtn").addEventListener("click", load);

@@ -166,7 +166,8 @@ namespace well404.WebPanel
                     sb.Append("players:\n");
                     foreach (var pair in m_Languages)
                     {
-                        sb.Append("  \"").Append(pair.Key).Append("\": \"").Append(pair.Value).Append("\"\n");
+                        sb.Append("  ").Append(YamlScalar.Quote(pair.Key)).Append(": ")
+                            .Append(YamlScalar.Quote(pair.Value)).Append('\n');
                     }
                 }
 
@@ -178,14 +179,6 @@ namespace well404.WebPanel
             }
         }
 
-        private static string Unquote(string value)
-        {
-            if (value.Length >= 2 && (value[0] == '"' || value[0] == '\'') && value[value.Length - 1] == value[0])
-            {
-                return value.Substring(1, value.Length - 2);
-            }
-
-            return value;
-        }
+        private static string Unquote(string value) => YamlScalar.Unquote(value);
     }
 }

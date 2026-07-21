@@ -16,6 +16,7 @@ balance:
 
 pay:
   disabled: "Transfers are currently disabled."
+  requires_database: "Player transfers require the database backend."
   self: "You cannot pay yourself."
   min: "The minimum transfer amount is {symbol}{min}."
   sent: "You paid {symbol}{amount} to {player} (tax: {symbol}{tax})."

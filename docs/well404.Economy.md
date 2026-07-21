@@ -2,14 +2,15 @@
 
 为服务器提供货币系统，并以 OpenMod 标准抽象 `IEconomyProvider` 暴露给**其他插件**
 （如每日签到）调用。支持玩家间转账、击杀奖励，货币既可存于 serverless 数据库，也可
-直接复用 Unturned 的经验值。
+直接复用 Unturned 的经验值；玩家转账和商店交易仅在具备原子账本的 `database` 后端开放。
 
 ## 安装
 
 ```bash
 openmod install well404.Economy
-openmod reload
 ```
+
+安装或替换 DLL 后必须完整重启服务器；`openmod reload` 只用于未更换二进制的配置生命周期验证。
 
 或手动部署（见 [docs/README](README.md#本地构建与调试)）。
 
@@ -26,7 +27,7 @@ currency:
 
 # 货币存储后端：
 #   database   - SQLite 单文件事务账本（在线/离线玩家均可）
-#   experience - 直接用原生 Unturned 经验值（仅在线玩家）
+#   experience - 直接用原生 Unturned 经验值（仅在线玩家；玩家转账自动不可用）
 backend: "database"
 
 transfer:
@@ -48,7 +49,7 @@ killRewards:
 | 后端 | 说明 | 离线玩家 |
 | --- | --- | --- |
 | `database` | SQLite 单文件事务账本，使用规范化账户表并记录交易流水。 | 支持 |
-| `experience` | 余额即玩家的 Unturned 经验值；转账/买卖直接增减 XP。 | **不支持**（在线才有 XP） |
+| `experience` | 余额即玩家的 Unturned 经验值；仅支持在线余额、管理与奖励，不开放 `/pay` 或商店买卖。 | **不支持**（在线才有 XP） |
 
 > SQLite 文件固定为插件目录下的 `economy.sqlite3`。2.0.0 不读取或迁移旧 `economy.db`（LiteDB）。
 > `backend: experience` 时不会创建、读取或写入该 SQLite 文件；已有文件仅为切回 `database` 保留。
@@ -56,12 +57,20 @@ killRewards:
 > 切换 `backend` 后两套余额各自独立（DB 账本与 XP 是两个数）。`experience` 模式下对
 > 离线玩家的操作会返回「玩家需在线」的提示。
 
+### 持久幂等操作
+
+SQLite 后端实现共享抽象 `IIdempotentEconomyProvider`。调用方提供唯一 `operationId` 后，扣款、退款或发放
+会在 `idempotent_operations` 与交易流水中原子记录；服务重试或重启恢复时，相同操作号不会重复改变余额。
+操作号若被复用于不同账户或金额会被拒绝。余额不足时整个事务回滚，不会占用该操作号。
+
+经验值后端没有独立持久账本，因而 `SupportsDurableOperations=false`。Vault 仍允许在线玩家用经验值购买个人或小队容量，但只能在当前进程内完成扣款与补偿；如果进程恰好在扣款阶段中断，不确定操作会留在恢复隔离区，禁止自动猜测扣款或退款。经验值只能使用整数，因此以经验值计价的余额、奖励和仓库扩容价格必须是整数。`/pay` 与 Shop 会在该后端安全拒绝；需要转账、买卖或完整跨重启幂等保证时应使用 `backend: database`。
+
 ## 命令
 
 | 命令 | 说明 | 权限 |
 | --- | --- | --- |
 | `/balance [玩家]` | 查看自己或他人余额。别名 `/bal`、`/money`。 | `well404.Economy:commands.balance` |
-| `/pay <玩家> <金额>` | 给其他玩家转账（仅玩家可用）。 | `well404.Economy:commands.pay` |
+| `/pay <玩家> <金额>` | 给其他玩家转账（仅玩家、仅 `database` 后端可用）。 | `well404.Economy:commands.pay` |
 | `/eco give <玩家> <金额>` | 管理：发放货币。 | `well404.Economy:commands.eco.give` |
 | `/eco take <玩家> <金额>` | 管理：扣除货币。 | `well404.Economy:commands.eco.take` |
 | `/eco set <玩家> <金额>` | 管理：设定余额。 | `well404.Economy:commands.eco.set` |
@@ -135,7 +144,7 @@ public class CommandDaily : Command
 - **所有余额**(集合,列表布局):浏览、编辑、删除玩家余额(database 后端列出全部;experience 后端仅在线玩家)。
 - **货币**(设置):配置货币名称、符号、初始余额与后端选择。
 - **击杀奖励**(设置):配置玩家 / 僵尸 / 巨型僵尸 / 动物的奖励金额与总开关。
-- **转账**(设置):配置转账开关、最低额度与税率。
+- **转账**(设置):配置转账开关、最低额度与税率；`experience` 后端会安全忽略开关并禁用转账。
 
 未安装面板时,以上均可通过 `config.yaml` + 命令完成,功能不受影响。
 

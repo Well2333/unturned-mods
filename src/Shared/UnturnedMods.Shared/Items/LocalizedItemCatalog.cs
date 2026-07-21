@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Items;
+using SDG.Unturned;
 
 namespace UnturnedMods.Shared.Items
 {
@@ -97,6 +98,7 @@ namespace UnturnedMods.Shared.Items
         {
             "sChinese.dat",
             "SChinese.dat",
+            "Schinese.dat",
             "Chinese.dat",
             "SimplifiedChinese.dat",
             "zh-CN.dat",
@@ -112,15 +114,33 @@ namespace UnturnedMods.Shared.Items
             await UniTask.SwitchToMainThread();
             var assets = await itemDirectory.GetItemAssetsAsync();
             var result = new Dictionary<string, LocalizedItemInfo>(StringComparer.Ordinal);
-            foreach (var asset in assets)
+            foreach (var group in assets
+                         .Where(asset => ushort.TryParse(asset.ItemAssetId, NumberStyles.Integer,
+                             CultureInfo.InvariantCulture, out _))
+                         .GroupBy(asset => ushort.Parse(asset.ItemAssetId!, CultureInfo.InvariantCulture))
+                         .OrderBy(grouping => grouping.Key))
             {
-                var assetId = asset.ItemAssetId;
-                if (assetId == null || result.ContainsKey(assetId))
+                var authoritativeAsset = Assets.find(EAssetType.ITEM, group.Key) as ItemAsset;
+                if (authoritativeAsset == null)
                 {
+                    var fallback = group.First();
+                    result[group.Key.ToString(CultureInfo.InvariantCulture)] = Resolve(fallback);
                     continue;
                 }
 
-                result[assetId] = Resolve(asset);
+                // Workshop packs occasionally ship several different assets with the same legacy
+                // ushort ID. IItemDirectory exposes every colliding definition, but an Item stored
+                // by Unturned only retains that ushort ID. Therefore presentation metadata must use
+                // the exact asset selected by Unturned's own lookup rather than whichever duplicate
+                // happened to be enumerated first.
+                var matchingWrapper = SelectAuthoritativeCandidate(
+                    group.OfType<UnturnedItemAsset>(), authoritativeAsset, candidate => candidate.ItemAsset);
+                var fallbackName = matchingWrapper?.ItemName
+                                   ?? group.Select(candidate => candidate.ItemName)
+                                       .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name))
+                                   ?? "#" + group.Key.ToString(CultureInfo.InvariantCulture);
+                result[group.Key.ToString(CultureInfo.InvariantCulture)] =
+                    Resolve(authoritativeAsset, fallbackName);
             }
 
             return result;
@@ -145,16 +165,8 @@ namespace UnturnedMods.Shared.Items
         /// <c>other</c> rather than being hidden.
         /// </summary>
         public static string CategoryForType(string? itemType)
-            => CategoryForType(itemType, false);
-
-        public static string CategoryForType(string? itemType, bool fillsTargetItem)
         {
             var normalizedType = (itemType ?? string.Empty).Trim().ToUpperInvariant();
-            if (normalizedType == "SUPPLY" && fillsTargetItem)
-            {
-                return "ammunition";
-            }
-
             switch (normalizedType)
             {
                 case "MAGAZINE":
@@ -229,6 +241,12 @@ namespace UnturnedMods.Shared.Items
             }
         }
 
+        internal static TCandidate? SelectAuthoritativeCandidate<TCandidate, TAsset>(
+            IEnumerable<TCandidate> candidates, TAsset authoritativeAsset, Func<TCandidate, TAsset> assetSelector)
+            where TCandidate : class
+            where TAsset : class
+            => candidates.FirstOrDefault(candidate => ReferenceEquals(assetSelector(candidate), authoritativeAsset));
+
         private static LocalizedItemInfo Resolve(IItemAsset asset)
         {
             var fallback = (asset.ItemName ?? string.Empty).Trim();
@@ -237,13 +255,15 @@ namespace UnturnedMods.Shared.Items
                 return new LocalizedItemInfo(fallback, null, false);
             }
 
-            var gameAsset = unturnedAsset.ItemAsset;
+            return Resolve(unturnedAsset.ItemAsset, fallback);
+        }
+
+        private static LocalizedItemInfo Resolve(ItemAsset gameAsset, string fallback)
+        {
             var itemType = gameAsset.type.ToString();
             var rarity = gameAsset.rarity.ToString();
             var rarityRank = RarityRankFor(rarity);
-            var fillsTargetItem = gameAsset.blueprints.Any(blueprint =>
-                string.Equals(blueprint.type.ToString(), "AMMO", StringComparison.OrdinalIgnoreCase));
-            var category = CategoryForType(itemType, fillsTargetItem);
+            var category = CategoryForType(itemType);
             var originPath = gameAsset.absoluteOriginFilePath;
             if (string.IsNullOrWhiteSpace(originPath))
             {

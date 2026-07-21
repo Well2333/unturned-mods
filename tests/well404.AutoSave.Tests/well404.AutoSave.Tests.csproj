@@ -13,8 +13,6 @@
     <IsPackable>false</IsPackable>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IsTestProject>true</IsTestProject>
-    <!-- SharpCompress advisory is extraction-only and unreachable here; see the plugin csproj. -->
-    <NoWarn>$(NoWarn);NU1902</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

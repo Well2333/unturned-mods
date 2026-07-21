@@ -22,13 +22,14 @@ namespace well404.Essentials
     {
         public const string ModuleId = "well404.essentials";
         private static readonly WebUiExtension s_Ui = WebUiExtension.FromEmbeddedResources(
-            typeof(EssentialsWebPanelModule).Assembly, "admin-ui.html", "admin-ui.css", "admin-ui.js");
+            typeof(EssentialsWebPanelModule).Assembly, "admin-ui.html", "admin-ui.css", "admin-map-ui.js");
 
         private const int SearchLimit = 100;
 
         public static WebPanelModule Create(
             EssentialsConfigStore store,
             WarpService warpService,
+            WarpMapService warpMapService,
             IItemDirectory itemDirectory)
         {
             var teleport = new WebPanelAction(
@@ -45,7 +46,9 @@ namespace well404.Essentials
                     new WebField("costHome", "home cost", WebFieldType.Number),
                     new WebField("costTp", "tp cost", WebFieldType.Number),
                     new WebField("costWarp", "warp cost", WebFieldType.Number),
-                    new WebField("costBack", "back cost", WebFieldType.Number)
+                    new WebField("costBack", "back cost", WebFieldType.Number),
+                    new WebField("warpMapEnabled", "Interactive warp map", WebFieldType.Boolean),
+                    new WebField("warpMapVisibility", "Warp map visibility", WebFieldType.Select, options: new[] { "native", "always" })
                 },
                 description: "Shared rules for all teleports (home/tp/warp/back). Costs require an economy plugin (e.g. well404.Economy); default 0 = free.",
                 loader: () => Task.FromResult(store.Read(s => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
@@ -57,7 +60,9 @@ namespace well404.Essentials
                     ["costHome"] = Num(s.Teleport.Costs.Home),
                     ["costTp"] = Num(s.Teleport.Costs.Tp),
                     ["costWarp"] = Num(s.Teleport.Costs.Warp),
-                    ["costBack"] = Num(s.Teleport.Costs.Back)
+                    ["costBack"] = Num(s.Teleport.Costs.Back),
+                    ["warpMapEnabled"] = s.WarpMap.Enabled ? "true" : "false",
+                    ["warpMapVisibility"] = NormalizeWarpMapVisibility(s.WarpMap.Visibility)
                 })));
 
             var rules = new WebPanelAction(
@@ -89,26 +94,55 @@ namespace well404.Essentials
                 id: "warps",
                 label: "Warps",
                 kind: WebActionKind.Collection,
-                handler: request => Task.FromResult(SaveWarp(warpService, request)),
+                handler: request => SaveWarpAsync(warpService, warpMapService, request),
                 fields: new[]
                 {
                     new WebField("name", "Name", WebFieldType.Text, required: true, placeholder: "Name used by /warp"),
-                    new WebField("category", "Label", WebFieldType.Text, placeholder: "default"),
+                    new WebField("map", "Map", WebFieldType.Text, placeholder: "Empty = current map"),
+                    new WebField("tags", "Tags", WebFieldType.Text, placeholder: "public city safe"),
                     new WebField("x", "X", WebFieldType.Number, required: true),
                     new WebField("y", "Y", WebFieldType.Number, required: true),
                     new WebField("z", "Z", WebFieldType.Number, required: true),
-                    new WebField("yaw", "Yaw", WebFieldType.Number),
-                    new WebField("cooldownSeconds", "Cooldown seconds", WebFieldType.Number, placeholder: "0 = use global cooldown")
+                    new WebField("yaw", "Yaw", WebFieldType.Number)
                 },
-                description: "Labels become read-only player filters. Drag warp cards inside a label to set their player-panel order. Players still need permission well404.Essentials:well404.essentials.warps.<name>.",
+                description: "Each warp can have several space-separated tags. Tags become read-only player filters. Drag filtered cards to set their relative player-panel order. Players still need permission well404.Essentials:well404.essentials.warps.<name>.",
                 loader: null,
-                recordsLoader: () => Task.FromResult(LoadWarpRecords(store)),
+                recordsLoader: () => LoadWarpRecordsAsync(store, warpMapService),
                 deleteHandler: request => Task.FromResult(RemoveWarp(warpService, request)),
                 keyField: "name",
                 layout: "tabs-grid",
                 hidden: false,
                 summaryFields: null,
                 reorderHandler: request => Task.FromResult(ReorderWarps(warpService, request)));
+
+
+            var warpTags = new WebPanelAction(
+                id: "warp-tags",
+                label: "Warp tags",
+                kind: WebActionKind.Collection,
+                handler: request => Task.FromResult(SaveWarpTag(store, request)),
+                fields: new[]
+                {
+                    new WebField("id", "Tag ID", WebFieldType.Text, required: true, placeholder: "lower-case stable ID"),
+                    new WebField("kind", "Tag kind", WebFieldType.Select, options: new[] { "preset", "custom" }),
+                    new WebField("nameEn", "English name", WebFieldType.Text, required: true),
+                    new WebField("nameZh", "Chinese name", WebFieldType.Text, required: true),
+                    new WebField("emoji", "Emoji", WebFieldType.Text, placeholder: "One visible Emoji")
+                },
+                description: "Preset and custom tag definitions are stored separately in config.yaml. Warp entries store the stable ID.",
+                recordsLoader: () => Task.FromResult(LoadWarpTagRecords(store)),
+                deleteHandler: request => Task.FromResult(RemoveWarpTag(store, request)),
+                keyField: "id",
+                hidden: true);
+
+            var warpMapInfo = new WebPanelAction(
+                id: "warp-map-info",
+                label: "Warp map info",
+                kind: WebActionKind.Settings,
+                handler: _ => Task.FromResult(WebActionResult.Ok()),
+                fields: Array.Empty<WebField>(),
+                loader: () => LoadWarpMapInfoAsync(warpMapService),
+                hidden: true);
 
             var gifts = new WebPanelAction(
                 id: "gifts",
@@ -141,8 +175,8 @@ namespace well404.Essentials
 
             return new WebPanelModule(
                 ModuleId, "Essentials",
-                new[] { teleport, rules, warps, gifts, search },
-                icon: "🏠", ui: s_Ui);
+                new[] { teleport, rules, warps, warpTags, warpMapInfo, gifts, search },
+                icon: "🏠", ui: s_Ui, assetProvider: warpMapService);
         }
 
         private static WebActionResult SaveTeleport(EssentialsConfigStore store, WebActionRequest request)
@@ -162,6 +196,12 @@ namespace well404.Essentials
                 s.Teleport.Costs.Tp = request.GetDecimal("costTp") ?? s.Teleport.Costs.Tp;
                 s.Teleport.Costs.Warp = request.GetDecimal("costWarp") ?? s.Teleport.Costs.Warp;
                 s.Teleport.Costs.Back = request.GetDecimal("costBack") ?? s.Teleport.Costs.Back;
+                var mapEnabled = request.Get("warpMapEnabled");
+                if (mapEnabled != null)
+                {
+                    s.WarpMap.Enabled = mapEnabled == "true";
+                }
+                s.WarpMap.Visibility = NormalizeWarpMapVisibility(request.Get("warpMapVisibility") ?? s.WarpMap.Visibility);
             });
 
             return WebActionResult.Ok("Saved teleport rules.");
@@ -187,43 +227,141 @@ namespace well404.Essentials
             return WebActionResult.Ok("Saved tpa / sleep / back settings.");
         }
 
-        private static IReadOnlyList<WebRecord> LoadWarpRecords(EssentialsConfigStore store)
+        private static IReadOnlyList<WebRecord> LoadWarpTagRecords(EssentialsConfigStore store)
         {
+            var records = new List<WebRecord>();
+            void Add(IEnumerable<WarpTagDefinition> definitions, string kind)
+            {
+                foreach (var definition in definitions)
+                {
+                    records.Add(new WebRecord(
+                        definition.Id,
+                        (definition.Emoji.Length > 0 ? definition.Emoji + " " : string.Empty) + definition.NameEn,
+                        new Dictionary<string, string>
+                        {
+                            ["id"] = definition.Id,
+                            ["kind"] = kind,
+                            ["nameEn"] = definition.NameEn,
+                            ["nameZh"] = definition.NameZh,
+                            ["emoji"] = definition.Emoji
+                        },
+                        new[] { kind, definition.Id, definition.NameZh }));
+                }
+            }
+
+            Add(store.PresetWarpTags, "preset");
+            Add(store.CustomWarpTags, "custom");
+            return records;
+        }
+
+        private static WebActionResult SaveWarpTag(EssentialsConfigStore store, WebActionRequest request)
+        {
+            var rawId = request.Get("id");
+            if (rawId == null) return WebActionResult.Fail("Enter a tag ID.");
+            var id = rawId.Trim().ToLowerInvariant();
+            if (!EssentialsConfigStore.IsValidTagId(id))
+            {
+                return WebActionResult.Fail("Tag ID must be 1-32 lower-case ASCII letters, numbers, hyphens, or underscores.");
+            }
+
+            var recordKey = request.Get("recordKey");
+            if (recordKey != null && !string.Equals(recordKey, id, StringComparison.OrdinalIgnoreCase))
+            {
+                return WebActionResult.Fail("A tag ID cannot be renamed; create a new tag and update the affected warps.");
+            }
+
+            var nameEn = request.Get("nameEn");
+            var nameZh = request.Get("nameZh");
+            if (nameEn == null || nameZh == null) return WebActionResult.Fail("Enter both English and Chinese names.");
+            if (nameEn.Length > 64 || nameZh.Length > 64) return WebActionResult.Fail("Tag names must be at most 64 characters.");
+            var emoji = request.Get("emoji") ?? string.Empty;
+            if (emoji.Length > 16) return WebActionResult.Fail("Emoji must be at most 16 UTF-16 characters.");
+
+            store.UpsertWarpTag(new WarpTagDefinition
+            {
+                Id = id,
+                NameEn = nameEn,
+                NameZh = nameZh,
+                Emoji = emoji
+            }, string.Equals(request.Get("kind"), "preset", StringComparison.OrdinalIgnoreCase));
+            return WebActionResult.Ok("Saved warp tag " + id + ".");
+        }
+
+        private static WebActionResult RemoveWarpTag(EssentialsConfigStore store, WebActionRequest request)
+        {
+            var id = request.Get("key");
+            if (id == null) return WebActionResult.Fail("Missing tag ID.");
+            if (store.Warps.Any(warp => EssentialsConfigStore.HasTag(warp, id)))
+            {
+                return WebActionResult.Fail("This tag is still used by a warp. Remove it from those warps first.");
+            }
+
+            return store.RemoveWarpTag(id)
+                ? WebActionResult.Ok("Deleted warp tag " + id + ".")
+                : WebActionResult.Fail("Warp tag not found: " + id + ".");
+        }
+
+        private static async Task<IReadOnlyList<WebRecord>> LoadWarpRecordsAsync(
+            EssentialsConfigStore store, WarpMapService warpMap)
+        {
+            await UniTask.SwitchToMainThread();
             var records = new List<WebRecord>();
             foreach (var warp in store.Warps)
             {
+                var values = new Dictionary<string, string>
+                {
+                    ["name"] = warp.Name,
+                    ["map"] = warp.Map,
+                    ["tags"] = string.Join(" ", warp.Tags),
+                    ["x"] = Num(warp.X),
+                    ["y"] = Num(warp.Y),
+                    ["z"] = Num(warp.Z),
+                    ["yaw"] = Num(warp.Yaw)
+                };
+                if (warpMap.TryProject(warp, out var mapX, out var mapY))
+                {
+                    values["mapX"] = mapX.ToString(CultureInfo.InvariantCulture);
+                    values["mapY"] = mapY.ToString(CultureInfo.InvariantCulture);
+                }
+
                 records.Add(new WebRecord(
                     warp.Name,
                     warp.Name,
-                    new Dictionary<string, string>
-                    {
-                        ["name"] = warp.Name,
-                        ["category"] = warp.Category,
-                        ["x"] = Num(warp.X),
-                        ["y"] = Num(warp.Y),
-                        ["z"] = Num(warp.Z),
-                        ["yaw"] = Num(warp.Yaw),
-                        ["cooldownSeconds"] = Int(warp.CooldownSeconds)
-                    },
-                    new[]
-                    {
-                        $"({Num(warp.X)}, {Num(warp.Y)}, {Num(warp.Z)})",
-                        warp.CooldownSeconds > 0 ? $"cooldown {warp.CooldownSeconds}s" : "no cooldown"
-                    },
-                    warp.Category,
-                    warp.Category,
+                    values,
+                    warp.Tags,
+                    null,
+                    null,
                     null));
             }
 
             return records;
         }
 
-        private static WebActionResult SaveWarp(WarpService warps, WebActionRequest request)
+
+        private static async Task<IReadOnlyDictionary<string, string>> LoadWarpMapInfoAsync(WarpMapService warpMap)
         {
-            var name = request.Get("name");
-            if (name == null)
+            await UniTask.SwitchToMainThread();
+            var state = warpMap.GetAdminState();
+            return new Dictionary<string, string>
             {
-                return WebActionResult.Fail("Enter a name.");
+                ["mapName"] = state.MapName,
+                ["mapAvailable"] = state.Available ? "true" : "false",
+                ["mapReason"] = state.Reason,
+                ["chartAvailable"] = state.ChartAvailable ? "true" : "false",
+                ["chartReason"] = state.ChartReason,
+                ["chartAssetId"] = WarpMapService.ChartAssetId,
+                ["gpsAvailable"] = state.GpsAvailable ? "true" : "false",
+                ["gpsReason"] = state.GpsReason,
+                ["gpsAssetId"] = WarpMapService.GpsAssetId
+            };
+        }
+        private static async Task<WebActionResult> SaveWarpAsync(
+            WarpService warps, WarpMapService warpMap, WebActionRequest request)
+        {
+            var name = request.Get("name")?.Trim();
+            if (!EssentialsConfigStore.IsValidWarpName(name))
+            {
+                return WebActionResult.Fail($"Warp name must be 1-{EssentialsConfigStore.MaxWarpNameLength} characters and contain no control characters.");
             }
 
             var x = request.GetDecimal("x");
@@ -234,19 +372,46 @@ namespace well404.Essentials
                 return WebActionResult.Fail("Enter X / Y / Z coordinates.");
             }
 
+            var map = request.Get("map")?.Trim() ?? string.Empty;
+            if (map.Length == 0)
+            {
+                await UniTask.SwitchToMainThread();
+                map = warpMap.CurrentMapName;
+            }
+
+            if (map.Length == 0)
+            {
+                return WebActionResult.Fail("Enter a map name or save while a map is loaded.");
+            }
+            if (!EssentialsConfigStore.IsValidMapName(map))
+            {
+                return WebActionResult.Fail($"Map name must be 1-{EssentialsConfigStore.MaxMapNameLength} characters and contain no control characters.");
+            }
+
+            var tags = EssentialsConfigStore.ParseTags(new[] { request.Get("tags") ?? string.Empty });
+            if (tags.Count > EssentialsConfigStore.MaxWarpTags)
+            {
+                return WebActionResult.Fail($"A warp can have at most {EssentialsConfigStore.MaxWarpTags} tags.");
+            }
+            var invalidTag = tags.FirstOrDefault(tag => !EssentialsConfigStore.IsValidTagId(tag));
+            if (invalidTag != null)
+            {
+                return WebActionResult.Fail($"Invalid tag ID '{invalidTag}'. Use 1-{EssentialsConfigStore.MaxTagIdLength} lower-case ASCII letters, numbers, hyphens, or underscores.");
+            }
+
             warps.Upsert(new WarpEntry
             {
-                Name = name,
-                Category = request.Get("category") ?? "default",
+                Name = name!,
+                Map = map,
+                Tags = tags,
                 X = x.Value,
                 Y = y.Value,
                 Z = z.Value,
                 Yaw = request.GetDecimal("yaw") ?? 0m,
-                CooldownSeconds = ReadInt(request, "cooldownSeconds", 0),
-                Order = warps.Find(name)?.Order ?? 0
+                Order = warps.Find(name!)?.Order ?? 0
             });
 
-            return WebActionResult.Ok($"Saved warp {name}. Remember to grant players the permission {Warps.WarpService.PermissionFor(name)}.");
+            return WebActionResult.Ok($"Saved warp {name}. Remember to grant players the permission {Warps.WarpService.PermissionFor(name!)}.");
         }
 
         private static WebActionResult RemoveWarp(WarpService warps, WebActionRequest request)
@@ -264,7 +429,7 @@ namespace well404.Essentials
 
         private static WebActionResult ReorderWarps(WarpService warps, WebActionRequest request)
         {
-            var category = request.Get("group") ?? "default";
+            var tag = request.Get("tag") ?? "__all__";
             var raw = request.Get("keys");
             if (raw == null)
             {
@@ -275,7 +440,7 @@ namespace well404.Essentials
                 .Select(key => key.Trim())
                 .Where(key => key.Length > 0)
                 .ToList();
-            return warps.Reorder(category, names)
+            return warps.Reorder(tag, names)
                 ? WebActionResult.Ok("Warp order saved.")
                 : WebActionResult.Fail("The warp list changed; refresh and try again.");
         }
@@ -494,6 +659,10 @@ namespace well404.Essentials
 
         private static string Num(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 
+
+        private static string NormalizeWarpMapVisibility(string value)
+            => string.Equals(value?.Trim(), "always", StringComparison.OrdinalIgnoreCase)
+                ? "always" : "native";
         /// <summary>Folds full-width punctuation/digits (U+FF01–U+FF5E and the ideographic space) to ASCII.</summary>
         private static string NormalizeFullWidth(string value)
         {

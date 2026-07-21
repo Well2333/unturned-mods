@@ -67,6 +67,11 @@ namespace well404.Economy
                 return new PlayerMenuView(m_Tr.Resolve("Wallet", lang), header, cards,
                     m_Tr.Resolve("Transfers are currently disabled.", lang));
             }
+            if (!(m_Economy is EconomyProvider provider) || !provider.SupportsAtomicTransfers)
+            {
+                return new PlayerMenuView(m_Tr.Resolve("Wallet", lang), header, cards,
+                    m_Tr.Resolve("Player transfers require the database backend.", lang));
+            }
 
             var line = transfer.TaxPercent > 0m
                 ? m_Tr.Format(lang, "Send to this player (fee {0}%)", Money(transfer.TaxPercent))
@@ -103,6 +108,11 @@ namespace well404.Economy
             {
                 return PlayerActionResult.Fail(m_Tr.Resolve("Transfers are currently disabled.", lang));
             }
+            if (!(m_Economy is EconomyProvider economy) || !economy.SupportsAtomicTransfers)
+            {
+                return PlayerActionResult.Fail(
+                    m_Tr.Resolve("Player transfers require the database backend.", lang));
+            }
 
             if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) || amount <= 0m)
             {
@@ -129,21 +139,15 @@ namespace well404.Economy
 
             try
             {
-                await m_Economy.UpdateBalanceAsync(context.SteamId, KnownActorTypes.Player, -amount, "pay_out:" + cardKey);
+                await economy.TransferAsync(
+                    context.SteamId, KnownActorTypes.Player,
+                    cardKey, KnownActorTypes.Player,
+                    amount, received,
+                    "pay:" + context.SteamId + ":" + cardKey);
             }
             catch (NotEnoughBalanceException)
             {
                 return PlayerActionResult.Fail(m_Tr.Resolve("Insufficient balance.", lang));
-            }
-
-            try
-            {
-                await m_Economy.UpdateBalanceAsync(cardKey, KnownActorTypes.Player, received, "pay_in:" + context.SteamId);
-            }
-            catch
-            {
-                await m_Economy.UpdateBalanceAsync(context.SteamId, KnownActorTypes.Player, amount, "pay_refund:" + cardKey);
-                throw;
             }
 
             if (target != null)

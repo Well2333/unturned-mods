@@ -31,6 +31,7 @@ namespace well404.Essentials
             builder.RegisterType<PartyInviteManager>().AsSelf().SingleInstance();
             builder.RegisterType<PartyService>().AsSelf().SingleInstance();
             builder.RegisterType<WarpService>().AsSelf().SingleInstance();
+            builder.RegisterType<WarpMapService>().AsSelf().SingleInstance();
             builder.RegisterType<GiftService>().AsSelf().SingleInstance();
             builder.RegisterType<SleepVoteService>().AsSelf().SingleInstance();
             builder.RegisterType<InvincibilityService>().AsSelf().SingleInstance();

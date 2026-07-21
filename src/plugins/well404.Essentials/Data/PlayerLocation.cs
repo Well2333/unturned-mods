@@ -10,14 +10,18 @@ namespace well404.Essentials.Data
         public float Z { get; set; }
         public float Yaw { get; set; }
 
+        /// <summary>The Unturned map this position was captured on. Empty for legacy records.</summary>
+        public string Map { get; set; } = string.Empty;
+
         public PlayerLocation() { }
 
-        public PlayerLocation(float x, float y, float z, float yaw)
+        public PlayerLocation(float x, float y, float z, float yaw, string? map = null)
         {
             X = x;
             Y = y;
             Z = z;
             Yaw = yaw;
+            Map = map?.Trim() ?? string.Empty;
         }
     }
 
@@ -27,6 +31,9 @@ namespace well404.Essentials.Data
         public PlayerLocation? Home { get; set; }
 
         public PlayerLocation? LastDeath { get; set; }
+
+        /// <summary>Server-persisted player map frame preference: compact or large.</summary>
+        public string WarpMapSize { get; set; } = "compact";
 
         /// <summary>Gift id (lower-case) → Unix time (UTC seconds) of the last claim.</summary>
         public Dictionary<string, long> GiftClaims { get; set; } = new Dictionary<string, long>();

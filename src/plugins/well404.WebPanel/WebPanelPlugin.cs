@@ -104,6 +104,7 @@ namespace well404.WebPanel
             var playerRegistry = LifetimeScope.Resolve<IPlayerMenuRegistry>();
             var translations = LifetimeScope.Resolve<IWebTranslationRegistry>();
             var sessions = LifetimeScope.Resolve<PlayerWebSessionManager>();
+            sessions.RevokeAllSessions();
             m_PlayerSessions = sessions;
             m_WebPanelRegistry = registry;
             m_PlayerMenuRegistry = playerRegistry;
@@ -291,8 +292,8 @@ namespace well404.WebPanel
                 // Unblock any /menu that is waiting for the tunnel — it won't come.
                 sessions.SetTunnelUnavailable(tunnelGeneration);
                 RecordStartupIssue(
-                    "内置反代(tunnel)未能启动:cloudflared 下载/启动失败(见上方日志)。玩家 /menu 链接与公网管理面"
-                    + "地址本次不可用;面板仍可经本地地址访问。可配置 web.tunnel.downloadMirrors / 系统代理后重试,"
+                    "内置反代(tunnel)未能启动:未找到可用的隧道程序或启动失败(见上方日志)。玩家 /menu 链接与公网管理面"
+                    + "地址本次不可用;面板仍可经本地地址访问。请安装 cloudflared 并设置 web.tunnel.command,"
                     + "或设 web.tunnel.enabled: false 关闭。");
                 return;
             }
@@ -392,6 +393,7 @@ namespace well404.WebPanel
                 m_TunnelGeneration = 0;
             }
 
+            m_PlayerSessions?.RevokeAllSessions();
             m_PlayerSessions = null;
             // Belt-and-suspenders: make sure no cloudflared we launched is left holding the panel port
             // (it inherited the listening socket), even if it wasn't tracked in m_Tunnel above.
@@ -430,9 +432,9 @@ namespace well404.WebPanel
 
             tunnel = ResolveEffectiveTunnel(tunnel);
 
-            // For a Cloudflare Quick Tunnel, make sure a cloudflared binary is actually runnable —
-            // download a portable copy into the plugin's data dir when it is missing (never onto the
-            // host system). For type: custom the admin owns the command, so we leave it untouched.
+            // For a Cloudflare Quick Tunnel, resolve the administrator-installed executable.
+            // Automatic downloads stay disabled until a pinned official hash allowlist is bundled.
+            // For type: custom the admin owns the command, so we leave it untouched.
             if (string.Equals(tunnel.Type, "cloudflare", StringComparison.OrdinalIgnoreCase))
             {
                 var resolved = await CloudflaredDownloader
@@ -442,7 +444,7 @@ namespace well404.WebPanel
 
                 if (resolved == null)
                 {
-                    // No usable cloudflared and auto-download gave up — EnsureAsync already logged why.
+                    // No trusted cloudflared executable is available — EnsureAsync already logged why.
                     return null;
                 }
 

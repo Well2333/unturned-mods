@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.Configuration;
@@ -12,19 +13,36 @@ using UnturnedMods.Shared.WebPanel;
 
 namespace well404.WebPanel
 {
-    /// <summary>A validated player web session.</summary>
+    public enum PlayerSessionKind
+    {
+        Player,
+        Developer
+    }
+
+    /// <summary>A validated player web session bound to one plugin-load generation.</summary>
     public sealed class PlayerSession
     {
         public PlayerSession(string steamId, string displayName, DateTime expiresUtc)
+            : this(steamId, displayName, expiresUtc, PlayerSessionKind.Player, 0)
+        {
+        }
+
+        public PlayerSession(
+            string steamId, string displayName, DateTime expiresUtc,
+            PlayerSessionKind kind, long generation)
         {
             SteamId = steamId;
             DisplayName = displayName;
             ExpiresUtc = expiresUtc;
+            Kind = kind;
+            Generation = generation;
         }
 
         public string SteamId { get; }
         public string DisplayName { get; }
         public DateTime ExpiresUtc { get; }
+        public PlayerSessionKind Kind { get; }
+        public long Generation { get; }
     }
 
     /// <summary>
@@ -38,12 +56,15 @@ namespace well404.WebPanel
     public sealed class PlayerWebSessionManager : IPlayerWebSessionService
     {
         private readonly IPluginAccessor<WebPanelPlugin> m_PluginAccessor;
+        private readonly Func<string, bool>? m_IsOnlineOverride;
+        private readonly Func<WebServerSettings?>? m_SettingsOverride;
         private readonly ConcurrentDictionary<string, PlayerSession> m_Sessions =
             new ConcurrentDictionary<string, PlayerSession>(StringComparer.Ordinal);
 
         private volatile string? m_TunnelBaseUrl;
         private readonly object m_TunnelStateLock = new object();
         private long m_TunnelGeneration;
+        private long m_SessionGeneration;
 
         // Completes when the initial tunnel bring-up resolves (URL obtained, or gave up). Lets
         // CreateLinkAsync wait briefly so a /menu right after startup doesn't fail on the window
@@ -51,8 +72,28 @@ namespace well404.WebPanel
         private volatile TaskCompletionSource<bool>? m_TunnelReady;
 
         public PlayerWebSessionManager(IPluginAccessor<WebPanelPlugin> pluginAccessor)
+            : this(pluginAccessor, null, null)
+        {
+        }
+
+        internal PlayerWebSessionManager(
+            IPluginAccessor<WebPanelPlugin> pluginAccessor,
+            Func<string, bool>? isOnlineOverride,
+            Func<WebServerSettings?>? settingsOverride)
         {
             m_PluginAccessor = pluginAccessor;
+            m_IsOnlineOverride = isOnlineOverride;
+            m_SettingsOverride = settingsOverride;
+        }
+
+        /// <summary>
+        /// Invalidates every existing token and starts a fresh plugin-load session generation.
+        /// Call on both load and unload so singleton state can never survive a reload.
+        /// </summary>
+        public void RevokeAllSessions()
+        {
+            Interlocked.Increment(ref m_SessionGeneration);
+            m_Sessions.Clear();
         }
 
         /// <summary>Marks that a tunnel is being brought up, so CreateLinkAsync waits for its first
@@ -136,14 +177,26 @@ namespace well404.WebPanel
 
         private WebServerSettings? ReadSettings()
         {
-            var plugin = m_PluginAccessor.Instance;
-            if (plugin == null || !plugin.IsComponentAlive)
+            if (m_SettingsOverride != null)
+            {
+                return m_SettingsOverride();
+            }
+
+            try
+            {
+                var plugin = m_PluginAccessor?.Instance;
+                if (plugin == null || !plugin.IsComponentAlive)
+                {
+                    return null;
+                }
+
+                var configuration = plugin.LifetimeScope.Resolve<IConfiguration>();
+                return (configuration.Get<WebPanelSettings>() ?? new WebPanelSettings()).Web;
+            }
+            catch
             {
                 return null;
             }
-
-            var configuration = plugin.LifetimeScope.Resolve<IConfiguration>();
-            return (configuration.Get<WebPanelSettings>() ?? new WebPanelSettings()).Web;
         }
 
         public string? CreateLink(string steamId, string displayName, string? menuId = null)
@@ -205,12 +258,13 @@ namespace well404.WebPanel
         /// <summary>Mints a session token and assembles the full player-surface URL.</summary>
         private string BuildLink(string baseUrl, string steamId, string displayName, WebServerSettings settings, string? menuId)
         {
-            // Links are valid for at least 15 minutes (the floor); past that they stay valid only
-            // while the player is online (see Validate). So the "expiry" stored here is the floor.
+            // Keep a minimum 15-minute window, but validation also requires the player to remain
+            // online and never extends the absolute expiry.
             var minutes = Math.Max(settings.PlayerSessionMinutes, 15);
             var token = NewToken();
             m_Sessions[token] = new PlayerSession(steamId, displayName ?? string.Empty,
-                DateTime.UtcNow.AddMinutes(minutes));
+                DateTime.UtcNow.AddMinutes(minutes), PlayerSessionKind.Player,
+                Interlocked.Read(ref m_SessionGeneration));
 
             var url = baseUrl + "/p?t=" + token;
             if (!string.IsNullOrEmpty(menuId))
@@ -229,7 +283,10 @@ namespace well404.WebPanel
         /// </summary>
         public string? CreateDevSession(string steamId, string displayName)
         {
-            if (string.IsNullOrWhiteSpace(steamId))
+            var settings = ReadSettings();
+            var configured = settings?.DevPlayer;
+            if (configured == null || !configured.Enabled || string.IsNullOrWhiteSpace(steamId) ||
+                !string.Equals(configured.SteamId?.Trim(), steamId.Trim(), StringComparison.Ordinal))
             {
                 return null;
             }
@@ -237,14 +294,15 @@ namespace well404.WebPanel
             var token = NewToken();
             m_Sessions[token] = new PlayerSession(steamId.Trim(),
                 string.IsNullOrWhiteSpace(displayName) ? "Dev Player" : displayName.Trim(),
-                DateTime.UtcNow.AddDays(1));
+                DateTime.UtcNow.AddDays(1), PlayerSessionKind.Developer,
+                Interlocked.Read(ref m_SessionGeneration));
             return token;
         }
 
         /// <summary>
-        /// Returns the session for a token, or null if unknown/expired. A session is valid for at
-        /// least its floor window (≥15 min from creation); after that it stays valid only while the
-        /// player is still online, and is dropped the moment they go offline.
+        /// Returns a live session for a token. Player tokens are revoked as soon as the player is
+        /// offline; developer tokens additionally require the current dev-player switch and Steam ID
+        /// to still match. Every token is bound to the current plugin-load generation.
         /// </summary>
         public PlayerSession? Validate(string? token)
         {
@@ -253,14 +311,26 @@ namespace well404.WebPanel
                 return null;
             }
 
-            // Within the floor window: always valid (even briefly offline mid-login).
-            if (DateTime.UtcNow <= session.ExpiresUtc)
+            if (session.Generation != Interlocked.Read(ref m_SessionGeneration))
             {
-                return session;
+                m_Sessions.TryRemove(token!, out _);
+                return null;
             }
 
-            // Past the floor: valid as long as the player is online; expire on disconnect.
-            if (IsOnline(session.SteamId))
+            if (session.Kind == PlayerSessionKind.Developer)
+            {
+                var configured = ReadSettings()?.DevPlayer;
+                if (DateTime.UtcNow <= session.ExpiresUtc && configured != null && configured.Enabled &&
+                    string.Equals(configured.SteamId?.Trim(), session.SteamId, StringComparison.Ordinal))
+                {
+                    return session;
+                }
+
+                m_Sessions.TryRemove(token!, out _);
+                return null;
+            }
+
+            if (DateTime.UtcNow <= session.ExpiresUtc && IsOnline(session.SteamId))
             {
                 return session;
             }
@@ -272,14 +342,24 @@ namespace well404.WebPanel
         /// <summary>True if a player with this Steam ID is currently connected.</summary>
         private bool IsOnline(string steamId)
         {
-            var plugin = m_PluginAccessor.Instance;
-            if (plugin == null || !plugin.IsComponentAlive)
+            if (m_IsOnlineOverride != null)
             {
-                return false;
+                return m_IsOnlineOverride(steamId);
             }
 
+            return IsOnlineViaPlugin(steamId);
+        }
+
+        private bool IsOnlineViaPlugin(string steamId)
+        {
             try
             {
+                var plugin = m_PluginAccessor?.Instance;
+                if (plugin == null || !plugin.IsComponentAlive)
+                {
+                    return false;
+                }
+
                 var directory = plugin.LifetimeScope.Resolve<IUnturnedUserDirectory>();
                 return directory.GetOnlineUsers()
                     .Any(u => string.Equals(u.Id, steamId, StringComparison.Ordinal));

@@ -42,6 +42,10 @@ namespace well404.Economy.Commands
             {
                 throw new UserFriendlyException(m_StringLocalizer["pay:disabled"]);
             }
+            if (!(m_Economy is EconomyProvider economy) || !economy.SupportsAtomicTransfers)
+            {
+                throw new UserFriendlyException(m_StringLocalizer["pay:requires_database"]);
+            }
 
             if (Context.Parameters.Length < 2)
             {
@@ -80,19 +84,11 @@ namespace well404.Economy.Commands
             var tax = decimal.Round(amount * transfer.TaxPercent / 100m, 2, MidpointRounding.AwayFromZero);
             var received = amount - tax;
 
-            // Withdraw first; this throws NotEnoughBalanceException if the sender can't afford it.
-            await m_Economy.UpdateBalanceAsync(sender.Id, sender.Type, -amount, "pay_out:" + target.Id);
-
-            try
-            {
-                await m_Economy.UpdateBalanceAsync(target.Id, KnownActorTypes.Player, received, "pay_in:" + sender.Id);
-            }
-            catch
-            {
-                // Refund the sender if crediting the receiver failed (e.g. offline on the experience backend).
-                await m_Economy.UpdateBalanceAsync(sender.Id, sender.Type, amount, "pay_refund:" + target.Id);
-                throw;
-            }
+            await economy.TransferAsync(
+                sender.Id, sender.Type,
+                target.Id, KnownActorTypes.Player,
+                amount, received,
+                "pay:" + sender.Id + ":" + target.Id);
 
             await PrintAsync(m_StringLocalizer["pay:sent", new
             {

@@ -163,13 +163,15 @@ let refreshIntervalSeconds = 5;
 let refreshTimer = null;
 let refreshers = [];
 let loadingModules = false;
+let autoRefreshPaused = false;
+let disposeCustomAdminUi = () => {};
 
 function scheduleRefresh() {
   clearInterval(refreshTimer);
   if (refreshIntervalSeconds <= 0) return;
   refreshTimer = setInterval(() => {
     const tag = deepActiveElement()?.tagName;
-    const busy = document.hidden || $(".modal-overlay") || pluginUiModalOpen()
+    const busy = autoRefreshPaused || document.hidden || $(".modal-overlay") || pluginUiModalOpen()
       || ["INPUT","SELECT","TEXTAREA"].includes(tag);
     if (!busy) for (const refresh of [...refreshers]) refresh();
   }, refreshIntervalSeconds * 1000);
@@ -186,6 +188,12 @@ function pluginUiModalOpen() {
     if (host.shadowRoot?.querySelector('[aria-modal="true"]')) return true;
   }
   return false;
+}
+
+function releaseCustomAdminUi() {
+  disposeCustomAdminUi();
+  disposeCustomAdminUi = () => {};
+  autoRefreshPaused = false;
 }
 
 function buildLangSwitcher() {
@@ -212,6 +220,7 @@ async function loadModules() {
     data = await api("api/modules", { headers: headers() });
     modules = data.modules || [];
   } catch (e) {
+    releaseCustomAdminUi();
     nav.replaceChildren(el("div", { class:"empty", text: e.message }));
     $("#main").replaceChildren();
     loadingModules = false;
@@ -227,6 +236,7 @@ async function loadModules() {
   document.documentElement.lang = lang;
   buildLangSwitcher();
   if (!modules.length) {
+    releaseCustomAdminUi();
     nav.replaceChildren(el("div", { class:"empty", text: T("noModules") }));
     $("#main").replaceChildren();
     loadingModules = false;
@@ -241,6 +251,7 @@ async function loadModules() {
 }
 
 function render() {
+  releaseCustomAdminUi();
   $("#nav").querySelectorAll("button").forEach((b, i) =>
     b.classList.toggle("active", modules[i] && modules[i].id === activeId));
   const module = modules.find(m => m.id === activeId);
@@ -284,6 +295,12 @@ function mountCustomAdminUi(module, main) {
   </style>${module.ui.html || ""}`;
   main.append(host);
   const find = id => module.actions.find(action => action.id === id);
+  const disposers = [];
+  disposeCustomAdminUi = () => {
+    for (const dispose of disposers.splice(0).reverse()) {
+      try { dispose(); } catch (error) { console.error("WebPanel plugin UI cleanup failed", module.id, error); }
+    }
+  };
   const modulePrefix = `api/modules/${enc(module.id)}/`;
   const scopedApi = (path, options) => {
     const candidate = String(path || "");
@@ -295,6 +312,7 @@ function mountCustomAdminUi(module, main) {
   };
   const panel = {
     root, module, lang, el, t:T, find, api:scopedApi, encode:enc,
+    assetUrl:assetId => `api/modules/${enc(module.id)}/asset/${enc(assetId)}`,
     invoke:(id, values) => invoke(module, find(id), values instanceof URLSearchParams ? values : new URLSearchParams(values || {})),
     values:id => api(`api/modules/${enc(module.id)}/${enc(id)}/values`, { headers:headers() }),
     records:id => api(`api/modules/${enc(module.id)}/${enc(id)}/records`, { headers:headers() }),
@@ -306,7 +324,9 @@ function mountCustomAdminUi(module, main) {
       return { action, inputs:built.inputs };
     },
     saveSettings:(settings, button) => saveAll(module, settings.filter(Boolean), button),
-    onRefresh:fn => { if (typeof fn === "function") refreshers.push(fn); }
+    onRefresh:fn => { if (typeof fn === "function") refreshers.push(fn); },
+    setAutoRefreshPaused:paused => { autoRefreshPaused = !!paused; },
+    onDispose:fn => { if (typeof fn === "function") disposers.push(fn); }
   };
   try { Function("panel", '"use strict";\n' + (module.ui.javaScript || ""))(panel); }
   catch (error) {

@@ -16,6 +16,7 @@ namespace well404.Shop
             context.ContainerBuilder.RegisterType<ShopCatalog>().AsSelf().SingleInstance();
             context.ContainerBuilder.RegisterType<DiscountService>().AsSelf().SingleInstance();
             context.ContainerBuilder.RegisterType<ShopService>().AsSelf().SingleInstance();
+            context.ContainerBuilder.RegisterType<ShopTradeCoordinator>().AsSelf().SingleInstance();
         }
     }
 }

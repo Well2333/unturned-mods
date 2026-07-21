@@ -1,26 +1,28 @@
 const root=panel.root,zh=panel.lang==="zh";
 const L=zh?{
-  title:"商店管理",subtitle:"按照玩家看到的分组目录管理商品、排序、价格与折扣。",catalog:"商品目录",discount:"折扣",saveDiscount:"保存折扣设置",
+  title:"商店管理",subtitle:"按照玩家看到的分组目录管理商品、排序、价格与折扣。",catalog:"商品目录",discount:"折扣",quarantine:"恢复隔离区",saveDiscount:"保存折扣设置",
   catalogTitle:"玩家商店目录",catalogHelp:"目录与玩家面板完全同步；在当前分组内拖动商品卡片即可排序。",addGroup:"＋ 添加分组",editGroup:"编辑分组",
   addTitle:"添加物品",addHelp:"输入游戏物品名称或数字 ID，选择结果后设置价格、分组与备注。",searchLabel:"物品名称或 ID",searchPlaceholder:"输入关键词或数字 ID…",
   noProducts:"当前分组暂无商品。",searchHint:"输入名称或 ID 后，这里会显示匹配物品及其 ID。",noResults:"没有匹配的游戏物品。",add:"添加",edit:"编辑",remove:"删除",cancel:"取消",save:"保存",
   addGroupTitle:"添加分组",editGroupTitle:"编辑分组",groupId:"分组 ID",groupName:"分组名称",groupNameHint:"留空时使用分组 ID",deleteGroup:"删除分组",deleteGroupConfirm:"删除该分组？其中商品会移动到 default。",
   editProduct:"编辑商品",addItemTitle:"添加商品",itemId:"物品 ID",group:"分组",note:"备注",buyPrice:"买价",sellPrice:"卖价",deleteProductConfirm:"确定删除该商品？",
-  buy:"买价",sell:"卖价",saved:"已保存。",deleted:"已删除。",orderSaved:"排序已保存。",loading:"加载中…",requestFailed:"请求失败。",defaultGroupLocked:"default 分组不能删除。"
+  buy:"买价",sell:"卖价",saved:"已保存。",deleted:"已删除。",orderSaved:"排序已保存。",loading:"加载中…",requestFailed:"请求失败。",defaultGroupLocked:"default 分组不能删除。",
+  quarantineTitle:"交易恢复隔离区",quarantineHelp:"这里只处理处于模糊库存/账本边界的交易；系统不会自动退款、入账或重放库存。",noQuarantine:"没有待人工处理的交易。",review:"审核处理",operation:"操作 ID",player:"玩家",stateLabel:"状态",items:"物品计划",total:"金额",resolution:"处理方式",confirmation:"再次输入完整操作 ID",auditNote:"审计备注（8–500 字符）",resolve:"确认执行",resolveTitle:"处理隔离交易",resolved:"处理完成。",dangerReview:"执行前必须在游戏与持久账本中人工核对库存事实。退款前先移除已发物品；入账前先确认物品已被移除。"
 }:{
-  title:"Shop management",subtitle:"Manage products, ordering, prices and discounts in the same grouped catalog players see.",catalog:"Catalog",discount:"Discounts",saveDiscount:"Save discount settings",
+  title:"Shop management",subtitle:"Manage products, ordering, prices and discounts in the same grouped catalog players see.",catalog:"Catalog",discount:"Discounts",quarantine:"Recovery quarantine",saveDiscount:"Save discount settings",
   catalogTitle:"Player shop catalog",catalogHelp:"This catalog exactly matches the player panel. Drag cards inside the current group to reorder them.",addGroup:"＋ Add group",editGroup:"Edit group",
   addTitle:"Add item",addHelp:"Search by game item name or numeric ID, then set its prices, group and note.",searchLabel:"Item name or ID",searchPlaceholder:"Type a keyword or numeric ID…",
   noProducts:"No products in this group.",searchHint:"Enter a name or ID to show matching game items and their IDs here.",noResults:"No matching game items.",add:"Add",edit:"Edit",remove:"Delete",cancel:"Cancel",save:"Save",
   addGroupTitle:"Add group",editGroupTitle:"Edit group",groupId:"Group ID",groupName:"Group name",groupNameHint:"Empty uses the group ID",deleteGroup:"Delete group",deleteGroupConfirm:"Delete this group? Its products will move to default.",
   editProduct:"Edit product",addItemTitle:"Add item",itemId:"Item ID",group:"Group",note:"Note",buyPrice:"Buy price",sellPrice:"Sell price",deleteProductConfirm:"Delete this product?",
-  buy:"Buy",sell:"Sell",saved:"Saved.",deleted:"Deleted.",orderSaved:"Order saved.",loading:"Loading…",requestFailed:"Request failed.",defaultGroupLocked:"The default group cannot be deleted."
+  buy:"Buy",sell:"Sell",saved:"Saved.",deleted:"Deleted.",orderSaved:"Order saved.",loading:"Loading…",requestFailed:"Request failed.",defaultGroupLocked:"The default group cannot be deleted.",
+  quarantineTitle:"Trade recovery quarantine",quarantineHelp:"Only ambiguous inventory/ledger boundaries appear here. Nothing is refunded, credited, or replayed automatically.",noQuarantine:"No trades await manual review.",review:"Review resolution",operation:"Operation ID",player:"Player",stateLabel:"State",items:"Item plan",total:"Total",resolution:"Resolution",confirmation:"Retype the complete operation ID",auditNote:"Audit note (8–500 characters)",resolve:"Confirm resolution",resolveTitle:"Resolve quarantined trade",resolved:"Resolution completed.",dangerReview:"Manually verify inventory facts and the durable ledger before acting. Remove delivered items before refunding; confirm sold items are gone before crediting."
 };
 const make=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=text;return node};
 const localizedName=text=>{const lines=String(text||"").split("\n").filter(Boolean),wrap=make("span","name-copy");const primary=!zh&&lines.length>1?lines[lines.length-1]:(lines[0]||"");wrap.append(make("span","name-primary",primary));if(zh&&lines.length>1)wrap.append(make("span","name-secondary",lines.slice(1).join(" ")));return wrap};
 const $=selector=>root.querySelector(selector);
 const modulePath=id=>`api/modules/${panel.encode(panel.module.id)}/${panel.encode(id)}`;
-const state={groups:[],records:[],activeGroup:"",dragKey:"",loading:false};
+const state={groups:[],records:[],quarantine:[],activeGroup:"",dragKey:"",loading:false};
 const groupStateKey="well404.shop.admin.group",tabStateKey="well404.shop.admin.tab";
 let searchTimer=null,searchSerial=0;
 
@@ -35,7 +37,9 @@ $("#add-help").textContent=L.addHelp;
 $("#search-label").textContent=L.searchLabel;
 $("#item-search").placeholder=L.searchPlaceholder;
 $("#save").textContent=L.saveDiscount;
-for(const button of root.querySelectorAll("[data-tab]"))button.textContent=button.dataset.tab==="catalog"?L.catalog:L.discount;
+for(const button of root.querySelectorAll("[data-tab]"))button.textContent=button.dataset.tab==="catalog"?L.catalog:button.dataset.tab==="discount"?L.discount:L.quarantine;
+$("#quarantine-title").textContent=L.quarantineTitle;
+$("#quarantine-help").textContent=L.quarantineHelp;
 
 const discountEntry=panel.mountAction("discount",$("#settings"));
 $("#save").onclick=()=>panel.saveSettings([discountEntry],$("#save"));
@@ -46,7 +50,7 @@ function selectTopTab(id){
   try{sessionStorage.setItem(tabStateKey,id)}catch{}
 }
 let initialTab="catalog";
-try{const saved=sessionStorage.getItem(tabStateKey);if(saved==="discount")initialTab=saved}catch{}
+try{const saved=sessionStorage.getItem(tabStateKey);if(saved==="discount"||saved==="quarantine")initialTab=saved}catch{}
 for(const button of root.querySelectorAll("[data-tab]"))button.onclick=()=>selectTopTab(button.dataset.tab);
 selectTopTab(initialTab);
 
@@ -82,16 +86,63 @@ async function refresh(){
   if(state.loading||$("#modal-root").children.length)return;
   state.loading=true;
   try{
-    const [groups,catalog]=await Promise.all([panel.records("groups"),panel.records("catalog")]);
+    const [groups,catalog,quarantine]=await Promise.all([panel.records("groups"),panel.records("catalog"),panel.records("quarantine")]);
     state.groups=groups.records||[];
     state.records=catalog.records||[];
+    state.quarantine=quarantine.records||[];
     ensureActiveGroup();
     renderCatalog();
+    renderQuarantine();
   }catch(error){
     showMessage($("#catalog-message"),error.message||L.requestFailed,"err");
   }finally{
     state.loading=false;
   }
+}
+
+function renderQuarantine(){
+  const list=$("#quarantine-list");
+  list.replaceChildren();
+  $("#quarantine-count").textContent=String(state.quarantine.length);
+  if(!state.quarantine.length){list.append(make("div","empty",L.noQuarantine));return}
+  for(const record of state.quarantine){
+    const values=record.values||{},card=make("article","quarantine-card");
+    const head=make("div","quarantine-head"),title=make("strong","",record.label||record.key),review=make("button","ghost",L.review);
+    review.type="button";review.onclick=()=>openResolutionModal(record);
+    head.append(title,review);
+    const facts=make("dl","quarantine-facts");
+    for(const [label,value] of [[L.operation,values.operationId],[L.player,`${values.playerName||""} (${values.playerId||""})`],[L.stateLabel,values.state],[L.items,values.items],[L.total,values.total]]){
+      facts.append(make("dt","",label),make("dd","",value||"—"));
+    }
+    card.append(head,facts);
+    if(values.detail)card.append(make("p","quarantine-detail",values.detail));
+    list.append(card);
+  }
+}
+
+function openResolutionModal(record){
+  const values=record.values||{},isBuy=values.kind==="buy";
+  const options=isBuy
+    ?[{value:"",label:"—"},{value:"abort-unpaid",label:"Abort: ledger confirms unpaid"},{value:"confirm-delivered",label:"Close: delivery manually confirmed"},{value:"retry-refund",label:"Refund: inventory manually reconciled"}]
+    :[{value:"",label:"—"},{value:"retry-credit",label:"Credit: removal manually confirmed"},{value:"confirm-restored",label:"Close: inventory manually restored"}];
+  openModal(L.resolveTitle,(modal,dismiss)=>{
+    modal.append(make("p","warning",L.dangerReview));
+    const form=make("div","form-grid");
+    field(form,L.operation,"operationId","text",values.operationId,null,true,true);
+    const resolution=field(form,L.resolution,"resolution","text","",options,true);
+    const confirmation=field(form,L.confirmation,"confirmation","text","",null,true);
+    const note=field(form,L.auditNote,"note","textarea","",null,true);
+    modal.append(form);
+    modalActions(modal,async(button,message)=>{
+      button.disabled=true;
+      try{
+        const result=await panel.invoke("quarantine",bodyOf({operationId:values.operationId,resolution:resolution.value,confirmation:confirmation.value,note:note.value}));
+        if(!result.success)throw new Error(result.message||L.requestFailed);
+        dismiss();await refresh();showMessage($("#quarantine-message"),result.message||L.resolved,"ok");
+      }catch(error){showMessage(message,error.message||L.requestFailed,"err");button.disabled=false}
+    });
+    confirmation.focus();
+  });
 }
 
 function renderCatalog(){

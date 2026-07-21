@@ -20,12 +20,13 @@ namespace well404.Economy
     {
         private readonly string m_ConfigPath;
         private readonly object m_Lock = new object();
-        private readonly EconomySettings m_Settings;
+        private EconomySettings m_Settings;
 
         public EconomyConfigStore(IConfiguration configuration, string workingDirectory)
         {
             m_ConfigPath = Path.Combine(workingDirectory, "config.yaml");
             m_Settings = configuration.Get<EconomySettings>() ?? new EconomySettings();
+            EconomySettingsGuard.Validate(m_Settings);
         }
 
         /// <summary>Runs <paramref name="reader"/> against the current settings under the lock.</summary>
@@ -42,8 +43,11 @@ namespace well404.Economy
         {
             lock (m_Lock)
             {
-                mutate(m_Settings);
-                File.WriteAllText(m_ConfigPath, EconomyYaml.Serialize(m_Settings), new UTF8Encoding(false));
+                var candidate = EconomySettingsGuard.Clone(m_Settings);
+                mutate(candidate);
+                EconomySettingsGuard.Validate(candidate);
+                File.WriteAllText(m_ConfigPath, EconomyYaml.Serialize(candidate), new UTF8Encoding(false));
+                m_Settings = candidate;
             }
         }
     }

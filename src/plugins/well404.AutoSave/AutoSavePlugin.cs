@@ -9,7 +9,9 @@ using Microsoft.Extensions.Logging;
 using OpenMod.API.Eventing;
 using OpenMod.API.Plugins;
 using OpenMod.Core.Plugins.Events;
+using OpenMod.Unturned.Players.Connections.Events;
 using OpenMod.Unturned.Plugins;
+using SDG.Unturned;
 using UnturnedMods.Shared.WebPanel;
 
 [assembly: PluginMetadata("well404.AutoSave", DisplayName = "Auto Save")]
@@ -17,26 +19,24 @@ using UnturnedMods.Shared.WebPanel;
 namespace well404.AutoSave
 {
     /// <summary>
-    /// Periodically saves the game on a cron schedule and, every Nth save, writes a compressed backup
-    /// of the server's savedata. There are no in-game commands: everything is configured through
-    /// <c>config.yaml</c> and, when well404.WebPanel is installed, its admin panel.
+    /// Periodically saves the game on a cron schedule and writes compressed backups of the server's
+    /// savedata. Saving never slows down while empty; only backup creation uses the idle cadence.
     /// </summary>
     public class AutoSavePlugin : OpenModUnturnedPlugin
     {
         private readonly IConfiguration m_Configuration;
         private readonly IStringLocalizer m_StringLocalizer;
         private readonly ILogger<AutoSavePlugin> m_Logger;
-
         private readonly object m_SchedulerLock = new object();
 
         private AutoSaveConfigStore? m_ConfigStore;
         private BackupService? m_BackupService;
+        private BackupCadenceController? m_BackupCadence;
         private SaveService? m_SaveService;
         private SchedulerLoop? m_SchedulerLoop;
         private CancellationTokenSource? m_SchedulerCts;
         private Task? m_SchedulerTask;
         private bool m_Stopped;
-
         private IWebPanelRegistry? m_WebPanelRegistry;
 
         public AutoSavePlugin(
@@ -52,33 +52,33 @@ namespace well404.AutoSave
 
         protected override async UniTask OnLoadAsync()
         {
-            // Switch to the main thread before calling any Unturned / UnityEngine API.
             await UniTask.SwitchToMainThread();
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_start"]);
 
             var configStore = new AutoSaveConfigStore(m_Configuration, WorkingDirectory);
             var backupService = new BackupService(new TarLzmaArchiver(), m_Logger);
             var stateStore = new SaveStateStore(WorkingDirectory, m_Logger);
-            var saveService = new SaveService(backupService, stateStore, configStore, m_Logger);
+            var backupCadence = new BackupCadenceController(Provider.clients.Count);
+            var saveService = new SaveService(backupService, stateStore, configStore, backupCadence, m_Logger);
 
             m_ConfigStore = configStore;
             m_BackupService = backupService;
+            m_BackupCadence = backupCadence;
             m_SaveService = saveService;
             m_SchedulerLoop = new SchedulerLoop(m_Logger);
 
             configStore.Changed += OnSettingsChanged;
             StartScheduler();
-
-            // Paths are resolved per run (the server id is not known until the level is up), so the
-            // web module is given a factory rather than a captured value.
             RegisterWebPanelExtension();
 
             var settings = configStore.Current;
             m_Logger.LogInformation(
-                "Auto Save loaded: cron '{Cron}', backups {State} (every {N} saves). Paths resolve at save time.",
+                "Auto Save loaded: cron '{Cron}', backups {State} (every {N} saves), idle cadence {IdleState} ({Hours}h). Paths resolve at save time.",
                 settings.Schedule.Cron,
                 settings.Backup.Enabled && settings.Backup.EveryNSaves > 0 ? "on" : "off",
-                settings.Backup.EveryNSaves);
+                settings.Backup.EveryNSaves,
+                settings.IdleBackup.Enabled ? "on" : "off",
+                settings.IdleBackup.IntervalHours);
         }
 
         protected override async UniTask OnUnloadAsync()
@@ -102,8 +102,6 @@ namespace well404.AutoSave
             {
                 try
                 {
-                    // ConfigureAwait(false): don't force the continuation back onto the main-thread
-                    // context (the rest of unload needs no Unity API), mirroring the scheduler loop.
                     await running.ConfigureAwait(false);
                 }
                 catch (Exception ex)
@@ -121,6 +119,7 @@ namespace well404.AutoSave
 
             m_WebPanelRegistry?.UnregisterModule(AutoSaveWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
+            m_BackupCadence = null;
             m_BackupService = null;
 
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
@@ -136,13 +135,34 @@ namespace well404.AutoSave
             RegisterWebPanel(m_ConfigStore, m_SaveService, m_BackupService, SavePaths.Capture);
         }
 
+        internal async Task HandlePlayerConnectedAsync()
+        {
+            await UniTask.SwitchToMainThread();
+            var cadence = m_BackupCadence;
+            if (cadence == null || !cadence.PlayerConnected())
+            {
+                return;
+            }
+
+            m_Logger.LogInformation("Auto Save: online player count changed from 0 to 1; leaving idle backup mode and resuming the normal backup cadence.");
+        }
+
+        internal async Task HandlePlayerDisconnectedAsync()
+        {
+            await UniTask.SwitchToMainThread();
+            if (m_BackupCadence?.PlayerDisconnected() == true)
+            {
+                m_Logger.LogInformation(
+                    "Auto Save: all players left; the next normally due backup will run before idle throttling begins.");
+            }
+        }
+
         private void OnSettingsChanged()
         {
             m_Logger.LogInformation("Auto Save: settings changed; restarting the scheduler.");
             StartScheduler();
         }
 
-        /// <summary>(Re)builds the cron schedule from current settings and runs the loop.</summary>
         private void StartScheduler()
         {
             var configStore = m_ConfigStore;
@@ -192,9 +212,6 @@ namespace well404.AutoSave
 
             var translations = LifetimeScope.ResolveOptional<IWebTranslationRegistry>();
             translations?.AddBundle(AutoSaveI18n.Zh, AutoSaveI18n.ZhTable);
-
-            // The web module localizes its messages via the registry; fall back to a no-op resolver
-            // shouldn't happen because the panel always registers IWebTranslationRegistry alongside it.
             if (translations == null)
             {
                 m_Logger.LogWarning("Auto Save: web panel present but no translation registry; skipping web module.");
@@ -220,5 +237,31 @@ namespace well404.AutoSave
             m_PluginAccessor.Instance?.RegisterWebPanelExtension();
             return Task.CompletedTask;
         }
+    }
+
+    public sealed class PlayerConnectedListener : IEventListener<UnturnedPlayerConnectedEvent>
+    {
+        private readonly IPluginAccessor<AutoSavePlugin> m_PluginAccessor;
+
+        public PlayerConnectedListener(IPluginAccessor<AutoSavePlugin> pluginAccessor)
+        {
+            m_PluginAccessor = pluginAccessor;
+        }
+
+        public Task HandleEventAsync(object? sender, UnturnedPlayerConnectedEvent @event)
+            => m_PluginAccessor.Instance?.HandlePlayerConnectedAsync() ?? Task.CompletedTask;
+    }
+
+    public sealed class PlayerDisconnectedListener : IEventListener<UnturnedPlayerDisconnectedEvent>
+    {
+        private readonly IPluginAccessor<AutoSavePlugin> m_PluginAccessor;
+
+        public PlayerDisconnectedListener(IPluginAccessor<AutoSavePlugin> pluginAccessor)
+        {
+            m_PluginAccessor = pluginAccessor;
+        }
+
+        public Task HandleEventAsync(object? sender, UnturnedPlayerDisconnectedEvent @event)
+            => m_PluginAccessor.Instance?.HandlePlayerDisconnectedAsync() ?? Task.CompletedTask;
     }
 }

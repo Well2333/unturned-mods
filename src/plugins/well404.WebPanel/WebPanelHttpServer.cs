@@ -20,6 +20,7 @@ namespace well404.WebPanel
     /// <list type="bullet">
     /// <item><c>GET /&lt;token&gt;/</c> — the SPA (its API calls are relative, so they stay in-path).</item>
     /// <item><c>GET /&lt;token&gt;/api/modules</c> — module + action metadata to render from.</item>
+    /// <item><c>GET /&lt;token&gt;/api/modules/{module}/asset/{asset}</c> — read a module-owned image.</item>
     /// <item><c>POST /&lt;token&gt;/api/modules/{module}/{action}</c> — invoke an action.</item>
     /// </list>
     /// The token is mandatory (the plugin generates one when config leaves it empty); anything
@@ -31,6 +32,7 @@ namespace well404.WebPanel
     /// <item><c>GET /p</c> — the player SPA (reads the <c>?t=</c> session token).</item>
     /// <item><c>GET /api/p/view</c> — the player's menus, each pre-rendered.</item>
     /// <item><c>POST /api/p/invoke/{menu}</c> — execute a card button as that player.</item>
+    /// <item><c>GET /api/p/asset/{menu}/{asset}</c> — read a menu-owned image asset.</item>
     /// </list>
     /// Player <c>/api/p</c> calls carry the session token in <c>?t=</c> (or the
     /// <c>X-Player-Token</c> header); it is validated against <see cref="PlayerWebSessionManager"/>.
@@ -38,6 +40,9 @@ namespace well404.WebPanel
     /// </summary>
     public sealed class WebPanelHttpServer : IDisposable
     {
+        private const int MaxPlayerAssetBytes = 64 * 1024 * 1024;
+        private const int MaxRequestBodyBytes = 256 * 1024;
+        private const int MaxConcurrentRequests = 32;
         private readonly IWebPanelRegistry m_Registry;
         private readonly IPlayerMenuRegistry m_PlayerRegistry;
         private readonly IWebTranslationRegistry m_Translations;
@@ -52,6 +57,7 @@ namespace well404.WebPanel
         private readonly DevPlayerSettings m_DevPlayer;
         private readonly int m_RefreshIntervalSeconds;
         private readonly HttpListener m_Listener;
+        private readonly SemaphoreSlim m_RequestSlots = new SemaphoreSlim(MaxConcurrentRequests, MaxConcurrentRequests);
         private CancellationTokenSource? m_Cts;
 
         public WebPanelHttpServer(
@@ -87,11 +93,19 @@ namespace well404.WebPanel
             m_Listener.Prefixes.Add(prefix);
         }
 
-        /// <summary>The language requested via <c>?lang=</c>, or the default when absent.</summary>
+        /// <summary>The registered language requested via <c>?lang=</c>, or the default.</summary>
         private string LangOf(HttpListenerRequest request)
+            => RegisteredLanguage(request.QueryString["lang"]) ?? m_Translations.DefaultLanguage;
+
+        private string? RegisteredLanguage(string? candidate)
         {
-            var lang = request.QueryString["lang"];
-            return string.IsNullOrWhiteSpace(lang) ? m_Translations.DefaultLanguage : lang!;
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return null;
+            }
+
+            return m_Translations.Languages.FirstOrDefault(language =>
+                string.Equals(language, candidate.Trim(), StringComparison.OrdinalIgnoreCase));
         }
 
         private string Tr(string? key, string lang) => m_Translations.Resolve(key ?? string.Empty, lang);
@@ -126,7 +140,34 @@ namespace well404.WebPanel
                     break;
                 }
 
-                _ = Task.Run(() => HandleAsync(context));
+                if (!m_RequestSlots.Wait(0))
+                {
+                    try
+                    {
+                        WriteJson(context.Response, 503,
+                            "{\"success\":false,\"message\":\"Server busy\"}");
+                    }
+                    catch
+                    {
+                        // A disconnected overload response must not terminate the accept loop.
+                    }
+
+                    continue;
+                }
+
+                _ = HandleWithRequestSlotAsync(context);
+            }
+        }
+
+        private async Task HandleWithRequestSlotAsync(HttpListenerContext context)
+        {
+            try
+            {
+                await HandleAsync(context).ConfigureAwait(false);
+            }
+            finally
+            {
+                m_RequestSlots.Release();
             }
         }
 
@@ -140,13 +181,6 @@ namespace well404.WebPanel
                 if (request.HttpMethod == "GET" && path == "/favicon.ico")
                 {
                     WriteBytes(context.Response, 200, "image/jpeg", m_Favicon);
-                    return;
-                }
-
-                // CORS preflight (only fires for non-simple cross-origin requests via a proxy).
-                if (request.HttpMethod == "OPTIONS")
-                {
-                    WriteText(context.Response, 204, "text/plain; charset=utf-8", string.Empty);
                     return;
                 }
 
@@ -173,6 +207,7 @@ namespace well404.WebPanel
                     // under /<token>/ rather than the server root.
                     context.Response.Redirect(prefix + "/");
                     context.Response.StatusCode = 302;
+                    SetSecurityHeaders(context.Response, noStore: true);
                     context.Response.Close();
                     return;
                 }
@@ -218,6 +253,7 @@ namespace well404.WebPanel
 
                     context.Response.Redirect("/p?t=" + devToken);
                     context.Response.StatusCode = 302;
+                    SetSecurityHeaders(context.Response, noStore: true);
                     context.Response.Close();
                     return;
                 }
@@ -238,11 +274,15 @@ namespace well404.WebPanel
                         ParseForm(ReadBody(request)).TryGetValue("lang", out chosen);
                     }
 
-                    if (!string.IsNullOrWhiteSpace(chosen))
+                    var registered = RegisteredLanguage(chosen);
+                    if (registered == null)
                     {
-                        m_AdminLanguage.Set(chosen!);
+                        WriteJson(context.Response, 400,
+                            "{\"ok\":false,\"message\":\"Unsupported language\"}");
+                        return;
                     }
 
+                    m_AdminLanguage.Set(registered);
                     WriteJson(context.Response, 200, "{\"ok\":true}");
                     return;
                 }
@@ -251,12 +291,20 @@ namespace well404.WebPanel
                 {
                     // The saved admin language wins over the query string, so the panel always opens
                     // in the language last chosen; the client adopts the returned "lang".
-                    var lang = m_AdminLanguage.Get() ?? LangOf(request);
+                    var lang = RegisteredLanguage(m_AdminLanguage.Get()) ?? LangOf(request);
                     WriteJson(context.Response, 200, BuildModulesJson(lang));
                     return;
                 }
 
                 var segments = adminPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                // ["api", "modules", "{module}", "asset", "{assetId}"]
+                if (request.HttpMethod == "GET" && segments.Length == 5 &&
+                    segments[1] == "modules" && segments[3] == "asset")
+                {
+                    await AdminAssetAsync(context, segments[2], segments[4]).ConfigureAwait(false);
+                    return;
+                }
+
                 if (segments.Length == 5 && segments[1] == "modules")
                 {
                     // ["api", "modules", "{module}", "{action}", "values" | "records" | "delete"]
@@ -294,6 +342,18 @@ namespace well404.WebPanel
 
                 WriteJson(context.Response, 404, "{\"success\":false,\"message\":\"Unknown endpoint\"}");
             }
+            catch (RequestBodyTooLargeException)
+            {
+                try
+                {
+                    WriteJson(context.Response, 413,
+                        "{\"success\":false,\"message\":\"Request body too large\"}");
+                }
+                catch
+                {
+                    // The client may already have disconnected.
+                }
+            }
             catch (Exception ex)
             {
                 m_Logger.LogWarning(ex, "WebPanel: error handling request.");
@@ -306,6 +366,31 @@ namespace well404.WebPanel
                     // The response may already be closed; nothing more to do.
                 }
             }
+        }
+
+        private async Task AdminAssetAsync(HttpListenerContext context, string moduleId, string assetId)
+        {
+            var module = m_Registry.GetModules()
+                .FirstOrDefault(candidate => string.Equals(candidate.Id, moduleId, StringComparison.OrdinalIgnoreCase));
+            if (module?.AssetProvider == null)
+            {
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            PlayerMenuAsset? asset;
+            try
+            {
+                asset = await module.AssetProvider.GetAssetAsync(assetId).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: module {Module} asset {Asset} threw.", moduleId, assetId);
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            WriteAssetResponse(context, asset);
         }
 
         private async Task InvokeActionAsync(HttpListenerContext context, string moduleId, string actionId)
@@ -331,7 +416,7 @@ namespace well404.WebPanel
             catch (Exception ex)
             {
                 m_Logger.LogWarning(ex, "WebPanel: action {Module}/{Action} threw.", moduleId, actionId);
-                result = WebActionResult.Fail(ex.Message);
+                result = WebActionResult.Fail("Request failed.");
             }
 
             WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
@@ -422,7 +507,7 @@ namespace well404.WebPanel
             catch (Exception ex)
             {
                 m_Logger.LogWarning(ex, "WebPanel: delete {Module}/{Action} threw.", moduleId, actionId);
-                result = WebActionResult.Fail(ex.Message);
+                result = WebActionResult.Fail("Request failed.");
             }
 
             WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
@@ -448,7 +533,7 @@ namespace well404.WebPanel
             catch (Exception ex)
             {
                 m_Logger.LogWarning(ex, "WebPanel: reorder {Module}/{Action} threw.", moduleId, actionId);
-                result = WebActionResult.Fail(ex.Message);
+                result = WebActionResult.Fail("Request failed.");
             }
             WriteJson(context.Response, 200, BuildResultJson(result, LangOf(context.Request)));
         }
@@ -531,19 +616,30 @@ namespace well404.WebPanel
                     ParseForm(ReadBody(context.Request)).TryGetValue("lang", out chosen);
                 }
 
-                if (!string.IsNullOrWhiteSpace(chosen))
+                var registered = RegisteredLanguage(chosen);
+                if (registered == null)
                 {
-                    m_PlayerLanguages.Set(session.SteamId, chosen!);
+                    WriteJson(context.Response, 400,
+                        "{\"ok\":false,\"message\":\"Unsupported language\"}");
+                    return;
                 }
 
+                m_PlayerLanguages.Set(session.SteamId, registered);
                 WriteJson(context.Response, 200, "{\"ok\":true}");
                 return;
             }
 
             // The player's saved language wins over the query string, so the panel always opens in
             // the language they last chose; only an explicit switch (POST /lang) changes it.
-            var lang = m_PlayerLanguages.Get(session.SteamId) ?? LangOf(context.Request);
+            var lang = RegisteredLanguage(m_PlayerLanguages.Get(session.SteamId)) ?? LangOf(context.Request);
             var ctx = new PlayerMenuContext(session.SteamId, session.DisplayName, lang);
+
+            // ["api", "p", "asset", "{menuId}", "{assetId}"]
+            if (context.Request.HttpMethod == "GET" && segments.Length == 5 && segments[2] == "asset")
+            {
+                await PlayerAssetAsync(context, ctx, segments[3], segments[4]).ConfigureAwait(false);
+                return;
+            }
 
             // ["api", "p", "view"]
             if (context.Request.HttpMethod == "GET" && segments.Length == 3 && segments[2] == "view")
@@ -622,7 +718,7 @@ namespace well404.WebPanel
             catch (Exception ex)
             {
                 m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} action threw.", menuId);
-                result = PlayerActionResult.Fail(ex.Message);
+                result = PlayerActionResult.Fail("Request failed.");
             }
 
             var sb = new StringBuilder();
@@ -645,6 +741,77 @@ namespace well404.WebPanel
             WriteJson(context.Response, 200, sb.ToString());
         }
 
+        private async Task PlayerAssetAsync(
+            HttpListenerContext context, PlayerMenuContext ctx, string menuId, string assetId)
+        {
+            var menu = m_PlayerRegistry.GetMenu(menuId);
+            if (!(menu is IPlayerMenuAssetProvider provider))
+            {
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            PlayerMenuAsset? asset;
+            try
+            {
+                asset = await provider.GetAssetAsync(ctx, assetId).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} asset {Asset} threw.", menuId, assetId);
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            WriteAssetResponse(context, asset);
+        }
+
+        private static void WriteAssetResponse(HttpListenerContext context, PlayerMenuAsset? asset)
+        {
+            if (asset == null || asset.Content.Length == 0 || asset.Content.Length > MaxPlayerAssetBytes ||
+                !IsAllowedPlayerAssetContentType(asset.ContentType))
+            {
+                WriteText(context.Response, 404, "text/plain; charset=utf-8", "Not found");
+                return;
+            }
+
+            var etagToken = new string(asset.EntityTag
+                .Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.')
+                .Take(128)
+                .ToArray());
+            if (etagToken.Length == 0)
+            {
+                etagToken = asset.Content.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            var etag = "\"" + etagToken + "\"";
+            SetSecurityHeaders(context.Response, noStore: false);
+            context.Response.Headers["Cache-Control"] = "private, max-age=" +
+                asset.MaxAgeSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            context.Response.Headers["ETag"] = etag;
+            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+
+            if (string.Equals(context.Request.Headers["If-None-Match"], etag, StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = 304;
+                context.Response.ContentLength64 = 0;
+                context.Response.Close();
+                return;
+            }
+
+            context.Response.StatusCode = 200;
+            context.Response.ContentType = asset.ContentType;
+            context.Response.ContentLength64 = asset.Content.Length;
+            context.Response.OutputStream.Write(asset.Content, 0, asset.Content.Length);
+            context.Response.OutputStream.Close();
+        }
+
+        private static bool IsAllowedPlayerAssetContentType(string contentType)
+            => string.Equals(contentType, "image/png", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(contentType, "image/jpeg", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(contentType, "image/webp", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(contentType, "image/gif", StringComparison.OrdinalIgnoreCase);
+
         private async Task<PlayerMenuView> RenderSafeAsync(IPlayerMenu menu, PlayerMenuContext ctx)
         {
             try
@@ -655,7 +822,7 @@ namespace well404.WebPanel
             {
                 m_Logger.LogWarning(ex, "WebPanel: player menu {Menu} render threw.", menu.Id);
                 return new PlayerMenuView(menu.Title, null, Array.Empty<PlayerCard>(),
-                    "Failed to load: " + ex.Message);
+                    "Failed to load.");
             }
         }
 
@@ -976,10 +1143,41 @@ namespace well404.WebPanel
                 return string.Empty;
             }
 
-            // Always decode as UTF-8: form bodies are percent-encoded ASCII (the SPA) or raw
-            // UTF-8; honoring a possibly-absent/wrong Content-Type charset only causes mojibake.
-            using var reader = new StreamReader(request.InputStream, Encoding.UTF8);
-            return reader.ReadToEnd();
+            if (request.ContentLength64 > MaxRequestBodyBytes)
+            {
+                throw new RequestBodyTooLargeException();
+            }
+
+            // Enforce the limit while streaming too: chunked requests have no Content-Length.
+            // Bound slow clients as well, so they cannot occupy every request slot forever.
+            if (request.InputStream.CanTimeout)
+            {
+                request.InputStream.ReadTimeout = 15000;
+            }
+
+            using var body = new MemoryStream();
+            var buffer = new byte[8192];
+            while (true)
+            {
+                var read = request.InputStream.Read(buffer, 0, buffer.Length);
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                if (body.Length + read > MaxRequestBodyBytes)
+                {
+                    throw new RequestBodyTooLargeException();
+                }
+
+                body.Write(buffer, 0, read);
+            }
+
+            return Encoding.UTF8.GetString(body.ToArray());
+        }
+
+        private sealed class RequestBodyTooLargeException : Exception
+        {
         }
 
         /// <summary>Parses an <c>application/x-www-form-urlencoded</c> body into a value map.</summary>
@@ -1020,7 +1218,7 @@ namespace well404.WebPanel
 
         private static void WriteBytes(HttpListenerResponse response, int status, string contentType, byte[] bytes)
         {
-            SetCorsHeaders(response);
+            SetSecurityHeaders(response, noStore: true);
             response.StatusCode = status;
             response.ContentType = contentType;
             response.ContentLength64 = bytes.Length;
@@ -1028,17 +1226,18 @@ namespace well404.WebPanel
             response.OutputStream.Close();
         }
 
-        /// <summary>
-        /// Permissive CORS so the panel keeps working behind an arbitrary user-supplied reverse
-        /// proxy that may serve the page from a different origin. Safe to allow <c>*</c> here: auth
-        /// is a secret URL/token, never a cookie, so cross-origin JS gains nothing a direct request
-        /// wouldn't already have.
-        /// </summary>
-        private static void SetCorsHeaders(HttpListenerResponse response)
+        private static void SetSecurityHeaders(HttpListenerResponse response, bool noStore)
         {
-            response.Headers["Access-Control-Allow-Origin"] = "*";
-            response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
-            response.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-Player-Token";
+            response.Headers["Referrer-Policy"] = "no-referrer";
+            response.Headers["X-Content-Type-Options"] = "nosniff";
+            response.Headers["X-Frame-Options"] = "DENY";
+            response.Headers["Content-Security-Policy"] = "frame-ancestors 'none'";
+            if (noStore)
+            {
+                response.Headers["Cache-Control"] = "no-store, max-age=0";
+                response.Headers["Pragma"] = "no-cache";
+                response.Headers["Expires"] = "0";
+            }
         }
 
         private static void WriteJson(HttpListenerResponse response, int status, string json)

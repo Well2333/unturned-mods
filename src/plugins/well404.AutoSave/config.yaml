@@ -37,6 +37,15 @@ backup:
     - "**/*~"
     - "**/*.bak"
 
+idleBackup:
+  # Automatic game saves ALWAYS keep using schedule.cron. This section only throttles compressed
+  # archive creation while there are no players online.
+  enabled: true
+  # After the last player leaves, the next normally due backup still runs. Later backups use this
+  # long interval until the first player reconnects. Reconnecting only restores the normal
+  # everyNSaves cadence; it never starts an immediate save or archive. Range 1-8760 hours; default 24 hours.
+  intervalHours: 24
+
 retention:
   # Delete the oldest backups once EITHER limit is exceeded. 0 = no limit.
   maxCount: 0

@@ -57,11 +57,14 @@ namespace well404.AutoSave
         {
             settings.Schedule ??= new ScheduleSettings();
             settings.Backup ??= new BackupSettings();
+            settings.IdleBackup ??= new IdleBackupSettings();
             settings.Retention ??= new RetentionSettings();
             settings.Schedule.Cron ??= "*/10 * * * *";
             settings.Schedule.TimeZone ??= "";
             settings.Backup.Directory ??= "";
             settings.Backup.ExcludePatterns ??= new List<string>();
+            if (settings.IdleBackup.IntervalHours < 1) settings.IdleBackup.IntervalHours = 1;
+            if (settings.IdleBackup.IntervalHours > 8760) settings.IdleBackup.IntervalHours = 8760;
             if (settings.Retention.MaxCount < 0) settings.Retention.MaxCount = 0;
             if (settings.Retention.MaxTotalSizeMB < 0) settings.Retention.MaxTotalSizeMB = 0;
         }
@@ -100,6 +103,12 @@ namespace well404.AutoSave
             }
 
             sb.Append('\n');
+            sb.Append("idleBackup:\n");
+            sb.Append("  # Keep every scheduled game save, but reduce archive frequency while nobody is online.\n");
+            sb.Append("  enabled: ").Append(Bool(s.IdleBackup.Enabled)).Append('\n');
+            sb.Append("  # The first normally due backup after the server becomes empty still runs.\n");
+            sb.Append("  intervalHours: ").Append(Int(s.IdleBackup.IntervalHours)).Append("\n\n");
+
             sb.Append("retention:\n");
             sb.Append("  # Delete the oldest backups once EITHER limit is exceeded. 0 = no limit.\n");
             sb.Append("  maxCount: ").Append(Int(s.Retention.MaxCount)).Append('\n');

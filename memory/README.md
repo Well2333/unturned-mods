@@ -38,3 +38,16 @@
 1. **一级规范** 永远优先于二级记录。
 2. 若二级记录与一级规范冲突，以一级规范为准，并应修正记录或补充说明。
 3. 任何被验证为**错误**的记忆都应被更正或删除，而非保留误导。
+
+## Unturned 权威外部参考
+
+- [`SmartlyDressedGames/U3-SDK`](https://github.com/SmartlyDressedGames/U3-SDK) 是
+  Smartly Dressed Games 公布的 Unturned 3 源码。调查游戏运行时行为、资产加载、专用服务器
+  差异和 `SDG.Unturned` API 时，应优先核对该仓库与
+  [Unturned 官方文档](https://docs.smartlydressedgames.com/)，再参考社区资料。
+- 源码结论必须注明所核对的游戏版本、tag 或 commit；`main` 的最新实现不应被无条件套用到版本
+  不同的生产服务器。2026-07-19 物品图片预研核对的快照为
+  `21dd044d31f15b92a79fc351432714c95305603e`（仓库当时的 `main`）。
+- U3-SDK 使用其自有许可证。可以把它作为 API 和行为的权威参考，但不要把其中源码、资源或图片
+  直接复制进本仓库；确需派生或分发时，必须先逐项核对 U3-SDK License Agreement、版权声明和
+  `THIRDPARTYNOTICES.txt` 要求。

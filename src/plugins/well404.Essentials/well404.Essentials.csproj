@@ -11,7 +11,7 @@
   -->
 
   <PropertyGroup>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
     <Description>Essentials</Description>
     <!-- Produce a NuGet package on build so it can be installed via `openmod install`. -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -37,9 +37,11 @@
     <EmbeddedResource Include="player-ui.html" />
     <EmbeddedResource Include="player-ui.css" />
     <EmbeddedResource Include="player-ui.js" />
+    <EmbeddedResource Include="player-map-ui.js" />
     <EmbeddedResource Include="admin-ui.html" />
     <EmbeddedResource Include="admin-ui.css" />
     <EmbeddedResource Include="admin-ui.js" />
+    <EmbeddedResource Include="admin-map-ui.js" />
   </ItemGroup>
 
   <!-- Published shared abstractions keep the WebPanel dependency optional while giving every NuGet plugin one common interface assembly. -->

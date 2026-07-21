@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Autofac;
 using Cysharp.Threading.Tasks;
@@ -28,6 +29,7 @@ namespace well404.Shop
         private IPlayerMenuRegistry? m_PlayerMenuRegistry;
         // Captured at load so unload never resolves from the (by-then disposed) Autofac scope.
         private IPlayerCommandRegistry? m_PlayerCommandRegistry;
+        private ShopTradeCoordinator? m_Trades;
 
         public ShopPlugin(
             IConfiguration configuration,
@@ -51,6 +53,15 @@ namespace well404.Shop
                 "Shop loaded with {Items} item(s); discounts {State}.",
                 settings.Items.Count, settings.Discounts.Enabled ? "enabled" : "disabled");
 
+            var trades = LifetimeScope.Resolve<ShopTradeCoordinator>();
+            m_Trades = trades;
+            await trades.InitializeAsync(Path.Combine(WorkingDirectory, "shop-operations.sqlite3"));
+            if (!trades.SupportsDurableTrades)
+            {
+                m_Logger.LogWarning(
+                    "Shop trading is disabled: the active economy backend has no durable idempotent ledger.");
+            }
+
             RegisterWebPanelExtensions();
         }
 
@@ -70,12 +81,15 @@ namespace well404.Shop
         protected override async UniTask OnUnloadAsync()
         {
             await UniTask.SwitchToMainThread();
+            var drain = m_Trades?.ShutdownAsync() ?? Task.CompletedTask;
             m_WebPanelRegistry?.UnregisterModule(ShopWebPanelModule.ModuleId);
             m_WebPanelRegistry = null;
             m_PlayerMenuRegistry?.UnregisterMenu(ShopPlayerMenu.MenuId);
             m_PlayerMenuRegistry = null;
             m_PlayerCommandRegistry?.Unregister("well404.shop");
             m_PlayerCommandRegistry = null;
+            await drain;
+            m_Trades = null;
             m_Logger.LogInformation(m_StringLocalizer["plugin_events:plugin_stop"]);
         }
 
@@ -94,7 +108,8 @@ namespace well404.Shop
 
             var store = new ShopConfigStore(m_Configuration, WorkingDirectory);
             var itemDirectory = LifetimeScope.Resolve<IItemDirectory>();
-            registry.RegisterModule(ShopWebPanelModule.Create(store, itemDirectory));
+            registry.RegisterModule(ShopWebPanelModule.Create(
+                store, itemDirectory, LifetimeScope.Resolve<ShopTradeCoordinator>()));
             m_WebPanelRegistry = registry;
             m_Logger.LogInformation("Shop: registered the catalog-editing module with the web panel.");
         }
@@ -125,7 +140,7 @@ namespace well404.Shop
                 LifetimeScope.Resolve<ShopCatalog>(),
                 LifetimeScope.Resolve<ShopService>(),
                 LifetimeScope.Resolve<DiscountService>(),
-                economy,
+                LifetimeScope.Resolve<ShopTradeCoordinator>(),
                 LifetimeScope.Resolve<IUserManager>(),
                 LifetimeScope.Resolve<IItemDirectory>(),
                 translations);

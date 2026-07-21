@@ -41,3 +41,13 @@ Thumbs.db
 # ---- Misc ----
 *.log
 image*.png
+
+# ---- Local project research sources / linked worktrees ----
+# External research repositories and auxiliary worktrees are project-level local state,
+# not remote-operation memory. Keep them outside .local-memory and out of commits.
+/research/external/
+/.worktrees/
+
+# Local inspection helpers may contain machine-specific assembly paths.
+# Keep them available locally, but do not treat them as supported repository tools.
+/tools/

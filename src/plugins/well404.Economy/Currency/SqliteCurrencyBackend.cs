@@ -91,8 +91,149 @@ namespace well404.Economy.Currency
             return Task.FromResult(updated);
         }
 
+        public Task<decimal> ApplyOnceAsync(
+            string operationId,
+            string ownerId,
+            string ownerType,
+            decimal changeAmount,
+            string? reason)
+        {
+            if (string.IsNullOrWhiteSpace(operationId))
+            {
+                throw new ArgumentException("An operation ID is required.", nameof(operationId));
+            }
+
+            var updated = WithDatabase(connection =>
+            {
+                using var transaction = connection.BeginTransaction();
+                var owner = Key(ownerId, ownerType);
+                using (var existing = connection.CreateCommand())
+                {
+                    existing.Transaction = transaction;
+                    existing.CommandText = @"
+SELECT owner, amount, balance_after
+FROM idempotent_operations
+WHERE operation_id = $operation;";
+                    existing.Parameters.AddWithValue("$operation", operationId);
+                    using var reader = existing.ExecuteReader();
+                    if (reader.Read())
+                    {
+                        var existingOwner = reader.GetString(0);
+                        var existingAmount = ParseDecimal(reader.GetString(1));
+                        var existingBalance = ParseDecimal(reader.GetString(2));
+                        if (!string.Equals(existingOwner, owner, StringComparison.Ordinal)
+                            || existingAmount != changeAmount)
+                        {
+                            throw new InvalidOperationException(
+                                "The idempotent economy operation ID was reused with different parameters.");
+                        }
+
+                        transaction.Commit();
+                        return existingBalance;
+                    }
+                }
+
+                var current = ReadBalance(connection, transaction, owner) ?? StartingBalance;
+                var next = current + changeAmount;
+                if (next < 0m)
+                {
+                    throw new NotEnoughBalanceException(
+                        $"Not enough balance: needs {-changeAmount}, has {current}.", current);
+                }
+
+                UpsertBalance(connection, transaction, owner, next);
+                AppendTransaction(connection, transaction, owner, changeAmount, next, reason);
+                using (var insert = connection.CreateCommand())
+                {
+                    insert.Transaction = transaction;
+                    insert.CommandText = @"
+INSERT INTO idempotent_operations(
+    operation_id, owner, amount, balance_after, reason, timestamp_utc)
+VALUES($operation, $owner, $amount, $balance, $reason, $timestamp);";
+                    insert.Parameters.AddWithValue("$operation", operationId);
+                    insert.Parameters.AddWithValue("$owner", owner);
+                    insert.Parameters.AddWithValue("$amount", FormatDecimal(changeAmount));
+                    insert.Parameters.AddWithValue("$balance", FormatDecimal(next));
+                    insert.Parameters.AddWithValue("$reason", (object?)reason ?? DBNull.Value);
+                    insert.Parameters.AddWithValue("$timestamp", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+                    insert.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+                return next;
+            });
+
+            return Task.FromResult(updated);
+        }
+
+        public Task<decimal?> GetAppliedBalanceAsync(
+            string operationId,
+            string ownerId,
+            string ownerType,
+            decimal changeAmount)
+        {
+            var result = WithDatabase(connection =>
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = @"
+SELECT owner, amount, balance_after
+FROM idempotent_operations
+WHERE operation_id = $operation;";
+                command.Parameters.AddWithValue("$operation", operationId);
+                using var reader = command.ExecuteReader();
+                if (!reader.Read()) return (decimal?)null;
+                var owner = Key(ownerId, ownerType);
+                if (!string.Equals(reader.GetString(0), owner, StringComparison.Ordinal)
+                    || ParseDecimal(reader.GetString(1)) != changeAmount)
+                {
+                    throw new InvalidOperationException(
+                        "The idempotent economy operation ID was reused with different parameters.");
+                }
+                return ParseDecimal(reader.GetString(2));
+            });
+            return Task.FromResult(result);
+        }
+
+        /// <summary>Moves currency between two accounts in one all-or-nothing SQLite transaction.</summary>
+        public Task TransferAsync(
+            string senderId, string senderType,
+            string receiverId, string receiverType,
+            decimal amount, decimal received, string? reason)
+        {
+            if (amount <= 0m || received < 0m || received > amount)
+                throw new ArgumentOutOfRangeException(nameof(amount), "Transfer amounts are invalid.");
+
+            var sender = Key(senderId, senderType);
+            var receiver = Key(receiverId, receiverType);
+            if (string.Equals(sender, receiver, StringComparison.Ordinal))
+                throw new ArgumentException("Sender and receiver must be different accounts.");
+
+            WithDatabase(connection =>
+            {
+                using var transaction = connection.BeginTransaction();
+                var senderBalance = ReadBalance(connection, transaction, sender) ?? StartingBalance;
+                var receiverBalance = ReadBalance(connection, transaction, receiver) ?? StartingBalance;
+                var nextSender = senderBalance - amount;
+                if (nextSender < 0m)
+                    throw new NotEnoughBalanceException(
+                        $"Not enough balance: needs {amount}, has {senderBalance}.", senderBalance);
+
+                var nextReceiver = checked(receiverBalance + received);
+                UpsertBalance(connection, transaction, sender, nextSender);
+                UpsertBalance(connection, transaction, receiver, nextReceiver);
+                AppendTransaction(connection, transaction, sender, -amount, nextSender, reason);
+                AppendTransaction(connection, transaction, receiver, received, nextReceiver, reason);
+                transaction.Commit();
+                return 0;
+            });
+
+            return Task.CompletedTask;
+        }
+
         public Task SetBalanceAsync(string ownerId, string ownerType, decimal balance)
         {
+            if (balance < 0m)
+                throw new ArgumentOutOfRangeException(nameof(balance), "Balance cannot be negative.");
             WithDatabase(connection =>
             {
                 using var transaction = connection.BeginTransaction();
@@ -169,7 +310,17 @@ CREATE TABLE IF NOT EXISTS transactions (
     timestamp_utc TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_transactions_owner_time
-    ON transactions(owner, timestamp_utc DESC);";
+    ON transactions(owner, timestamp_utc DESC);
+CREATE TABLE IF NOT EXISTS idempotent_operations (
+    operation_id TEXT NOT NULL PRIMARY KEY,
+    owner TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    balance_after TEXT NOT NULL,
+    reason TEXT NULL,
+    timestamp_utc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_idempotent_operations_owner_time
+    ON idempotent_operations(owner, timestamp_utc DESC);";
             command.ExecuteNonQuery();
             m_Initialized = true;
         }

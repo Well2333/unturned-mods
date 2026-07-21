@@ -25,7 +25,8 @@ namespace well404.Shop
         private const int SearchLimit = 100;
         private const string QuickAddActionId = "additem";
 
-        public static WebPanelModule Create(ShopConfigStore store, IItemDirectory itemDirectory)
+        public static WebPanelModule Create(ShopConfigStore store, IItemDirectory itemDirectory,
+            ShopTradeCoordinator trades)
         {
             var groups = new WebPanelAction(
                 id: "groups",
@@ -84,6 +85,16 @@ namespace well404.Shop
                 handler: request => Task.FromResult(QuickAddItem(store, request)),
                 hidden: true);
 
+            var quarantine = new WebPanelAction(
+                id: "quarantine",
+                label: "Trade recovery quarantine",
+                kind: WebActionKind.Collection,
+                handler: request => ResolveTradeAsync(trades, request),
+                description: "Ambiguous cross-system trades. Resolution requires an exact operation ID and audit note; nothing is replayed automatically.",
+                recordsLoader: () => Task.FromResult(LoadQuarantineRecords(trades)),
+                keyField: "operationId",
+                hidden: true);
+
             var discount = new WebPanelAction(
                 id: "discount",
                 label: "VIP discount",
@@ -113,8 +124,48 @@ namespace well404.Shop
 
             return new WebPanelModule(
                 ModuleId, "Shop",
-                new[] { groups, catalog, search, quickAdd, discount },
+                new[] { groups, catalog, search, quickAdd, discount, quarantine },
                 icon: "🛒", ui: s_Ui);
+        }
+
+        private static IReadOnlyList<WebRecord> LoadQuarantineRecords(ShopTradeCoordinator trades)
+        {
+            var records = new List<WebRecord>();
+            foreach (var operation in trades.PendingOperations)
+            {
+                var items = string.Join(", ", operation.Lines.Select(line =>
+                    "#" + line.ItemId.ToString(CultureInfo.InvariantCulture) + "×" +
+                    line.Count.ToString(CultureInfo.InvariantCulture)));
+                records.Add(new WebRecord(operation.OperationId,
+                    operation.Kind + " · " + operation.PlayerName,
+                    new Dictionary<string, string>
+                    {
+                        ["operationId"] = operation.OperationId,
+                        ["kind"] = operation.Kind,
+                        ["playerId"] = operation.PlayerId,
+                        ["playerName"] = operation.PlayerName,
+                        ["catalogKey"] = operation.CatalogKey,
+                        ["state"] = operation.State,
+                        ["items"] = items,
+                        ["total"] = Num(operation.Total),
+                        ["detail"] = operation.Detail,
+                        ["createdUtc"] = operation.CreatedUtc.ToString("O", CultureInfo.InvariantCulture),
+                        ["updatedUtc"] = operation.UpdatedUtc.ToString("O", CultureInfo.InvariantCulture)
+                    },
+                    new[] { operation.State, operation.Kind }));
+            }
+            return records;
+        }
+
+        private static async Task<WebActionResult> ResolveTradeAsync(
+            ShopTradeCoordinator trades, WebActionRequest request)
+        {
+            var operationId = (request.Get("operationId") ?? string.Empty).Trim();
+            var action = (request.Get("resolution") ?? string.Empty).Trim();
+            var confirmation = request.Get("confirmation") ?? string.Empty;
+            var note = request.Get("note") ?? string.Empty;
+            var result = await trades.ResolveAsync(operationId, action, confirmation, note);
+            return result.Success ? WebActionResult.Ok(result.Message) : WebActionResult.Fail(result.Message);
         }
 
         private static IReadOnlyList<WebRecord> LoadGroupRecords(ShopConfigStore store)

@@ -51,6 +51,9 @@ namespace well404.AutoSave
                     new WebField("enabled", "Enable backups", WebFieldType.Boolean),
                     new WebField("everyNSaves", "Back up every N saves", WebFieldType.Number,
                         placeholder: "e.g. 6 — a backup after every 6th save"),
+                    new WebField("idleEnabled", "Throttle backups while empty", WebFieldType.Boolean),
+                    new WebField("idleIntervalHours", "Empty-server backup interval (hours)", WebFieldType.Number,
+                        placeholder: "e.g. 24 — after the first normally due empty-server backup"),
                     new WebField("directory", "Backup directory", WebFieldType.Text,
                         placeholder: "Empty = <install>/Backups/<server id>"),
                     new WebField("excludePatterns", "Exclude patterns", WebFieldType.TextArea,
@@ -58,7 +61,7 @@ namespace well404.AutoSave
                     new WebField("maxCount", "Max backups (0 = unlimited)", WebFieldType.Number),
                     new WebField("maxTotalSizeMB", "Max total size MB (0 = unlimited)", WebFieldType.Number)
                 },
-                description: "When saves fire (cron, wall-clock aligned), how often a backup is taken, where backups go, what to exclude, and how many/how large to keep. Backups use solid LZMA (.tar.lz).",
+                description: "When saves fire (cron, wall-clock aligned), how often active and empty-server backups are taken, where backups go, what to exclude, and how many/how large to keep. Automatic saves never slow down while empty. Backups use solid LZMA (.tar.lz).",
                 loader: () => Task.FromResult(module.LoadSettings()));
 
             var backupNow = new WebPanelAction(
@@ -94,6 +97,8 @@ namespace well404.AutoSave
                 ["timeZone"] = s.Schedule.TimeZone,
                 ["enabled"] = s.Backup.Enabled ? "true" : "false",
                 ["everyNSaves"] = s.Backup.EveryNSaves.ToString(CultureInfo.InvariantCulture),
+                ["idleEnabled"] = s.IdleBackup.Enabled ? "true" : "false",
+                ["idleIntervalHours"] = s.IdleBackup.IntervalHours.ToString(CultureInfo.InvariantCulture),
                 ["directory"] = s.Backup.Directory,
                 ["excludePatterns"] = string.Join("\n", s.Backup.ExcludePatterns),
                 ["maxCount"] = s.Retention.MaxCount.ToString(CultureInfo.InvariantCulture),
@@ -123,6 +128,15 @@ namespace well404.AutoSave
                 return WebActionResult.Fail(m_Tr.Resolve("Enter a whole number for 'Back up every N saves'.", request.Language));
             }
 
+            var idleIntervalRaw = request.Get("idleIntervalHours");
+            if (idleIntervalRaw == null
+                || !int.TryParse(idleIntervalRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var idleIntervalHours)
+                || idleIntervalHours < 1
+                || idleIntervalHours > 8760)
+            {
+                return WebActionResult.Fail(m_Tr.Resolve("Enter a whole number from 1 to 8760 for the empty-server backup interval.", request.Language));
+            }
+
             var maxCount = ParseNonNegativeInt(request.Get("maxCount"));
             var maxSizeMb = ParseNonNegativeLong(request.Get("maxTotalSizeMB"));
 
@@ -142,6 +156,11 @@ namespace well404.AutoSave
                     EveryNSaves = everyN,
                     Directory = request.Get("directory") ?? string.Empty,
                     ExcludePatterns = excludes
+                },
+                IdleBackup = new IdleBackupSettings
+                {
+                    Enabled = request.Get("idleEnabled") != "false",
+                    IntervalHours = idleIntervalHours
                 },
                 Retention = new RetentionSettings { MaxCount = maxCount, MaxTotalSizeMB = maxSizeMb }
             };

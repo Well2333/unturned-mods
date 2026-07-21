@@ -9,10 +9,11 @@ currency:
 
 # Which backend stores balances:
 #   database   - a transactional SQLite ledger (works for online and offline players)
-#   experience - the native Unturned experience points (online players only)
+#   experience - native Unturned XP (online players only; player transfers are unavailable)
 backend: "database"
 
 transfer:
+  # Durable player-to-player transfers require backend: database; this switch is ignored safely on experience.
   enabled: true
   minAmount: 1
   # Percentage (0-100) taken from each /pay as tax.

@@ -43,6 +43,32 @@ namespace well404.WebPanel.Tests
         }
 
         [Fact]
+        public void PlayerPluginUi_CanPauseOnlyAutomaticRefreshAndNavigationReleasesIt()
+        {
+            var html = ReadHtml(".player.html");
+
+            Assert.Contains("let autoRefreshPaused = false;", html);
+            Assert.Contains("autoRefreshPaused ||", html);
+            Assert.Contains("setAutoRefreshPaused:paused => { autoRefreshPaused = !!paused; }", html);
+            Assert.Contains("function renderView(menu, view)", html);
+            Assert.Contains("autoRefreshPaused = false;", html);
+            Assert.Contains("refreshBtn", html);
+        }
+
+        [Fact]
+        public void AdminPluginUi_CanPauseAutomaticRefreshAndRenderDisposesIt()
+        {
+            var html = ReadHtml(".index.html");
+
+            Assert.Contains("let autoRefreshPaused = false;", html);
+            Assert.Contains("autoRefreshPaused ||", html);
+            Assert.Contains("setAutoRefreshPaused:paused => { autoRefreshPaused = !!paused; }", html);
+            Assert.Contains("onDispose:fn =>", html);
+            Assert.Contains("disposeCustomAdminUi();", html);
+            Assert.Contains("autoRefreshPaused = false;", html);
+        }
+
+        [Fact]
         public void AdminPluginApiHelper_IsScopedToCurrentModule()
         {
             var html = ReadHtml(".index.html");
@@ -50,6 +76,21 @@ namespace well404.WebPanel.Tests
             Assert.Contains("const modulePrefix = `api/modules/${enc(module.id)}/`", html);
             Assert.Contains("api:scopedApi", html);
             Assert.Contains("candidate.includes(\"..\")", html);
+        }
+
+        [Fact]
+        public void PlayerMutation_NetworkFailureStillRequestsAuthoritativeView()
+        {
+            var html = ReadHtml(".player.html");
+            var catchStart = html.IndexOf("} catch (e) {", html.IndexOf("/api/p/invoke/"));
+            var catchEnd = html.IndexOf("return;", catchStart);
+
+            Assert.True(catchStart >= 0 && catchEnd > catchStart);
+            var catchBody = html.Substring(catchStart, catchEnd - catchStart);
+            Assert.Contains("actionInFlight--", catchBody);
+            Assert.Contains("if (actionInFlight === 0) load(true);", catchBody);
+            Assert.Contains("if (loading || actionInFlight > 0) { refreshPending = true; return; }", html);
+            Assert.Contains("queueMicrotask(() => load(true));", html);
         }
 
         [Theory]
@@ -64,6 +105,21 @@ namespace well404.WebPanel.Tests
             Assert.Contains("lines[lines.length - 1]", html);
         }
 
+
+        [Fact]
+        public void PluginUiCapabilities_ExposeOnlyScopedAuthenticatedAssetUrls()
+        {
+            var admin = ReadHtml(".index.html");
+            var player = ReadHtml(".player.html");
+
+            Assert.Contains(
+                "assetUrl:assetId => `api/modules/${enc(module.id)}/asset/${enc(assetId)}`",
+                admin);
+            Assert.Contains(
+                "assetUrl:(assetId) => \"/api/p/asset/\" + enc(menu.id) + \"/\" + enc(assetId) + \"?t=\" + enc(TOKEN)",
+                player);
+            Assert.DoesNotContain("assetUrl:(path)", admin);
+        }
         private static string ReadHtml(string suffix)
         {
             var assembly = typeof(WebPanelPlugin).Assembly;

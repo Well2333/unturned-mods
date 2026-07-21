@@ -43,14 +43,17 @@
     <!-- well404.AutoSave dependencies. -->
     <!-- Cronos: pure-managed, zero-dependency cron expression parser (netstandard2.0). -->
     <PackageVersion Include="Cronos" Version="0.8.4" />
-    <!-- SharpCompress: pure-managed archiver. Pinned to 0.30.1 because it has the SMALLEST
-         netstandard2.1 dependency closure (only System.Text.Encoding.CodePages); 0.34+ drag in
-         ZstdSharp.Port and 0.37+ also Microsoft.Bcl.AsyncInterfaces, which would each need flat
-         deployment next to the plugin. Used for solid LZMA (.tar.lz) backups. -->
-    <PackageVersion Include="SharpCompress" Version="0.30.1" />
-    <!-- SharpCompress 0.30.1's only netstandard2.1 transitive dep. Referenced explicitly by
-         well404.AutoSave so scripts/build.sh flat-copies it into openmod/plugins/. -->
-    <PackageVersion Include="System.Text.Encoding.CodePages" Version="5.0.0" />
+    <!-- SharpCompress: pure-managed solid LZMA (.tar.lz) archiver. Keep current: older releases
+         contain published extraction vulnerabilities even though AutoSave only writes archives. -->
+    <PackageVersion Include="SharpCompress" Version="0.49.1" />
+    <!-- Explicit for flat local deployment; the OpenMod host does not resolve arbitrary transitive
+         dependencies placed only in the NuGet cache. -->
+    <PackageVersion Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+
+    <!-- Security pins for vulnerable OpenMod transitive dependencies. Both releases retain
+         netstandard2.0 assets while fixing the advisories reported for the older graph. -->
+    <PackageVersion Include="System.Formats.Asn1" Version="8.0.1" />
+    <PackageVersion Include="System.Text.Json" Version="8.0.6" />
 
     <!-- Test stack (used only by projects under tests/; not shipped). -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />

@@ -46,10 +46,11 @@ namespace well404.Vault.Tests
             Assert.Contains(".item.rarity-common", css);
             Assert.Contains(".item.rarity-mythical", css);
             Assert.Contains(".rarity-label::before", css);
+            Assert.Contains(".type-filter-row", css);
         }
 
         [Fact]
-        public void PlayerUi_ProvidesPersistentSortingAndNativeCategoryFilters()
+        public void PlayerUi_ProvidesPersistentSortingAndHierarchicalNativeTypeFilters()
         {
             var assembly = typeof(VaultPlayerMenu).Assembly;
             var resource = assembly.GetManifestResourceNames()
@@ -64,9 +65,26 @@ namespace well404.Vault.Tests
             Assert.Contains("[\"id\",copy.id]", script);
             Assert.Contains("[\"count\",copy.count]", script);
             Assert.Contains("[\"rarity\",copy.rarity]", script);
-            Assert.Contains("filter===\"all\"||category(card)===filter", script);
+            Assert.Contains("const nativeItemTypes=", script);
+            Assert.Contains("typeFilter=getStored(storage.typeFilter,\"all\")", script);
+            Assert.Contains("categoryGroup=filter===\"all\"?sourceGroup:sourceGroup.filter(card=>category(card)===filter)", script);
+            Assert.Contains("typeFilter===\"all\"||itemType(card)===typeFilter", script);
             Assert.Contains("sessionStorage.setItem", script);
+            Assert.Contains("canMoveForScope", script);
+            Assert.Contains("!hasBothScopes||!canMoveForScope(activeScope)", script);
+            Assert.Contains("setStored(storage.filter,filter)", script);
+            Assert.Contains("setStored(storage.typeFilter,typeFilter)", script);
             Assert.Contains("rarity-\"+itemRarity", script);
+            Assert.Contains("hiddenContainers", script);
+            Assert.Contains("inventoryContainer(card)", script);
+            Assert.Contains("sourceGroup", script);
+            Assert.Contains("well404.vault.player.hidden-containers", script);
+            Assert.Contains("well404.vault.player.type-filter", script);
+            Assert.Contains("copy.moveToTeamConfirm", script);
+            Assert.Contains("copy.moveToPersonalConfirm", script);
+            Assert.Contains("confirmation:activeScope===\"personal\"", script);
+            Assert.Equal("确定存入这种物品的全部数量吗？", VaultI18n.ZhTable["Store every copy of this item?"]);
+            Assert.Equal("确定取出这种物品的全部数量吗？", VaultI18n.ZhTable["Take every copy of this item?"]);
         }
 
     }

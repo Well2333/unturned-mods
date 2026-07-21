@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Localization;
 using OpenMod.API.Commands;
 using OpenMod.Core.Commands;
-using OpenMod.Extensions.Economy.Abstractions;
 using OpenMod.Extensions.Games.Abstractions.Items;
 using OpenMod.Unturned.Users;
 
@@ -16,22 +15,19 @@ namespace well404.Shop.Commands
     public class CommandSell : Command
     {
         private readonly ShopCatalog m_Catalog;
-        private readonly ShopService m_ShopService;
-        private readonly IEconomyProvider m_Economy;
+        private readonly ShopTradeCoordinator m_Trades;
         private readonly IItemDirectory m_ItemDirectory;
         private readonly IStringLocalizer m_StringLocalizer;
 
         public CommandSell(
             IServiceProvider serviceProvider,
             ShopCatalog catalog,
-            ShopService shopService,
-            IEconomyProvider economy,
+            ShopTradeCoordinator trades,
             IItemDirectory itemDirectory,
             IStringLocalizer stringLocalizer) : base(serviceProvider)
         {
             m_Catalog = catalog;
-            m_ShopService = shopService;
-            m_Economy = economy;
+            m_Trades = trades;
             m_ItemDirectory = itemDirectory;
             m_StringLocalizer = stringLocalizer;
         }
@@ -65,29 +61,29 @@ namespace well404.Shop.Commands
                 throw new UserFriendlyException(m_StringLocalizer["sell:not_sellable", new { name }]);
             }
 
-            var inventory = await m_ShopService.GetInventoryCountsAsync(user);
-            var available = ShopService.AvailableUnits(entry, inventory);
-            amount = System.Math.Min(amount, available);
-            if (amount < 1)
+            var result = await m_Trades.SellAsync(user, entry, amount);
+            switch (result.Status)
             {
-                throw new UserFriendlyException(m_StringLocalizer["sell:not_enough_items", new { name }]);
+                case ShopTradeStatus.NotEnoughItems:
+                    throw new UserFriendlyException(m_StringLocalizer["sell:not_enough_items", new { name }]);
+                case ShopTradeStatus.DurableEconomyRequired:
+                    throw new UserFriendlyException(m_StringLocalizer["errors:durable_required"]);
+                case ShopTradeStatus.PendingOperation:
+                    throw new UserFriendlyException(m_StringLocalizer["errors:pending_operation", new { operation = result.OperationId }]);
+                case ShopTradeStatus.Quarantined:
+                    throw new UserFriendlyException(m_StringLocalizer["errors:quarantined", new { operation = result.OperationId }]);
+                case ShopTradeStatus.Completed:
+                    break;
+                default:
+                    throw new UserFriendlyException(m_StringLocalizer["errors:invalid_trade"]);
             }
-
-            var took = await m_ShopService.TryTakeAsync(user, entry, amount);
-            if (!took)
-            {
-                throw new UserFriendlyException(m_StringLocalizer["sell:not_enough_items", new { name }]);
-            }
-
-            var total = entry.SellPrice * amount;
-            await m_Economy.UpdateBalanceAsync(user.Id, user.Type, total, "shop_sell:" + entry.Id);
 
             await PrintAsync(m_StringLocalizer["sell:success", new
             {
-                amount,
+                amount = result.ItemCount,
                 name,
-                symbol = m_Economy.CurrencySymbol,
-                total
+                symbol = m_Trades.CurrencySymbol,
+                total = result.Total
             }]);
         }
     }

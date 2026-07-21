@@ -23,7 +23,7 @@ namespace well404.Shop
         }
 
         /// <summary>The item-count required (or granted) per purchase unit.</summary>
-        private static Dictionary<ushort, int> ItemsPerUnit(ShopEntry entry)
+        internal static Dictionary<ushort, int> ItemsPerUnit(ShopEntry entry)
             => new Dictionary<ushort, int> { [entry.ItemId] = 1 };
 
         public static int AvailableUnits(
@@ -83,11 +83,21 @@ namespace well404.Shop
         /// them and returns true. Removes nothing and returns false if short.
         /// </summary>
         public async Task<bool> TryTakeAsync(UnturnedUser user, ShopEntry entry, int units)
+            => await TryTakePlanAsync(user, new Dictionary<ushort, int>
+            {
+                [entry.ItemId] = units
+            });
+
+        /// <summary>
+        /// Verifies an exact multi-item removal plan before destroying the first item. Returning
+        /// false is proof that nothing was removed; an exception after destruction begins is
+        /// intentionally ambiguous and must be quarantined by the trade coordinator.
+        /// </summary>
+        public async Task<bool> TryTakePlanAsync(
+            UnturnedUser user, IReadOnlyDictionary<ushort, int> required)
         {
             await UniTask.SwitchToMainThread();
             var inventory = user.Player.Inventory;
-
-            var required = ItemsPerUnit(entry);
             var matches = new Dictionary<ushort, List<IInventoryItem>>();
 
             // Verify everything first so we never remove a partial order.
@@ -106,7 +116,7 @@ namespace well404.Shop
                     }
                 }
 
-                if (list.Count < req.Value * units)
+                if (req.Value <= 0 || list.Count < req.Value)
                 {
                     return false;
                 }
@@ -116,7 +126,7 @@ namespace well404.Shop
 
             foreach (var req in required)
             {
-                var remaining = req.Value * units;
+                var remaining = req.Value;
                 foreach (var item in matches[req.Key])
                 {
                     if (remaining <= 0)

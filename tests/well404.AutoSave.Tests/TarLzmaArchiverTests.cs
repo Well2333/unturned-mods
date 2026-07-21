@@ -4,7 +4,6 @@ using System.IO;
 using System.Text;
 using SharpCompress.Compressors;
 using SharpCompress.Compressors.LZMA;
-using SharpCompress.Readers.Tar;
 using well404.AutoSave;
 using Xunit;
 
@@ -54,18 +53,21 @@ namespace well404.AutoSave.Tests
         {
             var result = new Dictionary<string, string>();
             using var fs = File.OpenRead(path);
-            using var lz = new LZipStream(fs, CompressionMode.Decompress);
-            using var reader = TarReader.Open(lz);
-            while (reader.MoveToNextEntry())
+            using var lz = LZipStream.Create(fs, CompressionMode.Decompress);
+            using var reader = new System.Formats.Tar.TarReader(lz, leaveOpen: false);
+            System.Formats.Tar.TarEntry? entry;
+            while ((entry = reader.GetNextEntry()) != null)
             {
-                if (reader.Entry.IsDirectory)
+                if (entry.EntryType == System.Formats.Tar.TarEntryType.Directory)
                 {
                     continue;
                 }
 
+                var data = entry.DataStream
+                    ?? throw new InvalidDataException("Tar entry has no data stream.");
                 using var ms = new MemoryStream();
-                reader.WriteEntryTo(ms);
-                var key = reader.Entry.Key.Replace('\\', '/');
+                data.CopyTo(ms);
+                var key = entry.Name.Replace('\\', '/');
                 if (key.StartsWith("./", StringComparison.Ordinal))
                 {
                     key = key.Substring(2);

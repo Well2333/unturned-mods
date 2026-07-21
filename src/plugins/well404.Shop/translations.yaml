@@ -7,6 +7,10 @@ plugin_events:
 errors:
   invalid_amount: "Please enter a valid, positive amount."
   item_not_found: "No shop item with id: {id}"
+  durable_required: "Shop trading requires the durable SQLite economy backend."
+  pending_operation: "A previous trade is quarantined as {operation}; ask an administrator to review it."
+  quarantined: "Trade {operation} entered recovery quarantine. No automatic refund or replay was attempted."
+  invalid_trade: "The trade request is invalid or unsafe."
 
 shop:
   empty: "The shop is currently empty."
@@ -16,6 +20,7 @@ shop:
 
 buy:
   not_buyable: "{name} cannot be bought."
+  insufficient: "You do not have enough balance."
   success: "Bought {amount}x {name} for {symbol}{total}."
 
 sell:

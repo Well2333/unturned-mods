@@ -90,11 +90,7 @@ namespace well404.WebPanel
                 }
 
                 var value = line.Substring("language:".Length).Trim();
-                if (value.Length >= 2 && (value[0] == '"' || value[0] == '\'') && value[value.Length - 1] == value[0])
-                {
-                    value = value.Substring(1, value.Length - 2);
-                }
-
+                value = YamlScalar.Unquote(value);
                 return value.Length > 0 ? value : null;
             }
 
@@ -108,7 +104,7 @@ namespace well404.WebPanel
             {
                 var sb = new StringBuilder();
                 sb.Append("# Admin web-panel UI language. Managed by well404.WebPanel.\n");
-                sb.Append("language: \"").Append(m_Language).Append("\"\n");
+                sb.Append("language: ").Append(YamlScalar.Quote(m_Language ?? string.Empty)).Append('\n');
                 File.WriteAllText(m_Path, sb.ToString(), new UTF8Encoding(false));
             }
             catch

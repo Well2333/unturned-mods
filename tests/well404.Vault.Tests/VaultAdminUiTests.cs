@@ -20,7 +20,16 @@ namespace well404.Vault.Tests
         public void AdminUi_ProvidesScopedEditorAndConfirmedDeletes()
         {
             var script = Resource(".admin-ui.js");
+            Assert.Contains("panel.records(\"owners\")", script);
             Assert.Contains("panel.invoke(\"inventory\"", script);
+            Assert.Contains("panel.invoke(\"containerinfo\"", script);
+            Assert.Contains("panel.invoke(\"setcapacity\"", script);
+            Assert.Contains("panel.invoke(\"resolvepurchase\"", script);
+            Assert.Contains("panel.records(\"purchaseresolutions\"", script);
+            Assert.Contains("confirmation!==operationId", script);
+            Assert.Contains("capacity>1000000", script);
+            Assert.Contains("listGeneration", script);
+            Assert.Contains("panel.invoke(\"additem\"", script);
             Assert.Contains("panel.invoke(\"updateitem\"", script);
             Assert.Contains("panel.invoke(\"deleteitem\"", script);
             Assert.Contains("panel.invoke(\"deleteitems\"", script);
@@ -36,6 +45,10 @@ namespace well404.Vault.Tests
             Assert.Contains(".inventory-grid", css);
             Assert.Contains("grid-template-columns:repeat(6,minmax(0,1fr))", css);
             Assert.Contains(".name-secondary", css);
+            Assert.Contains(".owner-list", css);
+            Assert.Contains(".owner-card", css);
+            Assert.Contains("Final player-panel aligned overrides", css);
+            Assert.DoesNotContain(".inventory-grid{grid-template-columns:repeat(auto-fill", css);
         }
     }
 }

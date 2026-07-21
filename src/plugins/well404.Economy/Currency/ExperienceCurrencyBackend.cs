@@ -72,6 +72,7 @@ namespace well404.Economy.Currency
 
         public async Task<decimal> UpdateBalanceAsync(string ownerId, string ownerType, decimal changeAmount, string? reason)
         {
+            RequireWholeExperience(changeAmount);
             var user = await GetOnlineUserAsync(ownerId, ownerType);
             await UniTask.SwitchToMainThread();
 
@@ -85,12 +86,16 @@ namespace well404.Economy.Currency
                     $"Not enough experience: needs {-changeAmount}, has {current}.", current);
             }
 
-            skills.ServerSetExperience(ClampToUInt(updated));
-            return updated;
+            var applied = ClampToUInt(updated);
+            skills.ServerSetExperience(applied);
+            return applied;
         }
 
         public async Task SetBalanceAsync(string ownerId, string ownerType, decimal balance)
         {
+            RequireWholeExperience(balance);
+            if (balance < 0m)
+                throw new UserFriendlyException("Experience balance cannot be negative.");
             var user = await GetOnlineUserAsync(ownerId, ownerType);
             await UniTask.SwitchToMainThread();
             user.Player.Player.skills.ServerSetExperience(ClampToUInt(balance));
@@ -98,6 +103,12 @@ namespace well404.Economy.Currency
 
         public Task DeleteAccountAsync(string ownerId, string ownerType)
             => throw new UserFriendlyException("经验后端不支持删除账户（经验值不作为独立账本持久化）。");
+
+        private static void RequireWholeExperience(decimal value)
+        {
+            if (decimal.Truncate(value) != value)
+                throw new UserFriendlyException("Experience-based currency only supports whole-number amounts.");
+        }
 
         private static uint ClampToUInt(decimal value)
         {

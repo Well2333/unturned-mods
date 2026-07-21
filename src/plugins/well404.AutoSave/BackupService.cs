@@ -44,8 +44,8 @@ namespace well404.AutoSave
     /// <summary>
     /// Snapshots the savedata into a single compressed archive and enforces the retention caps. The
     /// work is plain file IO (the game was already saved synchronously on the main thread before this
-    /// runs), so it executes off the main thread. A non-blocking gate ensures only one backup runs at
-    /// a time; an overlapping request is skipped rather than queued.
+    /// runs), so it executes off the main thread. A gate ensures only one backup runs at a time.
+    /// Scheduled and manual overlaps are skipped. Callers may explicitly serialize other requests when needed;
     /// </summary>
     public sealed class BackupService
     {
@@ -61,8 +61,19 @@ namespace well404.AutoSave
 
         /// <summary>Creates a backup now (blocking file IO; call from a background thread).</summary>
         public BackupResult Run(SavePaths paths, BackupSettings backup, RetentionSettings retention)
+            => Run(paths, backup, retention, waitForPrevious: false);
+
+        public BackupResult Run(
+            SavePaths paths,
+            BackupSettings backup,
+            RetentionSettings retention,
+            bool waitForPrevious)
         {
-            if (!m_Gate.Wait(0))
+            if (waitForPrevious)
+            {
+                m_Gate.Wait();
+            }
+            else if (!m_Gate.Wait(0))
             {
                 m_Logger.LogWarning("Auto Save: a previous backup is still running; skipping this one.");
                 return BackupResult.Skipped();

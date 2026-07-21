@@ -21,7 +21,7 @@
 | [architecture.md](architecture.md) | 仓库结构、多插件设计、共享环境的设计决策 |
 | [commit-and-memory-workflow.md](commit-and-memory-workflow.md) | 提交流程、变更记录撰写规则、记忆同步规则 |
 | [publishing.md](publishing.md) | NuGet / GitHub 按插件发布流程、CI、包元数据、密钥配置 |
-| [testing.md](testing.md) | 测试项目放置/约定；**TestServer 只用于用户参与步骤，无人参与测试禁止启动** |
+| [testing.md](testing.md) | 测试项目放置/约定；Web UI 部署/发版前真实浏览器交互验收；**TestServer 只用于用户参与步骤，无人参与测试禁止启动** |
 | [local-server-testing.md](local-server-testing.md) | 无人参与的服务器自测只用 `.localserver`，完成即关；TestServer 仅用于用户实机验收 |
 
 ## 修改规范的规则

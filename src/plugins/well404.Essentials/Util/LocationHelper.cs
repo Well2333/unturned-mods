@@ -11,7 +11,7 @@ namespace well404.Essentials.Util
         {
             var pos = player.transform.position;
             var yaw = player.transform.eulerAngles.y;
-            return new PlayerLocation(pos.x, pos.y, pos.z, yaw);
+            return new PlayerLocation(pos.x, pos.y, pos.z, yaw, Level.info?.name);
         }
 
         public static PlayerLocation FromPlayer(UnturnedPlayer player) => FromPlayer(player.Player);
